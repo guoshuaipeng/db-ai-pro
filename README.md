@@ -1,6 +1,7 @@
 # DataAI - AI驱动的数据库管理工具
 
 一个类似 DataGrip 的数据库管理工具，支持多种数据库连接和 SQL 查询。
+下载地址 https://gitee.com/CodeYG/db-ai-pro/releases/tag/v1.0.2
 
 **作者**: codeyG (550187704@qq.com)
 
