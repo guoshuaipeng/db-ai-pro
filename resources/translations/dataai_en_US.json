@@ -1,0 +1,42 @@
+{
+  "MainWindow": {
+    "文件(&F)": "File(&F)",
+    "添加数据库连接(&N)": "Add Database Connection(&N)",
+    "从 Navicat 导入(&I)": "Import from Navicat(&I)",
+    "AI模型配置(&A)": "AI Model Configuration(&A)",
+    "AI提示词配置(&P)": "AI Prompt Configuration(&P)",
+    "退出(&X)": "Exit(&X)",
+    "数据库(&D)": "Database(&D)",
+    "测试连接(&T)": "Test Connection(&T)",
+    "刷新(&R)": "Refresh(&R)",
+    "查询(&Q)": "Query(&Q)",
+    "执行查询(&E)": "Execute Query(&E)",
+    "清空查询(&C)": "Clear Query(&C)",
+    "设置(&S)": "Settings(&S)",
+    "帮助(&H)": "Help(&H)",
+    "关于(&A)": "About(&A)",
+    "添加连接": "Add Connection",
+    "导入 Navicat": "Import Navicat",
+    "AI模型:": "AI Model:",
+    "当前连接:": "Current Connection:",
+    "查询": "Query",
+    "就绪": "Ready",
+    "DataAI - AI驱动的数据库管理工具": "DataAI - AI-Powered Database Management Tool",
+    "语言设置": "Language Settings",
+    "语言已更改。部分界面需要重启应用后才能生效。": "Language has been changed. Some interfaces require restarting the application to take effect.",
+    "语言已更改。": "Language has been changed.",
+    "加载翻译文件失败，请检查翻译文件是否存在。": "Failed to load translation file. Please check if the translation file exists.",
+    "语言设置已保存到注册表。\n\n需要重启应用程序才能使语言更改生效。\n\n是否现在重启？": "Language settings have been saved to the registry.\n\nYou need to restart the application for the language change to take effect.\n\nDo you want to restart now?",
+    "错误": "Error",
+    "保存语言设置到注册表失败。": "Failed to save language settings to the registry.",
+    "重启应用失败，请手动重启应用程序。": "Failed to restart the application. Please restart manually.",
+    "关于 DataAI": "About DataAI"
+  },
+  "SettingsDialog": {
+    "设置": "Settings",
+    "语言设置": "Language Settings",
+    "界面语言:": "Interface Language:",
+    "错误": "Error",
+    "保存语言设置到注册表失败。": "Failed to save language settings to the registry."
+  }
+}

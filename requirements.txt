@@ -1,0 +1,29 @@
+# GUI框架
+PyQt6>=6.6.0
+PyQt6-Qt6>=6.6.0
+
+# 数据库驱动
+sqlalchemy>=2.0.0  # SQL工具包和ORM
+pymysql>=1.1.0  # MySQL驱动
+psycopg2-binary>=2.9.0  # PostgreSQL驱动
+oracledb>=3.0.0  # Oracle驱动（推荐，支持Python 3.13+）
+# cx-Oracle>=8.3.0  # Oracle驱动（旧版，Python 3.13需要编译工具）
+pyodbc>=5.0.0  # SQL Server/ODBC驱动
+
+# 配置和工具
+python-dotenv>=1.0.0  # 环境变量管理
+pydantic>=2.0.0  # 数据验证
+pydantic-settings>=2.0.0  # 配置管理
+
+# 数据处理（可选）
+# pandas>=2.0.0  # 数据处理和结果展示（如果需要高级数据处理功能）
+# numpy>=1.24.0  # 数值计算（如果需要数值计算功能）
+openpyxl>=3.1.0  # Excel文件导出支持
+
+# 其他工具
+cryptography>=41.0.0  # 密码加密（用于保存数据库密码）
+
+# AI功能
+openai>=1.0.0  # OpenAI兼容API（用于AI生成SQL）
+
+
