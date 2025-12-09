@@ -156,4 +156,22 @@ class TableStructureHandler:
                     logger.info(f"已自动刷新编辑表tab '{tab_widget.table_name}' 的表结构（从数据库重新获取）")
         except Exception as e:
             logger.error(f"刷新编辑表tab失败: {str(e)}")
+    
+    def close_query_tab(self, index: int):
+        """关闭查询tab"""
+        # 第一个tab（查询tab）不能关闭
+        if index == 0:
+            return
+        
+        # 获取要关闭的tab组件
+        tab_widget = self.main_window.right_tab_widget.widget(index)
+        
+        # 如果是新建表tab或编辑表tab，清理资源
+        if isinstance(tab_widget, CreateTableTab):
+            tab_widget.cleanup()
+        elif hasattr(tab_widget, 'cleanup') and hasattr(tab_widget, 'table_name'):
+            # 编辑表tab
+            tab_widget.cleanup()
+        
+        self.main_window.right_tab_widget.removeTab(index)
 

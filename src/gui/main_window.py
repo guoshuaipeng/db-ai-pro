@@ -104,6 +104,10 @@ class MainWindow(QMainWindow):
         from src.gui.handlers.preload_handler import PreloadHandler
         from src.gui.handlers.tree_handler import TreeHandler
         from src.gui.handlers.table_structure_handler import TableStructureHandler
+        from src.gui.handlers.ui_handler import UIHandler
+        from src.gui.handlers.tree_data_handler import TreeDataHandler
+        from src.gui.handlers.menu_handler import MenuHandler
+        from src.gui.handlers.settings_handler import SettingsHandler
         
         self.connection_handler = ConnectionHandler(self)
         self.ai_model_handler = AIModelHandler(self)
@@ -111,8 +115,12 @@ class MainWindow(QMainWindow):
         self.preload_handler = PreloadHandler(self)
         self.tree_handler = TreeHandler(self)
         self.table_structure_handler = TableStructureHandler(self)
+        self.ui_handler = UIHandler(self)
+        self.tree_data_handler = TreeDataHandler(self)
+        self.menu_handler = MenuHandler(self)
+        self.settings_handler = SettingsHandler(self)
         
-        self.init_ui()
+        self.ui_handler.init_ui()
         self.setup_connections()
         self.load_saved_connections()
         
@@ -216,243 +224,6 @@ class MainWindow(QMainWindow):
         
         event.accept()
     
-    def init_ui(self):
-        """初始化用户界面"""
-        self.setWindowTitle(self.tr("DataAI - AI驱动的数据库管理工具"))
-        # 设置最小窗口尺寸
-        self.setMinimumSize(1200, 800)
-        
-        # 设置窗口图标（如果还没有设置）
-        if self.windowIcon().isNull():
-            import sys
-            from pathlib import Path
-            # 检查是否是PyInstaller打包后的环境
-            if getattr(sys, 'frozen', False):
-                # PyInstaller打包后的环境，使用sys._MEIPASS获取临时目录
-                base_path = Path(sys._MEIPASS)
-            else:
-                # 开发环境，使用项目根目录
-                project_root = Path(__file__).parent.parent.parent
-                base_path = project_root
-            
-            # 优先尝试ICO文件（Windows任务栏需要）
-            icon_path = base_path / "resources" / "icons" / "app_icon.ico"
-            if not icon_path.exists():
-                # 其次尝试PNG文件
-                icon_path = base_path / "resources" / "icons" / "app_icon.png"
-            
-            if icon_path.exists():
-                self.setWindowIcon(QIcon(str(icon_path)))
-        
-        # 创建菜单栏和工具栏
-        self.create_menu_bar()
-        self.create_toolbar()
-        
-        # 创建状态栏
-        self.statusBar().showMessage(self.tr("就绪"))
-        
-        # 创建中央部件
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        
-        # 主布局（增加内边距，让界面更宽松）
-        main_layout = QHBoxLayout()
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
-        central_widget.setLayout(main_layout)
-        
-        # 创建分割器
-        main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_splitter.setHandleWidth(6)  # 增加分割器手柄宽度，更容易拖拽
-        
-        # 左侧：数据库连接树（带搜索功能）
-        self.connection_tree = ConnectionTreeWithSearch()
-        # 注意：handler 在 __init__ 之后才初始化，所以这里先连接，稍后在 setup_connections 中重新连接
-        self.connection_tree.itemDoubleClicked.connect(self.on_item_double_clicked)
-        self.connection_tree.itemClicked.connect(self.on_item_clicked)
-        self.connection_tree.itemExpanded.connect(self.on_item_expanded)
-        self.connection_tree.itemCollapsed.connect(self.on_item_collapsed)
-        self.connection_tree.customContextMenuRequested.connect(self.show_connection_menu)
-        
-        # 设置字体（稍微增大）
-        font = QFont("Microsoft YaHei", 10)
-        self.connection_tree.setFont(font)
-        
-        main_splitter.addWidget(self.connection_tree)
-        
-        # 右侧：Tab控件（包含查询tab和新建表tab）
-        self.right_tab_widget = QTabWidget()
-        self.right_tab_widget.setTabsClosable(True)
-        self.right_tab_widget.tabCloseRequested.connect(self.close_query_tab)
-        # 设置Tab字体
-        tab_font = QFont("Microsoft YaHei", 10)
-        self.right_tab_widget.setFont(tab_font)
-        
-        # 第一个tab：查询（包含AI查询、SQL编辑器和结果）
-        query_tab = QWidget()
-        query_layout = QVBoxLayout()
-        query_layout.setContentsMargins(5, 5, 5, 5)  # 增加内边距
-        query_layout.setSpacing(5)
-        query_tab.setLayout(query_layout)
-        
-        query_splitter = QSplitter(Qt.Orientation.Vertical)
-        query_splitter.setChildrenCollapsible(False)
-        query_splitter.setHandleWidth(6)  # 增加分割器手柄宽度
-        
-        # SQL编辑器（包含AI查询）
-        self.sql_editor = SQLEditor()
-        self.sql_editor._main_window = self
-        self.sql_editor.execute_signal.connect(self.execute_query)
-        self.sql_editor.set_database_info(self.db_manager, None)
-        query_splitter.addWidget(self.sql_editor)
-        
-        # 结果表格
-        self.result_table = MultiResultTable()
-        self.result_table._main_window = self  # 传递主窗口引用
-        query_splitter.addWidget(self.result_table)
-        
-        # 设置拉伸因子（调整比例，让结果区域更大）
-        query_splitter.setStretchFactor(0, 2)
-        query_splitter.setStretchFactor(1, 3)
-        query_splitter.setSizes([450, 650])  # 增加初始高度
-        
-        query_layout.addWidget(query_splitter)
-        self.right_tab_widget.addTab(query_tab, self.tr("查询"))
-        
-        main_splitter.addWidget(self.right_tab_widget)
-        main_splitter.setStretchFactor(0, 0)
-        main_splitter.setStretchFactor(1, 1)
-        # 设置初始宽度比例（左侧连接树稍窄，右侧内容区域更宽）
-        main_splitter.setSizes([280, 1320])
-        
-        main_layout.addWidget(main_splitter)
-    
-    def create_menu_bar(self):
-        """创建菜单栏"""
-        menubar = self.menuBar()
-        
-        # 文件菜单
-        file_menu = menubar.addMenu(self.tr("文件(&F)"))
-        
-        add_connection_action = file_menu.addAction(self.tr("添加数据库连接(&N)"))
-        add_connection_action.setShortcut("Ctrl+N")
-        add_connection_action.triggered.connect(self.add_connection)
-        
-        import_action = file_menu.addAction(self.tr("从 Navicat 导入(&I)"))
-        import_action.triggered.connect(self.import_from_navicat)
-        
-        file_menu.addSeparator()
-        
-        exit_action = file_menu.addAction(self.tr("退出(&X)"))
-        exit_action.setShortcut("Ctrl+Q")
-        exit_action.triggered.connect(self.close)
-        
-        # 数据库菜单
-        db_menu = menubar.addMenu(self.tr("数据库(&D)"))
-        
-        test_connection_action = db_menu.addAction(self.tr("测试连接(&T)"))
-        test_connection_action.triggered.connect(self.test_connection)
-        
-        refresh_action = db_menu.addAction(self.tr("刷新(&R)"))
-        refresh_action.setShortcut("Ctrl+R")
-        refresh_action.triggered.connect(self.refresh_connections)
-        
-        db_menu.addSeparator()
-        
-        # 结构同步
-        sync_schema_action = db_menu.addAction(self.tr("结构同步(&S)"))
-        sync_schema_action.triggered.connect(self.show_schema_sync)
-        
-        # 查询菜单
-        query_menu = menubar.addMenu(self.tr("查询(&Q)"))
-        
-        execute_action = query_menu.addAction(self.tr("执行查询(&E)"))
-        execute_action.setShortcut("F5")
-        execute_action.triggered.connect(self.execute_query)
-        
-        clear_action = query_menu.addAction(self.tr("清空查询(&C)"))
-        clear_action.triggered.connect(self.clear_query)
-        
-        # 设置菜单
-        settings_menu = menubar.addMenu(self.tr("设置(&S)"))
-        
-        settings_action = settings_menu.addAction(self.tr("设置(&S)"))
-        settings_action.triggered.connect(self.show_settings)
-        
-        settings_menu.addSeparator()
-        
-        # AI模型配置
-        ai_config_action = settings_menu.addAction(self.tr("AI模型配置(&A)"))
-        ai_config_action.triggered.connect(self.configure_ai_models)
-        
-        # AI提示词配置
-        prompt_config_action = settings_menu.addAction(self.tr("AI提示词配置(&P)"))
-        prompt_config_action.triggered.connect(self.configure_prompts)
-        
-        # 帮助菜单
-        help_menu = menubar.addMenu(self.tr("帮助(&H)"))
-        
-        about_action = help_menu.addAction(self.tr("关于(&A)"))
-        about_action.triggered.connect(self.show_about)
-        
-        # 保存菜单引用以便后续更新翻译
-        self.menubar = menubar
-        self.file_menu = file_menu
-        self.db_menu = db_menu
-        self.query_menu = query_menu
-        self.settings_menu = settings_menu
-        self.help_menu = help_menu
-    
-    def create_toolbar(self):
-        """创建工具栏"""
-        toolbar = QToolBar()
-        self.addToolBar(toolbar)
-        
-        # 添加连接按钮
-        add_btn = QPushButton(self.tr("添加连接"))
-        add_btn.clicked.connect(self.add_connection)
-        toolbar.addWidget(add_btn)
-        self.add_connection_btn = add_btn
-        
-        # 导入按钮
-        import_btn = QPushButton(self.tr("导入 Navicat"))
-        import_btn.clicked.connect(self.import_from_navicat)
-        toolbar.addWidget(import_btn)
-        self.import_navicat_btn = import_btn
-        
-        toolbar.addSeparator()
-        
-        # AI模型选择
-        ai_model_label = QLabel(self.tr("AI模型:"))
-        toolbar.addWidget(ai_model_label)
-        self.ai_model_label = ai_model_label
-        
-        self.ai_model_combo = QComboBox()
-        self.ai_model_combo.setMinimumWidth(200)
-        self.ai_model_combo.currentIndexChanged.connect(self.on_ai_model_changed)
-        toolbar.addWidget(self.ai_model_combo)
-        
-        # 刷新模型列表
-        self.refresh_ai_models()
-        
-        toolbar.addSeparator()
-        
-        # 连接选择下拉框
-        connection_label = QLabel(self.tr("当前连接:"))
-        toolbar.addWidget(connection_label)
-        self.connection_label = connection_label
-        
-        self.connection_combo = QComboBox()
-        self.connection_combo.setMinimumWidth(200)
-        self.connection_combo.currentTextChanged.connect(self.on_connection_combo_changed)
-        toolbar.addWidget(self.connection_combo)
-        
-        toolbar.addSeparator()
-        
-        # 新建表按钮
-        create_table_btn = QPushButton("新建表")
-        create_table_btn.clicked.connect(self.show_create_table_dialog)
-        toolbar.addWidget(create_table_btn)
     
     def setup_connections(self):
         """设置信号连接"""
@@ -607,170 +378,19 @@ class MainWindow(QMainWindow):
     
     def save_connections(self):
         """保存所有连接"""
-        try:
-            connections = self.db_manager.get_all_connections()
-            if not connections:
-                logger.warning("连接列表为空，跳过保存以避免覆盖已有数据")
-                return
-            
-            # 记录保存的连接数量，用于调试
-            logger.info(f"准备保存 {len(connections)} 个连接")
-            result = self.connection_storage.save_connections(connections)
-            if not result:
-                logger.error("保存连接失败")
-        except Exception as e:
-            logger.error(f"保存连接时发生异常: {str(e)}", exc_info=True)
+        self.connection_handler.save_connections()
     
     def show_create_table_dialog(self):
         """创建新建表tab"""
-        if not self.current_connection_id:
-            QMessageBox.warning(self, "警告", "请先选择一个数据库连接")
-            return
-        
-        connection = self.db_manager.get_connection(self.current_connection_id)
-        if not connection:
-            QMessageBox.warning(self, "警告", "连接不存在")
-            return
-        
-        if not self.current_database:
-            QMessageBox.warning(self, "警告", "请先选择一个数据库")
-            return
-        
-        # 创建新建表tab
-        create_table_tab = CreateTableTab(
-            self,
-            db_manager=self.db_manager,
-            connection_id=self.current_connection_id,
-            database=self.current_database
-        )
-        create_table_tab.execute_sql_signal.connect(self.execute_query)
-        
-        # 添加到tab控件
-        tab_index = self.right_tab_widget.addTab(create_table_tab, f"新建表 - {self.current_database}")
-        self.right_tab_widget.setCurrentIndex(tab_index)
-    
-    def copy_table_structure(self, connection_id: str, database: str, table_name: str):
-        """复制表结构（生成 CREATE TABLE 语句并复制到剪贴板）"""
-        connection = self.db_manager.get_connection(connection_id)
-        if not connection:
-            QMessageBox.warning(self, "错误", "连接不存在")
-            return
-        
-        # 显示状态
-        self.statusBar().showMessage(f"正在生成表 {table_name} 的结构...", 0)
-        
-        # 停止之前的 worker（如果存在）
-        if hasattr(self, 'copy_structure_worker') and self.copy_structure_worker:
-            try:
-                if self.copy_structure_worker.isRunning():
-                    self.copy_structure_worker.stop()
-                    if not self.copy_structure_worker.wait(2000):
-                        self.copy_structure_worker.terminate()
-                        self.copy_structure_worker.wait(500)
-                try:
-                    self.copy_structure_worker.create_sql_ready.disconnect()
-                    self.copy_structure_worker.error_occurred.disconnect()
-                except:
-                    pass
-                self.copy_structure_worker.deleteLater()
-            except RuntimeError:
-                pass
-            self.copy_structure_worker = None
-        
-        # 创建并启动工作线程
-        from src.gui.workers.copy_table_structure_worker import CopyTableStructureWorker
-        
-        self.copy_structure_worker = CopyTableStructureWorker(
-            connection.get_connection_string(),
-            connection.get_connect_args(),
-            database,
-            table_name,
-            connection.db_type.value
-        )
-        self.copy_structure_worker.create_sql_ready.connect(
-            lambda sql: self.on_create_sql_ready(sql, table_name)
-        )
-        self.copy_structure_worker.error_occurred.connect(
-            lambda error: self.on_copy_structure_error(error, table_name)
-        )
-        self.copy_structure_worker.start()
-    
-    def on_create_sql_ready(self, create_sql: str, table_name: str):
-        """CREATE TABLE 语句生成完成回调"""
-        # 复制到剪贴板
-        from PyQt6.QtWidgets import QApplication
-        clipboard = QApplication.clipboard()
-        clipboard.setText(create_sql)
-        
-        # 显示成功消息（状态栏提示，3秒后自动消失）
-        self.statusBar().showMessage(f"复制成功：表 {table_name} 的结构已复制到剪贴板", 3000)
-        
-        # 清理 worker
-        if self.copy_structure_worker:
-            self.copy_structure_worker.deleteLater()
-            self.copy_structure_worker = None
-    
-    def on_copy_structure_error(self, error: str, table_name: str):
-        """复制表结构错误回调"""
-        # 显示错误消息（状态栏提示，5秒后自动消失）
-        self.statusBar().showMessage(f"复制失败：生成表 {table_name} 的结构失败 - {error}", 5000)
-        
-        # 清理 worker
-        if self.copy_structure_worker:
-            self.copy_structure_worker.deleteLater()
-            self.copy_structure_worker = None
-    
-    def edit_table_structure(self, connection_id: str, database: str, table_name: str):
-        """编辑表结构"""
-        # 检查是否已经存在该表的编辑tab
-        tab_title = f"编辑表 - {table_name}"
-        for i in range(self.right_tab_widget.count()):
-            if self.right_tab_widget.tabText(i) == tab_title:
-                # 如果已存在，切换到该tab
-                self.right_tab_widget.setCurrentIndex(i)
-                return
-        
-        # 创建编辑表结构tab
-        from src.gui.widgets.edit_table_tab import EditTableTab
-        
-        edit_table_tab = EditTableTab(
-            parent=self,
-            db_manager=self.db_manager,
-            connection_id=connection_id,
-            database=database,
-            table_name=table_name
-        )
-        edit_table_tab.execute_sql_signal.connect(self.execute_query)
-        
-        # 添加到tab控件
-        tab_index = self.right_tab_widget.addTab(edit_table_tab, tab_title)
-        self.right_tab_widget.setCurrentIndex(tab_index)
+        self.table_structure_handler.show_create_table_dialog()
     
     def close_query_tab(self, index: int):
         """关闭查询tab"""
-        # 第一个tab（查询tab）不能关闭
-        if index == 0:
-            return
-        
-        # 获取要关闭的tab组件
-        tab_widget = self.right_tab_widget.widget(index)
-        
-        # 如果是新建表tab或编辑表tab，清理资源
-        if isinstance(tab_widget, CreateTableTab):
-            tab_widget.cleanup()
-        elif hasattr(tab_widget, 'cleanup') and hasattr(tab_widget, 'table_name'):
-            # 编辑表tab
-            tab_widget.cleanup()
-        
-        self.right_tab_widget.removeTab(index)
+        self.table_structure_handler.close_query_tab(index)
     
     def add_connection(self):
         """添加数据库连接"""
-        dialog = ConnectionDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            connection = dialog.get_connection()
-            # 使用后台线程测试连接，避免阻塞UI
-            self._test_and_add_connection(connection, is_edit=False)
+        self.connection_handler.add_connection()
     
     def import_from_navicat(self):
         """从 Navicat 导入连接"""
@@ -779,124 +399,6 @@ class MainWindow(QMainWindow):
     def edit_connection(self, connection_id: str):
         """编辑数据库连接"""
         self.connection_handler.edit_connection(connection_id)
-    
-    def _test_and_add_connection(self, connection: DatabaseConnection, is_edit: bool = False):
-        """在后台线程中测试连接，然后添加连接"""
-        # 如果已有测试线程在运行，先停止
-        if self.connection_test_worker and self.connection_test_worker.isRunning():
-            self.connection_test_worker.stop()
-            self.connection_test_worker.wait(2000)
-            if self.connection_test_worker.isRunning():
-                self.connection_test_worker.terminate()
-                self.connection_test_worker.wait(500)
-            self.connection_test_worker.deleteLater()
-        
-        # 保存连接信息，用于测试完成后的回调
-        self._pending_connection = connection
-        self._pending_is_edit = is_edit
-        if is_edit:
-            self._editing_connection_id = getattr(self, '_editing_connection_id', None)
-        
-        # 显示测试中的提示
-        self.statusBar().showMessage("正在测试连接...")
-        
-        # 创建并启动连接测试线程
-        self.connection_test_worker = ConnectionTestWorker(connection)
-        self.connection_test_worker.test_finished.connect(self._on_connection_test_finished)
-        self.connection_test_worker.start()
-    
-    def _on_connection_test_finished(self, success: bool, message: str):
-        """连接测试完成后的回调"""
-        connection = getattr(self, '_pending_connection', None)
-        is_edit = getattr(self, '_pending_is_edit', False)
-        editing_connection_id = getattr(self, '_editing_connection_id', None)
-        
-        # 清理临时变量
-        if hasattr(self, '_pending_connection'):
-            delattr(self, '_pending_connection')
-        if hasattr(self, '_pending_is_edit'):
-            delattr(self, '_pending_is_edit')
-        if hasattr(self, '_editing_connection_id'):
-            delattr(self, '_editing_connection_id')
-        
-        if not connection:
-            return
-        
-        if success:
-            # 测试成功，添加连接
-            if is_edit and editing_connection_id:
-                # 编辑模式：保持原有位置，先保存原有位置
-                old_index = None
-                if editing_connection_id in self.db_manager.connection_order:
-                    old_index = self.db_manager.connection_order.index(editing_connection_id)
-                # 移除旧连接（但保留顺序信息）
-                self.db_manager.remove_connection(editing_connection_id)
-                # 如果连接ID改变，需要在原位置插入新ID
-                if connection.id != editing_connection_id and old_index is not None:
-                    # 新ID不同，需要在原位置插入
-                    self.db_manager.connection_order.insert(old_index, connection.id)
-                elif connection.id == editing_connection_id and old_index is not None:
-                    # ID相同，恢复原位置
-                    self.db_manager.connection_order.insert(old_index, connection.id)
-            
-            # 添加新连接（不测试，因为已经在后台测试过了）
-            if self.db_manager.add_connection(connection, test_connection=False):
-                self.refresh_connections()
-                self.save_connections()
-                self.statusBar().showMessage("连接测试成功", 3000)
-                if is_edit:
-                    QMessageBox.information(self, "成功", "成功更新数据库连接")
-                else:
-                    QMessageBox.information(self, "成功", f"成功添加数据库连接: {connection.name}")
-            else:
-                self.statusBar().showMessage("添加连接失败", 3000)
-                QMessageBox.warning(self, "失败", "添加数据库连接失败")
-        else:
-            # 测试失败，询问是否仍要保存
-            self.statusBar().showMessage("连接测试失败", 3000)
-            reply = QMessageBox.question(
-                self,
-                "连接测试失败",
-                f"{message}\n\n是否仍要保存连接配置？\n（您可以稍后手动测试连接）",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes
-            )
-            
-            if reply == QMessageBox.StandardButton.Yes:
-                # 用户选择保存
-                if is_edit and editing_connection_id:
-                    # 编辑模式：保持原有位置，先保存原有位置
-                    old_index = None
-                    if editing_connection_id in self.db_manager.connection_order:
-                        old_index = self.db_manager.connection_order.index(editing_connection_id)
-                    # 移除旧连接（但保留顺序信息）
-                    self.db_manager.remove_connection(editing_connection_id)
-                    # 如果连接ID改变，需要在原位置插入新ID
-                    if connection.id != editing_connection_id and old_index is not None:
-                        # 新ID不同，需要在原位置插入
-                        self.db_manager.connection_order.insert(old_index, connection.id)
-                    elif connection.id == editing_connection_id and old_index is not None:
-                        # ID相同，恢复原位置
-                        self.db_manager.connection_order.insert(old_index, connection.id)
-                
-                # 保存连接（不测试）
-                if self.db_manager.add_connection(connection, test_connection=False):
-                    self.refresh_connections()
-                    self.save_connections()
-                    if is_edit:
-                        QMessageBox.information(
-                            self,
-                            "已保存",
-                            "连接配置已保存，但连接测试失败。\n请检查连接信息（特别是密码）是否正确。"
-                        )
-                    else:
-                        QMessageBox.information(
-                            self,
-                            "已保存",
-                            f"连接配置已保存，但连接测试失败。\n请检查连接信息（特别是密码）是否正确。"
-                        )
-                else:
-                    QMessageBox.warning(self, "失败", "保存连接配置失败")
     
     def configure_ai_models(self):
         """配置AI模型"""
@@ -922,298 +424,23 @@ class MainWindow(QMainWindow):
     
     def refresh_connections(self):
         """刷新连接列表"""
-        # 清空树
-        self.connection_tree.clear()
-        self.connection_combo.clear()
-        
-        # 创建"我的连接"根节点
-        root_item = QTreeWidgetItem(self.connection_tree.tree)
-        root_item.setText(0, "我的连接")
-        # 设置根节点类型
-        TreeItemData.set_item_type_and_data(root_item, TreeItemType.ROOT)
-        # 设置扳手图标（使用系统图标或简单绘制）
-        from PyQt6.QtGui import QIcon
-        # 使用简单的文本图标，或者可以创建一个简单的扳手图标
-        root_item.setExpanded(True)  # 默认展开根节点
-        
-        # 添加所有连接
-        connections = self.db_manager.get_all_connections()
-        for conn in connections:
-            # 创建树项（使用根节点作为父项）
-            item = QTreeWidgetItem(root_item)
-            
-            # 设置图标（使用连接图标，蓝色服务器图标）
-            icon = get_connection_icon(18)
-            item.setIcon(0, icon)
-            
-            # 设置主行文本（连接名称）
-            item.setText(0, conn.name)
-            
-            # 设置节点类型和数据（连接项）
-            TreeItemData.set_item_type_and_data(item, TreeItemType.CONNECTION, conn.id)
-            
-            # 设置工具提示
-            db_type_name = {
-                DatabaseType.MYSQL: "MySQL",
-                DatabaseType.MARIADB: "MariaDB",
-                DatabaseType.POSTGRESQL: "PostgreSQL",
-                DatabaseType.SQLITE: "SQLite",
-                DatabaseType.ORACLE: "Oracle",
-                DatabaseType.SQLSERVER: "SQL Server",
-                DatabaseType.HIVE: "Hive",
-            }.get(conn.db_type, conn.db_type.value)
-            
-            tooltip = (
-                f"连接名称: {conn.name}\n"
-                f"数据库类型: {db_type_name}\n"
-                f"主机: {conn.host}\n"
-                f"端口: {conn.port}\n"
-                f"数据库: {conn.database}\n"
-                f"用户名: {conn.username}"
-            )
-            item.setToolTip(0, tooltip)
-            
-            # 不自动展开，让用户手动展开
-            item.setExpanded(False)
-            
-            # 添加到下拉框
-            display_name = conn.get_display_name()
-            # 如果这是当前连接且有当前数据库，显示"连接名 - 数据库名"
-            if self.current_connection_id == conn.id and self.current_database:
-                display_name = f"{conn.name} - {self.current_database}"
-            self.connection_combo.addItem(display_name, conn.id)
-        
-        # 如果当前连接存在，设置下拉框选中项
-        if self.current_connection_id:
-            for i in range(self.connection_combo.count()):
-                if self.connection_combo.itemData(i) == self.current_connection_id:
-                    self.connection_combo.setCurrentIndex(i)
-                    # 如果有当前数据库，更新显示文本
-                    if self.current_database:
-                        connection = self.db_manager.get_connection(self.current_connection_id)
-                        if connection:
-                            self.connection_combo.setItemText(i, f"{connection.name} - {self.current_database}")
-                    break
-        
-        # 调整列宽
-        self.connection_tree.resizeColumnToContents(0)
+        self.tree_data_handler.refresh_connections()
     
     def on_item_expanded(self, item: QTreeWidgetItem):
-        """项目展开时（在UI线程中执行，确保快速返回）"""
-        import time
-        logger.info(f"[UI线程] on_item_expanded 开始: {item.text(0)}")
-        start_time = time.time()
-        
-        # 获取节点类型
-        item_type = TreeItemData.get_item_type(item)
-        
-        # 跳过根节点和其他不需要处理的节点类型
-        if item_type == TreeItemType.ROOT:
-            return
-        
-        # 获取连接ID（从当前项或其父项中）
-        connection_id = TreeItemData.get_connection_id(item)
-        if not connection_id:
-            return
-        
-        # 使用QTimer延迟执行耗时操作，确保展开事件处理函数快速返回
-        from PyQt6.QtCore import QTimer
-        
-        # 根据节点类型执行不同的操作
-        if item_type == TreeItemType.CONNECTION:
-            self.load_databases_for_connection(item, connection_id, force_reload=False)
-        elif item_type == TreeItemType.DATABASE:
-            # 展开数据库项，加载表列表（延迟执行，避免阻塞）
-            database = TreeItemData.get_item_data(item)
-            if database and isinstance(database, str):
-                def load_tables():
-                    self.load_tables_for_database(item, connection_id, database, force_reload=False)
-                    # 如果表已经加载，自动展开"表"分类
-                    for i in range(item.childCount()):
-                        child = item.child(i)
-                        if TreeItemData.get_item_type(child) == TreeItemType.TABLE_CATEGORY and child.childCount() > 0:
-                            # 检查是否有表项（不是"加载中..."或"无表"）
-                            has_tables = False
-                            for j in range(child.childCount()):
-                                table_child = child.child(j)
-                                if TreeItemData.get_item_type(table_child) == TreeItemType.TABLE:
-                                    has_tables = True
-                                    break
-                            if has_tables:
-                                child.setExpanded(True)
-                            break
-                QTimer.singleShot(1, load_tables)
+        """项目展开时"""
+        self.tree_handler.on_item_expanded(item)
     
     def on_item_collapsed(self, item: QTreeWidgetItem):
         """项目折叠时"""
-        # 获取节点类型
-        item_type = TreeItemData.get_item_type(item)
-        
-        # 如果折叠的是数据库项，检查是否有正在加载的表，如果有则停止加载并清理
-        if item_type == TreeItemType.DATABASE:
-            # 检查"表"分类下是否有"加载中..."项
-            for i in range(item.childCount()):
-                child = item.child(i)
-                if TreeItemData.get_item_type(child) == TreeItemType.TABLE_CATEGORY:
-                    # 检查"表"分类下是否有"加载中..."项
-                    for j in range(child.childCount() - 1, -1, -1):
-                        table_child = child.child(j)
-                        if TreeItemData.get_item_type(table_child) == TreeItemType.LOADING:
-                                # 停止加载线程（如果正在运行）
-                                if self.table_list_worker_for_tree and self.table_list_worker_for_tree.isRunning():
-                                    # 检查是否是当前数据库的加载
-                                    if (hasattr(self.table_list_worker_for_tree, 'db_item') and 
-                                        self.table_list_worker_for_tree.db_item == item):
-                                        try:
-                                            # 断开信号连接
-                                            try:
-                                                self.table_list_worker_for_tree.tables_ready.disconnect()
-                                                self.table_list_worker_for_tree.error_occurred.disconnect()
-                                            except:
-                                                pass
-                                            # 请求停止
-                                            self.table_list_worker_for_tree.stop()
-                                            # 等待停止（最多200ms，避免阻塞太久）
-                                            if not self.table_list_worker_for_tree.wait(200):
-                                                self.table_list_worker_for_tree.terminate()
-                                                self.table_list_worker_for_tree.wait(100)
-                                            self.table_list_worker_for_tree.deleteLater()
-                                        except Exception as e:
-                                            logger.warning(f"停止表列表worker时出错: {str(e)}")
-                                        finally:
-                                            self.table_list_worker_for_tree = None
-                                # 移除"加载中..."项
-                                try:
-                                    child.removeChild(table_child)
-                                except:
-                                    pass
-                        break
+        self.tree_handler.on_item_collapsed(item)
     
     def on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
-        """双击项目（在UI线程中执行，确保快速返回，不阻塞）"""
-        import time
-        import threading
-        logger.info(f"[UI线程] on_item_double_clicked 开始: {item.text(0)}, 线程: {threading.current_thread().name}")
-        start_time = time.time()
-        
-        # 获取节点类型
-        item_type = TreeItemData.get_item_type(item)
-        
-        # 跳过根节点和其他不需要处理的节点类型
-        if item_type == TreeItemType.ROOT or item_type in (TreeItemType.TABLE_CATEGORY, TreeItemType.LOADING, TreeItemType.ERROR, TreeItemType.EMPTY):
-            return
-        
-        # 获取连接ID（从当前项或其父项中）
-        connection_id = TreeItemData.get_connection_id(item)
-        if not connection_id:
-            return
-        
-        # 使用QTimer延迟执行耗时操作，确保双击事件处理函数快速返回
-        from PyQt6.QtCore import QTimer
-        
-        # 根据节点类型执行不同的操作
-        if item_type == TreeItemType.CONNECTION:
-            # 双击连接项本身，切换展开状态（这个操作很快，可以直接执行）
-            logger.info(f"[UI线程] on_item_double_clicked 双击连接项本身，切换展开状态: {item.text(0)}")
-            if item.isExpanded():
-                item.setExpanded(False)
-            else:
-                item.setExpanded(True)
-                # 展开时会自动触发 on_item_expanded，加载数据库列表（已经在on_item_expanded中使用延迟执行）
-        elif item_type == TreeItemType.DATABASE:
-            # 双击数据库项，切换展开状态，并切换到该数据库
-            database = TreeItemData.get_item_data(item)
-            if database and isinstance(database, str):
-                # 切换到该连接和数据库（使用延迟执行，避免阻塞）
-                def switch_and_expand():
-                    self.set_current_connection(connection_id, database=database)
-                    # 如果表已经加载，自动展开"表"分类
-                    for i in range(item.childCount()):
-                        child = item.child(i)
-                        if TreeItemData.get_item_type(child) == TreeItemType.TABLE_CATEGORY:
-                            child.setExpanded(True)
-                            break
-                QTimer.singleShot(1, switch_and_expand)
-            
-            # 切换展开状态（这个操作很快，可以直接执行）
-            if item.isExpanded():
-                item.setExpanded(False)
-            else:
-                item.setExpanded(True)
-                # 展开时会自动触发 on_item_expanded，加载表列表（已经在on_item_expanded中使用延迟执行）
-        elif item_type == TreeItemType.TABLE:
-            # 双击表项，查询表数据
-            table_info = TreeItemData.get_table_info(item)
-            if table_info:
-                database, table_name = table_info
-                # 查询表数据（使用延迟执行，避免阻塞）
-                def query_data():
-                    self.query_table_data(connection_id, table_name, database)
-                QTimer.singleShot(1, query_data)
+        """双击项目"""
+        self.tree_handler.on_item_double_clicked(item, column)
     
     def on_item_clicked(self, item: QTreeWidgetItem, column: int):
-        """单击项目（在UI线程中执行，确保快速返回，不阻塞）"""
-        # 获取节点类型
-        item_type = TreeItemData.get_item_type(item)
-        
-        # 跳过根节点和分类项
-        if item_type in (TreeItemType.ROOT, TreeItemType.TABLE_CATEGORY, TreeItemType.LOADING, TreeItemType.ERROR, TreeItemType.EMPTY):
-            return
-        
-        # 获取连接ID（从当前项或其父项中）
-        connection_id = TreeItemData.get_connection_id(item)
-        if not connection_id:
-            return
-        
-        # 使用QTimer延迟执行耗时操作，确保点击事件处理函数快速返回
-        from PyQt6.QtCore import QTimer
-        
-        # 根据节点类型执行不同的操作
-        if item_type == TreeItemType.CONNECTION:
-            # 点击连接项，切换到该连接（使用延迟执行）
-            def switch_connection():
-                self.set_current_connection(connection_id)
-            QTimer.singleShot(1, switch_connection)
-        elif item_type == TreeItemType.DATABASE:
-            # 点击数据库项，切换到该连接和数据库（使用延迟执行）
-            database = TreeItemData.get_item_data(item)
-            if database and isinstance(database, str):
-                def switch_database():
-                    self.set_current_connection(connection_id, database=database)
-                QTimer.singleShot(1, switch_database)
-            
-            # 单击时不自动展开，让用户通过双击或点击展开按钮来控制展开/折叠
-            # 如果数据库项已经展开，且表已经加载，则展开"表"分类（这个操作很快，可以直接执行）
-            if item.isExpanded():
-                for i in range(item.childCount()):
-                    child = item.child(i)
-                    if TreeItemData.get_item_type(child) == TreeItemType.TABLE_CATEGORY:
-                        # 检查是否有表项（不是"加载中..."或"无表"）
-                        has_tables = False
-                        for j in range(child.childCount()):
-                            table_child = child.child(j)
-                            if TreeItemData.get_item_type(table_child) == TreeItemType.TABLE:
-                                has_tables = True
-                                break
-                        if has_tables:
-                            child.setExpanded(True)
-                        break
-        elif item_type == TreeItemType.TABLE:
-            # 点击表项，切换到该连接和数据库，并查询表数据
-            table_info = TreeItemData.get_table_info(item)
-            if table_info:
-                table_database, table_name = table_info
-                # 切换到该连接和数据库（使用延迟执行）
-                def switch_and_query():
-                    # 切换到该连接和数据库
-                    self.set_current_connection(connection_id, database=table_database)
-                    # 查询表数据（已经在query_table_data中使用延迟执行）
-                    self.query_table_data(connection_id, table_name, table_database)
-                QTimer.singleShot(1, switch_and_query)
-    
-    def on_connection_selected(self, item: QTreeWidgetItem, column: int):
-        """连接被选中（保留用于兼容）"""
-        self.on_item_clicked(item, column)
+        """单击项目"""
+        self.tree_handler.on_item_clicked(item, column)
     
     def on_connection_combo_changed(self, text: str):
         """连接下拉框改变"""
@@ -1302,20 +529,10 @@ class MainWindow(QMainWindow):
             # 这确保直接查询时也能获取到表列表
             self.sql_editor.set_database_info(self.db_manager, connection_id, database)
     
-    def _on_connection_ready(self, connection_id: str, connection: DatabaseConnection, 
-                            database: Optional[str], update_completion: bool):
-        """连接就绪，更新UI"""
-        self.statusBar().showMessage(f"已连接到: {connection.get_display_name()}")
-        self.sql_editor.set_status(f"已连接到: {connection.name}")
-        # 更新SQL编辑器的数据库信息（用于AI生成SQL）
-        self.sql_editor.set_database_info(self.db_manager, connection_id, database)
-        # 更新SQL编辑器的自动完成（表名和列名）- 使用延迟更新，避免阻塞UI
-        if update_completion:
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(100, lambda: self.update_sql_completion(connection_id))
     
     def load_databases_for_connection(self, connection_item: QTreeWidgetItem, connection_id: str, force_reload: bool = False):
         """为连接加载数据库列表"""
+        self.tree_data_handler.load_databases_for_connection(connection_item, connection_id, force_reload)
         import time
         import threading
         
@@ -2044,157 +1261,11 @@ class MainWindow(QMainWindow):
     
     def show_connection_menu(self, position):
         """显示连接右键菜单"""
-        item = self.connection_tree.itemAt(position)
-        if not item:
-            return
-        
-        # 获取节点类型
-        item_type = TreeItemData.get_item_type(item)
-        
-        # 跳过根节点和分类项
-        if item_type in (TreeItemType.ROOT, TreeItemType.TABLE_CATEGORY, TreeItemType.LOADING, TreeItemType.ERROR, TreeItemType.EMPTY):
-            return
-        
-        # 获取连接ID（从当前项或其父项中）
-        connection_id = TreeItemData.get_connection_id(item)
-        if not connection_id:
-            return
-        
-        from PyQt6.QtWidgets import QMenu
-        
-        menu = QMenu(self)
-        
-        # 根据节点类型显示不同的菜单
-        if item_type == TreeItemType.TABLE:
-            # 表项的右键菜单
-            table_info = TreeItemData.get_table_info(item)
-            if table_info:
-                database, table_name = table_info
-                edit_table_action = menu.addAction("编辑表结构")
-                edit_table_action.triggered.connect(lambda: self.edit_table_structure(connection_id, database, table_name))
-                
-                menu.addSeparator()
-                
-                copy_structure_action = menu.addAction("复制结构")
-                copy_structure_action.triggered.connect(lambda: self.copy_table_structure(connection_id, database, table_name))
-                
-                menu.addSeparator()
-                
-                # 刷新该数据库下的所有表
-                refresh_action = menu.addAction("🔄 刷新")
-                refresh_action.triggered.connect(lambda: self.refresh_database_tables(connection_id, database))
-        elif item_type == TreeItemType.DATABASE:
-            # 数据库项的右键菜单
-            database = TreeItemData.get_item_data(item)
-            if database:
-                refresh_action = menu.addAction("🔄 刷新")
-                refresh_action.triggered.connect(lambda: self.refresh_database_tables(connection_id, database))
-        else:
-            # 连接项的右键菜单
-            edit_action = menu.addAction("编辑")
-            edit_action.triggered.connect(lambda: self.edit_connection(connection_id))
-            
-            test_action = menu.addAction("测试连接")
-            test_action.triggered.connect(lambda: self.test_connection(connection_id))
-            
-            menu.addSeparator()
-            
-            refresh_action = menu.addAction("🔄 刷新")
-            refresh_action.triggered.connect(lambda: self.refresh_connection_databases(connection_id, item))
-            
-            menu.addSeparator()
-            
-            remove_action = menu.addAction("删除")
-            remove_action.triggered.connect(lambda: self.remove_connection(connection_id))
-        
-        menu.exec(self.connection_tree.mapToGlobal(position))
-    
-    def refresh_connection_databases(self, connection_id: str, connection_item: QTreeWidgetItem):
-        """刷新连接下的数据库列表"""
-        self.load_databases_for_connection(connection_item, connection_id, force_reload=True)
-        self.statusBar().showMessage("正在刷新数据库列表...", 3000)
-    
-    def refresh_database_tables(self, connection_id: str, database: str):
-        """刷新数据库下的表列表"""
-        # 找到对应的数据库项
-        root_item = self.connection_tree.topLevelItem(0)
-        if not root_item:
-            return
-        
-        # 遍历所有连接
-        for i in range(root_item.childCount()):
-            connection_item = root_item.child(i)
-            if TreeItemData.get_item_type(connection_item) != TreeItemType.CONNECTION:
-                continue
-            
-            # 检查连接ID是否匹配
-            conn_id = TreeItemData.get_item_data(connection_item)
-            if conn_id != connection_id:
-                continue
-            
-            # 遍历连接下的数据库
-            for j in range(connection_item.childCount()):
-                db_item = connection_item.child(j)
-                if TreeItemData.get_item_type(db_item) != TreeItemType.DATABASE:
-                    continue
-                
-                # 检查数据库名是否匹配
-                db_name = TreeItemData.get_item_data(db_item)
-                if db_name == database:
-                    # 找到匹配的数据库项，刷新表列表
-                    self.load_tables_for_database(db_item, connection_id, database, force_reload=True)
-                    self.statusBar().showMessage(f"正在刷新数据库 '{database}' 的表列表...", 3000)
-                    return
-        
-        # 如果没找到，尝试从当前选中的项获取
-        current_item = self.connection_tree.currentItem()
-        if current_item:
-            current_type = TreeItemData.get_item_type(current_item)
-            if current_type == TreeItemType.DATABASE:
-                db_name = TreeItemData.get_item_data(current_item)
-                if db_name == database:
-                    self.load_tables_for_database(current_item, connection_id, database, force_reload=True)
-                    self.statusBar().showMessage(f"正在刷新数据库 '{database}' 的表列表...", 3000)
-                    return
+        self.menu_handler.show_connection_menu(position)
     
     def test_connection(self, connection_id: str = None):
         """测试连接（使用后台线程，避免阻塞UI）"""
         self.connection_handler.test_connection(connection_id)
-    
-    def _test_and_show_result(self, connection: DatabaseConnection):
-        """在后台线程中测试连接，然后显示结果"""
-        # 异步停止旧的测试worker，不等待，避免阻塞UI
-        if self.connection_test_worker:
-            try:
-                if self.connection_test_worker.isRunning():
-                    # 断开信号连接，避免旧worker的回调影响新操作
-                    try:
-                        self.connection_test_worker.test_finished.disconnect()
-                    except:
-                        pass
-                    # 请求停止，但不等待（异步停止）
-                    self.connection_test_worker.stop()
-                    # 不等待，让线程自己结束，稍后自动清理
-                    self.connection_test_worker.deleteLater()
-            except RuntimeError:
-                pass
-        
-        # 显示测试中的提示
-        self.statusBar().showMessage("正在测试连接...")
-        
-        # 创建并启动连接测试线程
-        self.connection_test_worker = ConnectionTestWorker(connection)
-        self.connection_test_worker.test_finished.connect(self._on_test_result_ready)
-        self.connection_test_worker.start()
-    
-    def _on_test_result_ready(self, success: bool, message: str):
-        """连接测试完成后的回调"""
-        if success:
-            self.statusBar().showMessage("连接测试成功", 3000)
-            QMessageBox.information(self, "成功", message)
-        else:
-            self.statusBar().showMessage("连接测试失败", 3000)
-            QMessageBox.warning(self, "失败", message)
     
     def execute_query(self, sql: str = None):
         """执行SQL查询（使用后台线程，避免阻塞UI）"""
@@ -2260,18 +1331,6 @@ class MainWindow(QMainWindow):
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(200, worker.deleteLater)
     
-    def _refresh_edit_table_tabs(self, sql: str):
-        """刷新所有编辑表tab的表结构（当执行ALTER TABLE语句后）"""
-        try:
-            # 遍历所有tab，找到编辑表tab并刷新
-            for i in range(self.right_tab_widget.count()):
-                tab_widget = self.right_tab_widget.widget(i)
-                if tab_widget and hasattr(tab_widget, 'table_name') and hasattr(tab_widget, 'load_table_schema'):
-                    # 这是编辑表tab，强制从数据库重新获取表结构
-                    tab_widget.load_table_schema(force_refresh=True)
-                    logger.info(f"已自动刷新编辑表tab '{tab_widget.table_name}' 的表结构（从数据库重新获取）")
-        except Exception as e:
-            logger.error(f"刷新编辑表tab失败: {str(e)}")
     
     def on_multi_query_finished(self, results: list):
         """多条查询完成回调"""
@@ -2329,178 +1388,21 @@ class MainWindow(QMainWindow):
     
     def show_settings(self):
         """显示设置对话框"""
-        dialog = SettingsDialog(self, self.settings, self.translation_manager)
-        dialog.language_changed.connect(self.on_language_changed)
-        dialog.exec()
+        self.settings_handler.show_settings()
     
     def on_language_changed(self, new_language: str):
         """语言改变时的回调"""
-        if self.translation_manager:
-            # 更新设置（已经保存到注册表）
-            self.settings.language = new_language
-            
-            # 提示用户需要重启应用
-            reply = QMessageBox.information(
-                self,
-                self.tr("语言设置"),
-                self.tr("语言设置已保存到注册表。\n\n需要重启应用程序才能使语言更改生效。\n\n是否现在重启？"),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes
-            )
-            
-            if reply == QMessageBox.StandardButton.Yes:
-                # 重启应用
-                self.restart_application()
-    
-    def restart_application(self):
-        """重启应用程序"""
-        import sys
-        import os
-        import subprocess
-        
-        try:
-            # 获取应用程序路径
-            if getattr(sys, 'frozen', False):
-                # 如果是打包后的可执行文件
-                executable = sys.executable
-                args = [executable]
-            else:
-                # 如果是开发模式，使用 Python 解释器
-                executable = sys.executable
-                script = sys.argv[0]
-                args = [executable, script]
-            
-            # 添加原始命令行参数（跳过脚本名）
-            if len(sys.argv) > 1:
-                args.extend(sys.argv[1:])
-            
-            # 使用 subprocess 启动新进程
-            # 在 Windows 上使用 CREATE_NEW_CONSOLE 标志
-            if sys.platform == "win32":
-                subprocess.Popen(
-                    args,
-                    creationflags=subprocess.CREATE_NEW_CONSOLE
-                )
-            else:
-                subprocess.Popen(args)
-            
-            # 关闭当前应用
-            QApplication.instance().quit()
-        except Exception as e:
-            logger.error(f"重启应用失败: {e}")
-            QMessageBox.warning(
-                self,
-                self.tr("错误"),
-                self.tr("重启应用失败，请手动重启应用程序。")
-            )
+        self.settings_handler.on_language_changed(new_language)
     
     def retranslate_ui(self):
         """重新翻译UI界面"""
-        # 更新窗口标题
-        self.setWindowTitle(self.tr("DataAI - AI驱动的数据库管理工具"))
-        
-        # 更新状态栏
-        self.statusBar().showMessage(self.tr("就绪"))
-        
-        # 更新菜单栏标题和菜单项
-        if hasattr(self, 'file_menu') and self.file_menu:
-            self.file_menu.setTitle(self.tr("文件(&F)"))
-            actions = self.file_menu.actions()
-            for action in actions:
-                if action.text() and not action.isSeparator():
-                    # 根据快捷键匹配菜单项
-                    if action.shortcut().toString() == "Ctrl+N":
-                        action.setText(self.tr("添加数据库连接(&N)"))
-                    elif "Navicat" in action.text() or "Navicat" in action.data():
-                        action.setText(self.tr("从 Navicat 导入(&I)"))
-                    elif "AI模型" in action.text() or "AI Model" in action.text():
-                        action.setText(self.tr("AI模型配置(&A)"))
-                    elif "提示词" in action.text() or "Prompt" in action.text():
-                        action.setText(self.tr("AI提示词配置(&P)"))
-                    elif action.shortcut().toString() == "Ctrl+Q":
-                        action.setText(self.tr("退出(&X)"))
-        
-        if hasattr(self, 'db_menu') and self.db_menu:
-            self.db_menu.setTitle(self.tr("数据库(&D)"))
-            actions = self.db_menu.actions()
-            for action in actions:
-                if action.text() and not action.isSeparator():
-                    if "测试" in action.text() or "Test" in action.text():
-                        action.setText(self.tr("测试连接(&T)"))
-                    elif action.shortcut().toString() == "F5":
-                        action.setText(self.tr("刷新(&R)"))
-        
-        if hasattr(self, 'query_menu') and self.query_menu:
-            self.query_menu.setTitle(self.tr("查询(&Q)"))
-            actions = self.query_menu.actions()
-            for action in actions:
-                if action.text() and not action.isSeparator():
-                    if "执行" in action.text() or "Execute" in action.text():
-                        action.setText(self.tr("执行查询(&E)"))
-                    elif "清空" in action.text() or "Clear" in action.text():
-                        action.setText(self.tr("清空查询(&C)"))
-        
-        if hasattr(self, 'settings_menu') and self.settings_menu:
-            self.settings_menu.setTitle(self.tr("设置(&S)"))
-            actions = self.settings_menu.actions()
-            for action in actions:
-                if action.text() and not action.isSeparator():
-                    action.setText(self.tr("设置(&S)"))
-        
-        if hasattr(self, 'help_menu') and self.help_menu:
-            self.help_menu.setTitle(self.tr("帮助(&H)"))
-            actions = self.help_menu.actions()
-            for action in actions:
-                if action.text() and not action.isSeparator():
-                    action.setText(self.tr("关于(&A)"))
-        
-        # 更新工具栏按钮和标签
-        if hasattr(self, 'add_connection_btn'):
-            self.add_connection_btn.setText(self.tr("添加连接"))
-        if hasattr(self, 'import_navicat_btn'):
-            self.import_navicat_btn.setText(self.tr("导入 Navicat"))
-        if hasattr(self, 'ai_model_label'):
-            self.ai_model_label.setText(self.tr("AI模型:"))
-        if hasattr(self, 'connection_label'):
-            self.connection_label.setText(self.tr("当前连接:"))
-        
-        # 更新标签页
-        if hasattr(self, 'right_tab_widget'):
-            for i in range(self.right_tab_widget.count()):
-                tab_text = self.right_tab_widget.tabText(i)
-                # 检查是否是查询标签页
-                if tab_text in ["查询", "Query"]:
-                    self.right_tab_widget.setTabText(i, self.tr("查询"))
+        self.ui_handler.retranslate_ui()
     
     def show_schema_sync(self):
         """显示结构同步对话框"""
-        from src.gui.dialogs.schema_sync_dialog import SchemaSyncDialog
-        dialog = SchemaSyncDialog(self, self.db_manager)
-        dialog.exec()
+        self.settings_handler.show_schema_sync()
     
     def show_about(self):
         """显示关于对话框"""
-        QMessageBox.about(
-            self,
-            "关于 DataAI",
-            "DataAI - AI驱动的数据库管理工具\n\n"
-            "版本 0.2.0\n\n"
-            "作者: codeyG\n"
-            "邮箱: 550187704@qq.com\n\n"
-            "功能特性:\n"
-            "- AI智能SQL生成\n"
-            "- AI连接配置识别\n"
-            "- 多数据库支持\n"
-            "- 查询结果直接编辑\n"
-            "- 数据批量删除\n"
-            "- 数据库结构同步\n\n"
-            "支持的数据库:\n"
-            "- MySQL/MariaDB\n"
-            "- PostgreSQL\n"
-            "- SQLite\n"
-            "- Oracle\n"
-            "- SQL Server\n"
-            "- Hive\n\n"
-            "开源协议: MIT License"
-        )
+        self.settings_handler.show_about()
     
