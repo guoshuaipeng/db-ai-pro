@@ -134,12 +134,11 @@ def main():
     
     logger.info(f"翻译系统已初始化，当前语言: {translation_manager.get_current_language()}")
     
-    # 创建主窗口（此时窗口是隐藏的）
+    # 创建主窗口
     window = MainWindow(settings, translation_manager)
-    window.setWindowIcon(app_icon)  # 也设置窗口图标
-    # 移除"不显示在屏幕上"属性，然后最大化显示窗口
-    window.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, False)
-    # 最大化显示窗口（在设置好大小后再显示，避免闪烁）
+    window.setWindowIcon(app_icon)
+    
+    # 最大化显示窗口
     window.showMaximized()
     
     # 运行应用程序

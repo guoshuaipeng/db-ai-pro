@@ -29,11 +29,13 @@ class UIHandler:
         self.main_window.setWindowTitle(self.main_window.tr("DataAI - AI驱动的数据库管理工具"))
         # 设置最小窗口尺寸
         self.main_window.setMinimumSize(1200, 800)
+        # 设置初始窗口大小（避免显示时从很小的窗口闪现）
+        self.main_window.resize(1600, 1000)
         
         # 设置窗口图标
         self._set_window_icon()
         
-        # 创建菜单栏和工具栏
+        # 测试：放开菜单栏和工具栏
         self.create_menu_bar()
         self.create_toolbar()
         
@@ -85,6 +87,7 @@ class UIHandler:
         
         # 左侧：数据库连接树（带搜索功能）
         self.main_window.connection_tree = ConnectionTreeWithSearch()
+        
         # 注意：handler 在 __init__ 之后才初始化，所以这里先连接，稍后在 setup_connections 中重新连接
         self.main_window.connection_tree.itemDoubleClicked.connect(self.main_window.on_item_double_clicked)
         self.main_window.connection_tree.itemClicked.connect(self.main_window.on_item_clicked)

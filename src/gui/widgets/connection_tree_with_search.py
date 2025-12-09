@@ -43,14 +43,13 @@ class ConnectionTreeWithSearch(QWidget):
         self.tree.itemCollapsed.connect(self.itemCollapsed.emit)
         self.tree.customContextMenuRequested.connect(self.customContextMenuRequested.emit)
         
-        # 创建搜索框
+        # 创建搜索框（添加完整样式）
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText("搜索表名...")
-        self.search_box.setVisible(True)  # 始终显示
         self.search_box.textChanged.connect(self.on_search_text_changed)
         self.search_box.returnPressed.connect(self.on_search_return_pressed)
         
-        # 设置搜索框样式 - 与树样式匹配
+        # 设置完整的样式
         self.search_box.setStyleSheet("""
             QLineEdit {
                 padding: 6px 8px;
@@ -71,10 +70,9 @@ class ConnectionTreeWithSearch(QWidget):
         
         layout.addWidget(self.tree)
         layout.addWidget(self.search_box)
-        
         self.setLayout(layout)
         
-        # 安装事件过滤器，监听树的键盘事件
+        # 安装事件过滤器
         self.tree.installEventFilter(self)
         self.search_box.installEventFilter(self)
     

@@ -79,33 +79,28 @@ class ConnectionTree(QTreeWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        
+        # 禁用更新，批量设置属性
+        self.setUpdatesEnabled(False)
+        
+        # 基本设置
         self.setHeaderLabel("数据库连接")
+        self.setHeaderHidden(True)
         self.setMaximumWidth(320)
         self.setMinimumWidth(250)
+        
+        # 交互设置
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        
-        # 禁用编辑功能
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        
-        # 启用鼠标跟踪
         self.setMouseTracking(True)
         
-        # 设置层级缩进
+        # 视图设置
         self.setIndentation(8)
-        
-        # 隐藏标题栏
-        self.setHeaderHidden(True)
-        
-        # 设置根节点装饰
         self.setRootIsDecorated(True)
         self.setItemsExpandable(True)
         
-        # 暂时移除自定义代理和样式，使用原生样式测试
-        # self.delegate = ConnectionTreeDelegate(self)
-        # self.setItemDelegate(self.delegate)
-        
-        # 暂时移除所有自定义样式，使用原生样式
-        # self.setStyleSheet("...")
+        # 重新启用更新
+        self.setUpdatesEnabled(True)
     
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         """重写双击事件，支持双击展开/折叠"""
