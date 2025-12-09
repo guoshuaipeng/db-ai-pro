@@ -97,13 +97,28 @@ class MainWindow(QMainWindow):
         self.table_list_worker_for_tree = None  # 表列表工作线程（用于树视图）
         self._query_table_timer = None  # 用于防抖的定时器
         
+        # 初始化处理器
+        from src.gui.handlers.connection_handler import ConnectionHandler
+        from src.gui.handlers.ai_model_handler import AIModelHandler
+        from src.gui.handlers.query_handler import QueryHandler
+        from src.gui.handlers.preload_handler import PreloadHandler
+        from src.gui.handlers.tree_handler import TreeHandler
+        from src.gui.handlers.table_structure_handler import TableStructureHandler
+        
+        self.connection_handler = ConnectionHandler(self)
+        self.ai_model_handler = AIModelHandler(self)
+        self.query_handler = QueryHandler(self)
+        self.preload_handler = PreloadHandler(self)
+        self.tree_handler = TreeHandler(self)
+        self.table_structure_handler = TableStructureHandler(self)
+        
         self.init_ui()
         self.setup_connections()
         self.load_saved_connections()
         
         # 延时启动预加载（避免阻塞启动）
         from PyQt6.QtCore import QTimer
-        QTimer.singleShot(1500, self.start_preload)  # 1.5秒后开始预加载
+        QTimer.singleShot(1500, self.preload_handler.start_preload)  # 1.5秒后开始预加载
     
     def closeEvent(self, event):
         """窗口关闭事件"""
@@ -252,6 +267,7 @@ class MainWindow(QMainWindow):
         
         # 左侧：数据库连接树（带搜索功能）
         self.connection_tree = ConnectionTreeWithSearch()
+        # 注意：handler 在 __init__ 之后才初始化，所以这里先连接，稍后在 setup_connections 中重新连接
         self.connection_tree.itemDoubleClicked.connect(self.on_item_double_clicked)
         self.connection_tree.itemClicked.connect(self.on_item_clicked)
         self.connection_tree.itemExpanded.connect(self.on_item_expanded)
@@ -340,6 +356,12 @@ class MainWindow(QMainWindow):
         refresh_action = db_menu.addAction(self.tr("刷新(&R)"))
         refresh_action.setShortcut("Ctrl+R")
         refresh_action.triggered.connect(self.refresh_connections)
+        
+        db_menu.addSeparator()
+        
+        # 结构同步
+        sync_schema_action = db_menu.addAction(self.tr("结构同步(&S)"))
+        sync_schema_action.triggered.connect(self.show_schema_sync)
         
         # 查询菜单
         query_menu = menubar.addMenu(self.tr("查询(&Q)"))
@@ -434,7 +456,19 @@ class MainWindow(QMainWindow):
     
     def setup_connections(self):
         """设置信号连接"""
-        pass
+        # 重新连接树视图信号到 handler（因为 handler 在 init_ui 之后才初始化）
+        try:
+            self.connection_tree.itemDoubleClicked.disconnect()
+            self.connection_tree.itemClicked.disconnect()
+            self.connection_tree.itemExpanded.disconnect()
+            self.connection_tree.itemCollapsed.disconnect()
+        except:
+            pass
+        
+        self.connection_tree.itemDoubleClicked.connect(self.tree_handler.on_item_double_clicked)
+        self.connection_tree.itemClicked.connect(self.tree_handler.on_item_clicked)
+        self.connection_tree.itemExpanded.connect(self.tree_handler.on_item_expanded)
+        self.connection_tree.itemCollapsed.connect(self.tree_handler.on_item_collapsed)
     
     def load_saved_connections(self):
         """加载保存的连接"""
@@ -740,59 +774,11 @@ class MainWindow(QMainWindow):
     
     def import_from_navicat(self):
         """从 Navicat 导入连接"""
-        dialog = ImportDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            selected_connections = dialog.get_selected_connections()
-            
-            if not selected_connections:
-                QMessageBox.information(self, "提示", "未选择任何连接")
-                return
-            
-            # 导入选中的连接（不测试连接，因为密码可能无法解密）
-            success_count = 0
-            
-            for conn in selected_connections:
-                # 导入时不测试连接
-                if self.db_manager.add_connection(conn, test_connection=False):
-                    success_count += 1
-            
-            # 刷新连接列表
-            self.refresh_connections()
-            
-            # 保存连接
-            if success_count > 0:
-                self.save_connections()
-            
-            # 显示结果和提示
-            if success_count > 0:
-                reply = QMessageBox.information(
-                    self, 
-                    "导入成功", 
-                    f"成功导入 {success_count} 个数据库连接\n\n"
-                    "注意：导入的连接未测试，密码可能需要手动输入。\n"
-                    "您可以在连接列表中右键点击连接进行编辑。",
-                    QMessageBox.StandardButton.Ok
-                )
-            else:
-                QMessageBox.warning(
-                    self,
-                    "导入失败",
-                    "未能导入任何连接"
-                )
+        self.connection_handler.import_from_navicat()
     
     def edit_connection(self, connection_id: str):
         """编辑数据库连接"""
-        connection = self.db_manager.get_connection(connection_id)
-        if not connection:
-            return
-        
-        dialog = ConnectionDialog(self, connection)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            new_connection = dialog.get_connection()
-            # 保存旧连接ID，用于移除
-            self._editing_connection_id = connection_id
-            # 使用后台线程测试连接，避免阻塞UI
-            self._test_and_add_connection(new_connection, is_edit=True)
+        self.connection_handler.edit_connection(connection_id)
     
     def _test_and_add_connection(self, connection: DatabaseConnection, is_edit: bool = False):
         """在后台线程中测试连接，然后添加连接"""
@@ -914,11 +900,7 @@ class MainWindow(QMainWindow):
     
     def configure_ai_models(self):
         """配置AI模型"""
-        from src.gui.dialogs.ai_model_manager_dialog import AIModelManagerDialog
-        dialog = AIModelManagerDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            # 配置更新后，刷新模型列表
-            self.refresh_ai_models()
+        self.ai_model_handler.configure_ai_models()
     
     def configure_prompts(self):
         """配置AI提示词"""
@@ -928,103 +910,15 @@ class MainWindow(QMainWindow):
     
     def refresh_ai_models(self):
         """刷新AI模型列表"""
-        if not hasattr(self, 'ai_model_combo'):
-            return
-        
-        self.ai_model_combo.clear()
-        
-        # 加载所有模型配置
-        models = self.ai_model_storage.load_models()
-        active_models = [m for m in models if m.is_active]
-        
-        if not active_models:
-            self.ai_model_combo.addItem("未配置模型", None)
-            self.ai_model_combo.setEnabled(False)
-            return
-        
-        self.ai_model_combo.setEnabled(True)
-        
-        # 获取上次使用的模型ID
-        last_used_id = self.ai_model_storage.get_last_used_model_id()
-        
-        # 添加模型到下拉框
-        selected_index = 0
-        for i, model in enumerate(active_models):
-            display_name = model.name
-            from src.core.default_ai_model import DEFAULT_MODEL_ID
-            if model.id == DEFAULT_MODEL_ID or model.is_default:
-                display_name += " [系统默认]"
-            self.ai_model_combo.addItem(display_name, model.id)
-            
-            # 优先选择上次使用的模型
-            if last_used_id and model.id == last_used_id:
-                selected_index = i
-            # 如果没有上次使用的，选择第一个激活的模型
-            elif selected_index == 0:
-                selected_index = i
-        
-        # 设置当前选择的模型（优先使用上次使用的模型）
-        if active_models:
-            self.ai_model_combo.setCurrentIndex(selected_index)
-            # 只有在确实需要切换时才调用（避免初始化时的重复调用）
-            selected_model_id = active_models[selected_index].id
-            if not self.current_ai_model_id or self.current_ai_model_id != selected_model_id:
-                self.on_ai_model_changed(selected_index)
+        self.ai_model_handler.refresh_ai_models()
     
     def on_ai_model_changed(self, index: int):
         """AI模型选择改变"""
-        model_id = self.ai_model_combo.itemData(index)
-        if not model_id:
-            return
-        
-        self.current_ai_model_id = model_id
-        
-        # 保存为上次使用的模型
-        self.ai_model_storage.save_last_used_model_id(model_id)
-        
-        # 更新SQL编辑器的AI客户端
-        if hasattr(self, 'sql_editor'):
-            # 重新创建AI客户端
-            try:
-                from src.core.ai_client import AIClient
-                models = self.ai_model_storage.load_models()
-                model_config = next((m for m in models if m.id == model_id), None)
-                if model_config:
-                    self.sql_editor.ai_client = AIClient(
-                        api_key=model_config.api_key.get_secret_value(),
-                        base_url=model_config.get_base_url(),
-                        default_model=model_config.default_model,
-                        turbo_model=model_config.turbo_model
-                    )
-                    # 设置模型ID以便统计
-                    self.sql_editor.ai_client._current_model_id = model_config.id
-                    self.statusBar().showMessage(f"已切换到模型: {model_config.name}", 2000)
-                else:
-                    self.statusBar().showMessage("模型配置不存在", 3000)
-            except Exception as e:
-                logger.error(f"切换AI模型失败: {str(e)}")
-                self.statusBar().showMessage(f"切换AI模型失败: {str(e)}", 3000)
+        self.ai_model_handler.on_ai_model_changed(index)
     
     def remove_connection(self, connection_id: str):
         """移除数据库连接"""
-        connection = self.db_manager.get_connection(connection_id)
-        if not connection:
-            return
-        
-        reply = QMessageBox.question(
-            self,
-            "确认",
-            f"确定要删除连接 '{connection.name}' 吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            if self.db_manager.remove_connection(connection_id):
-                self.refresh_connections()
-                self.save_connections()  # 保存连接
-                if self.current_connection_id == connection_id:
-                    self.current_connection_id = None
-                    self.sql_editor.set_status("已断开连接")
+        self.connection_handler.remove_connection(connection_id)
     
     def refresh_connections(self):
         """刷新连接列表"""
@@ -2265,21 +2159,7 @@ class MainWindow(QMainWindow):
     
     def test_connection(self, connection_id: str = None):
         """测试连接（使用后台线程，避免阻塞UI）"""
-        if not connection_id:
-            connection_id = self.current_connection_id
-        
-        if not connection_id:
-            QMessageBox.warning(self, "警告", "请先选择一个数据库连接")
-            return
-        
-        # 获取连接配置
-        connection = self.db_manager.get_connection(connection_id)
-        if not connection:
-            QMessageBox.warning(self, "警告", "连接不存在")
-            return
-        
-        # 使用后台线程测试连接，避免阻塞UI
-        self._test_and_show_result(connection)
+        self.connection_handler.test_connection(connection_id)
     
     def _test_and_show_result(self, connection: DatabaseConnection):
         """在后台线程中测试连接，然后显示结果"""
@@ -2318,80 +2198,7 @@ class MainWindow(QMainWindow):
     
     def execute_query(self, sql: str = None):
         """执行SQL查询（使用后台线程，避免阻塞UI）"""
-        if not self.current_connection_id:
-            QMessageBox.warning(self, "警告", "请先选择一个数据库连接")
-            return
-        
-        if not sql:
-            sql = self.sql_editor.get_sql()
-        
-        if not sql:
-            QMessageBox.warning(self, "警告", "请输入SQL语句")
-            return
-        
-        # 如果已有查询正在执行，先安全停止
-        if self.query_worker:
-            if self.query_worker.isRunning():
-                self.query_worker.stop()
-                if not self.query_worker.wait(3000):  # 等待最多3秒
-                    # 如果还在运行，强制终止（不推荐，但作为最后手段）
-                    logger.warning("查询线程未能在3秒内结束，强制终止")
-                    self.query_worker.terminate()
-                    self.query_worker.wait(1000)
-                # 断开信号连接，避免在删除时触发
-                try:
-                    self.query_worker.query_finished.disconnect()
-                    self.query_worker.query_progress.disconnect()
-                except:
-                    pass
-            # 确保线程对象被正确清理
-            self.query_worker.deleteLater()
-            self.query_worker = None
-        
-        # 判断SQL类型
-        sql_upper = sql.strip().upper()
-        is_query = sql_upper.startswith(("SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"))
-        
-        # 获取连接信息
-        connection = self.db_manager.get_connection(self.current_connection_id)
-        if not connection:
-            QMessageBox.warning(self, "警告", "连接不存在")
-            return
-        
-        # 确保使用当前选中的数据库（如果当前数据库与连接配置中的不同，先切换）
-        if self.current_database and self.current_database != connection.database:
-            try:
-                self.db_manager.switch_database(self.current_connection_id, self.current_database)
-                # 重新获取连接（因为 switch_database 可能更新了连接配置）
-                connection = self.db_manager.get_connection(self.current_connection_id)
-                if not connection:
-                    QMessageBox.warning(self, "警告", "连接不存在")
-                    return
-            except Exception as e:
-                logger.error(f"切换数据库失败: {e}")
-                QMessageBox.warning(self, "警告", f"切换数据库失败: {e}")
-                return
-        
-        # 显示加载状态
-        self.sql_editor.set_status("执行中...")
-        # 注意：不清空结果，因为可能有多条SQL，每条SQL会创建一个新的Tab
-        
-        # 创建并启动工作线程（传递连接信息，在线程中创建引擎）
-        self.query_worker = QueryWorker(
-            connection.get_connection_string(),
-            connection.get_connect_args(),
-            sql,
-            is_query=is_query
-        )
-        
-        # 连接信号
-        self.query_worker.query_finished.connect(self.on_query_finished)
-        self.query_worker.query_progress.connect(self.on_query_progress)
-        self.query_worker.multi_query_finished.connect(self.on_multi_query_finished)
-        self.query_worker.multi_query_finished.connect(self.on_multi_query_finished)
-        
-        # 启动线程
-        self.query_worker.start()
+        self.query_handler.execute_query(sql)
     
     def on_query_progress(self, message: str):
         """查询进度更新"""
@@ -2518,8 +2325,7 @@ class MainWindow(QMainWindow):
     
     def clear_query(self):
         """清空查询"""
-        self.sql_editor.clear_sql()
-        self.result_table.clear_all()  # 使用clear_all方法
+        self.query_handler.clear_query()
     
     def show_settings(self):
         """显示设置对话框"""
@@ -2666,6 +2472,12 @@ class MainWindow(QMainWindow):
                 if tab_text in ["查询", "Query"]:
                     self.right_tab_widget.setTabText(i, self.tr("查询"))
     
+    def show_schema_sync(self):
+        """显示结构同步对话框"""
+        from src.gui.dialogs.schema_sync_dialog import SchemaSyncDialog
+        dialog = SchemaSyncDialog(self, self.db_manager)
+        dialog.exec()
+    
     def show_about(self):
         """显示关于对话框"""
         QMessageBox.about(
@@ -2680,13 +2492,15 @@ class MainWindow(QMainWindow):
             "- AI连接配置识别\n"
             "- 多数据库支持\n"
             "- 查询结果直接编辑\n"
-            "- 数据批量删除\n\n"
+            "- 数据批量删除\n"
+            "- 数据库结构同步\n\n"
             "支持的数据库:\n"
             "- MySQL/MariaDB\n"
             "- PostgreSQL\n"
             "- SQLite\n"
             "- Oracle\n"
-            "- SQL Server\n\n"
+            "- SQL Server\n"
+            "- Hive\n\n"
             "开源协议: MIT License"
         )
     
