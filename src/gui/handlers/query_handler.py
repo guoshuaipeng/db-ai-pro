@@ -257,14 +257,11 @@ class QueryHandler:
                     self.main_window.completion_worker.deleteLater()
                     self.main_window.completion_worker = None
                 
-                # 检查当前是否在新建表或编辑表tab，如果是则切换到查询tab
+                # 双击表项时，始终切换到第一个查询tab
                 current_index = self.main_window.right_tab_widget.currentIndex()
-                if current_index > 0:  # 不是查询tab（查询tab是第一个，index为0）
-                    current_tab = self.main_window.right_tab_widget.widget(current_index)
-                    from src.gui.widgets.edit_table_tab import EditTableTab
-                    if isinstance(current_tab, self.main_window.create_table_tab.__class__) or isinstance(current_tab, EditTableTab):
-                        # 切换到查询tab（第一个tab）
-                        self.main_window.right_tab_widget.setCurrentIndex(0)
+                if current_index != 0:  # 不是第一个查询tab
+                    # 切换到第一个查询tab
+                    self.main_window.right_tab_widget.setCurrentIndex(0)
                 
                 # 如果指定了数据库，先切换该连接当前使用的数据库
                 if database:

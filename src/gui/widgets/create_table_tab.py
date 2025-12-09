@@ -71,6 +71,35 @@ class CreateTableTab(QWidget):
         layout.setSpacing(8)  # 增加间距
         self.setLayout(layout)
         
+        # 在顶部添加连接显示（紧凑的一行）
+        connection_bar = QWidget()
+        connection_bar.setMaximumHeight(30)  # 限制最大高度
+        connection_bar_layout = QHBoxLayout()
+        connection_bar_layout.setContentsMargins(0, 0, 0, 0)  # 去掉内边距
+        connection_bar_layout.setSpacing(8)
+        connection_bar.setLayout(connection_bar_layout)
+        
+        connection_label = QLabel("当前连接:")
+        connection_label.setStyleSheet("font-size: 12px;")
+        connection_bar_layout.addWidget(connection_label, 0)  # 不拉伸
+        
+        # 显示连接信息
+        connection_info = QLabel()
+        if self.connection_id and self.db_manager:
+            connection = self.db_manager.get_connection(self.connection_id)
+            if connection:
+                if self.database:
+                    info_text = f"{connection.name} - {self.database}"
+                else:
+                    info_text = f"{connection.name} ({connection.db_type.value})"
+                connection_info.setText(info_text)
+                connection_info.setStyleSheet("color: #1976d2; font-weight: bold; font-size: 12px;")
+        connection_bar_layout.addWidget(connection_info, 0)  # 不拉伸
+        
+        connection_bar_layout.addStretch(1)  # 剩余空间拉伸
+        
+        layout.addWidget(connection_bar, 0)  # 不拉伸
+        
         # 创建水平分割器
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(6)  # 增加分割器手柄宽度

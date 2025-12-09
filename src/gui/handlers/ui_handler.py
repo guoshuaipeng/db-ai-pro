@@ -116,6 +116,26 @@ class UIHandler:
         query_layout.setSpacing(5)
         query_tab.setLayout(query_layout)
         
+        # 在查询tab顶部添加连接选择
+        connection_bar = QWidget()
+        connection_bar_layout = QHBoxLayout()
+        connection_bar_layout.setContentsMargins(5, 5, 5, 5)
+        connection_bar_layout.setSpacing(10)
+        connection_bar.setLayout(connection_bar_layout)
+        
+        connection_label = QLabel(self.main_window.tr("当前连接:"))
+        connection_bar_layout.addWidget(connection_label)
+        self.main_window.connection_label = connection_label
+        
+        self.main_window.connection_combo = QComboBox()
+        self.main_window.connection_combo.setMinimumWidth(300)
+        self.main_window.connection_combo.currentTextChanged.connect(self.main_window.on_connection_combo_changed)
+        connection_bar_layout.addWidget(self.main_window.connection_combo)
+        
+        connection_bar_layout.addStretch()  # 添加弹性空间，让下拉框靠左
+        
+        query_layout.addWidget(connection_bar)
+        
         query_splitter = QSplitter(Qt.Orientation.Vertical)
         query_splitter.setChildrenCollapsible(False)
         query_splitter.setHandleWidth(6)  # 增加分割器手柄宽度
@@ -260,18 +280,6 @@ class UIHandler:
         
         # 刷新模型列表
         self.main_window.refresh_ai_models()
-        
-        toolbar.addSeparator()
-        
-        # 连接选择下拉框
-        connection_label = QLabel(self.main_window.tr("当前连接:"))
-        toolbar.addWidget(connection_label)
-        self.main_window.connection_label = connection_label
-        
-        self.main_window.connection_combo = QComboBox()
-        self.main_window.connection_combo.setMinimumWidth(200)
-        self.main_window.connection_combo.currentTextChanged.connect(self.main_window.on_connection_combo_changed)
-        toolbar.addWidget(self.main_window.connection_combo)
         
         toolbar.addSeparator()
         

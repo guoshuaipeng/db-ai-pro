@@ -72,6 +72,37 @@ class EditTableTab(QWidget):
         layout.setSpacing(8)  # 增加间距
         self.setLayout(layout)
         
+        # 在顶部添加连接和表信息显示（紧凑的一行）
+        info_bar = QWidget()
+        info_bar.setMaximumHeight(30)  # 限制最大高度
+        info_bar_layout = QHBoxLayout()
+        info_bar_layout.setContentsMargins(0, 0, 0, 0)  # 去掉内边距
+        info_bar_layout.setSpacing(8)
+        info_bar.setLayout(info_bar_layout)
+        
+        info_label = QLabel("当前连接:")
+        info_label.setStyleSheet("font-size: 12px;")
+        info_bar_layout.addWidget(info_label, 0)  # 不拉伸
+        
+        # 显示连接和表信息
+        info_display = QLabel()
+        if self.connection_id and self.db_manager:
+            connection = self.db_manager.get_connection(self.connection_id)
+            if connection:
+                if self.database and self.table_name:
+                    info_text = f"{connection.name} - {self.database}.{self.table_name}"
+                elif self.database:
+                    info_text = f"{connection.name} - {self.database}"
+                else:
+                    info_text = f"{connection.name} ({connection.db_type.value})"
+                info_display.setText(info_text)
+                info_display.setStyleSheet("color: #1976d2; font-weight: bold; font-size: 12px;")
+        info_bar_layout.addWidget(info_display, 0)  # 不拉伸
+        
+        info_bar_layout.addStretch(1)  # 剩余空间拉伸
+        
+        layout.addWidget(info_bar, 0)  # 不拉伸
+        
         # 创建水平分割器：左侧显示表结构，右侧是SQL和聊天
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
         main_splitter.setHandleWidth(6)  # 增加分割器手柄宽度

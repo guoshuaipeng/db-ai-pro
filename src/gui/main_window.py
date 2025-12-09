@@ -1104,7 +1104,7 @@ class MainWindow(QMainWindow):
             return
         
         # 创建新的查询tab
-        from PyQt6.QtWidgets import QWidget, QVBoxLayout, QSplitter
+        from PyQt6.QtWidgets import QWidget, QVBoxLayout, QSplitter, QHBoxLayout
         from src.gui.widgets.sql_editor import SQLEditor
         from src.gui.widgets.multi_result_table import MultiResultTable
         
@@ -1113,6 +1113,34 @@ class MainWindow(QMainWindow):
         query_layout.setContentsMargins(5, 5, 5, 5)
         query_layout.setSpacing(5)
         query_tab.setLayout(query_layout)
+        
+        # 在新tab顶部添加连接显示（紧凑的一行）
+        connection_bar = QWidget()
+        connection_bar.setMaximumHeight(30)  # 限制最大高度
+        connection_bar_layout = QHBoxLayout()
+        connection_bar_layout.setContentsMargins(0, 0, 0, 0)  # 去掉内边距
+        connection_bar_layout.setSpacing(8)
+        connection_bar.setLayout(connection_bar_layout)
+        
+        connection_label = QLabel(self.tr("当前连接:"))
+        connection_label.setStyleSheet("font-size: 12px;")
+        connection_bar_layout.addWidget(connection_label, 0)  # 不拉伸
+        
+        # 使用文本标签显示连接信息
+        connection_info = QLabel()
+        connection = self.db_manager.get_connection(connection_id)
+        if connection:
+            if database:
+                info_text = f"{connection.name} - {database}"
+            else:
+                info_text = f"{connection.name} ({connection.db_type.value})"
+            connection_info.setText(info_text)
+            connection_info.setStyleSheet("color: #1976d2; font-weight: bold; font-size: 12px;")
+        connection_bar_layout.addWidget(connection_info, 0)  # 不拉伸
+        
+        connection_bar_layout.addStretch(1)  # 剩余空间拉伸
+        
+        query_layout.addWidget(connection_bar, 0)  # 不拉伸
         
         query_splitter = QSplitter(Qt.Orientation.Vertical)
         query_splitter.setChildrenCollapsible(False)
