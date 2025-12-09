@@ -141,6 +141,11 @@ class UIHandler:
         self.main_window.right_tab_widget.addTab(query_tab, self.main_window.tr("查询"))
         
         main_splitter.addWidget(self.main_window.right_tab_widget)
+        
+        # 设置分割器属性，防止完全折叠
+        main_splitter.setCollapsible(0, False)  # 左侧（连接树）不可折叠
+        main_splitter.setCollapsible(1, False)  # 右侧（查询区域）不可折叠
+        
         main_splitter.setStretchFactor(0, 0)
         main_splitter.setStretchFactor(1, 1)
         # 设置初始宽度比例（左侧连接树稍窄，右侧内容区域更宽）

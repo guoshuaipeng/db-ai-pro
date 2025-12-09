@@ -86,7 +86,8 @@ class ConnectionTree(QTreeWidget):
         # 基本设置
         self.setHeaderLabel("数据库连接")
         self.setHeaderHidden(True)
-        self.setMaximumWidth(320)
+        # 不设置最大宽度，让树自适应容器
+        # self.setMaximumWidth(320)  # 移除最大宽度限制
         self.setMinimumWidth(250)
         
         # 交互设置

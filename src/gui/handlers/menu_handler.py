@@ -52,12 +52,12 @@ class MenuHandler:
                 
                 menu.addSeparator()
                 
-                edit_table_action = menu.addAction("编辑表结构")
+                edit_table_action = menu.addAction("✏️ 编辑表结构")
                 edit_table_action.triggered.connect(lambda: self.main_window.table_structure_handler.edit_table_structure(connection_id, database, table_name))
                 
                 menu.addSeparator()
                 
-                copy_structure_action = menu.addAction("复制结构")
+                copy_structure_action = menu.addAction("📋 复制结构")
                 copy_structure_action.triggered.connect(lambda: self.main_window.table_structure_handler.copy_table_structure(connection_id, database, table_name))
                 
                 menu.addSeparator()
@@ -73,10 +73,10 @@ class MenuHandler:
                 refresh_action.triggered.connect(lambda: self.main_window.tree_data_handler.refresh_database_tables(connection_id, database))
         else:
             # 连接项的右键菜单
-            edit_action = menu.addAction("编辑")
+            edit_action = menu.addAction("✏️ 编辑")
             edit_action.triggered.connect(lambda: self.main_window.connection_handler.edit_connection(connection_id))
             
-            test_action = menu.addAction("测试连接")
+            test_action = menu.addAction("🔌 测试连接")
             test_action.triggered.connect(lambda: self.main_window.connection_handler.test_connection(connection_id))
             
             menu.addSeparator()
@@ -86,7 +86,7 @@ class MenuHandler:
             
             menu.addSeparator()
             
-            remove_action = menu.addAction("删除")
+            remove_action = menu.addAction("🗑️ 删除")
             remove_action.triggered.connect(lambda: self.main_window.connection_handler.remove_connection(connection_id))
         
         menu.exec(self.main_window.connection_tree.mapToGlobal(position))

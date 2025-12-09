@@ -25,6 +25,9 @@ class ConnectionTreeWithSearch(QWidget):
         super().__init__(parent)
         self._original_items = {}  # 存储原始项，用于恢复
         
+        # 只设置最小宽度，不限制最大宽度
+        self.setMinimumWidth(250)
+        
         self.init_ui()
     
     def init_ui(self):
