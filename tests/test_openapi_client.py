@@ -300,6 +300,7 @@ def test_aa():
     print("=" * 70)
 
 
+
 if __name__ == "__main__":
     print("🚀 OpenAPI积分接口测试")
     print("📋 配置信息：")
