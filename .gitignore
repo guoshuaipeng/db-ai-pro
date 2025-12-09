@@ -151,6 +151,7 @@ src/core/embedded_ai_config.py  # 包含打包时的默认AI配置，不提交�
 *.qrc  # Qt Resource files
 *.qm  # Qt Message files
 
+
 # Application specific
 logs/
 data/
