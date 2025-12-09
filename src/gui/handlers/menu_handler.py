@@ -46,6 +46,12 @@ class MenuHandler:
             table_info = TreeItemData.get_table_info(item)
             if table_info:
                 database, table_name = table_info
+                # 在新标签页中查询
+                query_new_tab_action = menu.addAction("📊 在新标签页中查询")
+                query_new_tab_action.triggered.connect(lambda: self.main_window.query_table_data_in_new_tab(connection_id, table_name, database))
+                
+                menu.addSeparator()
+                
                 edit_table_action = menu.addAction("编辑表结构")
                 edit_table_action.triggered.connect(lambda: self.main_window.table_structure_handler.edit_table_structure(connection_id, database, table_name))
                 

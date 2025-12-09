@@ -172,6 +172,15 @@ class TableStructureHandler:
         elif hasattr(tab_widget, 'cleanup') and hasattr(tab_widget, 'table_name'):
             # 编辑表tab
             tab_widget.cleanup()
+        elif hasattr(tab_widget, '_query_worker'):
+            # 新的查询tab，停止查询worker
+            try:
+                if tab_widget._query_worker and tab_widget._query_worker.isRunning():
+                    tab_widget._query_worker.stop()
+                    tab_widget._query_worker.wait(1000)
+                    tab_widget._query_worker.deleteLater()
+            except:
+                pass
         
         self.main_window.right_tab_widget.removeTab(index)
 

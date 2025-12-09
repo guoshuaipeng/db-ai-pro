@@ -1097,6 +1097,177 @@ class MainWindow(QMainWindow):
         # 延迟1ms执行，确保不阻塞主线程
         QTimer.singleShot(1, update_ui)
     
+    def query_table_data_in_new_tab(self, connection_id: str, table_name: str, database: Optional[str] = None):
+        """在新标签页中查询表数据"""
+        if not connection_id:
+            QMessageBox.warning(self, "警告", "请先选择一个数据库连接")
+            return
+        
+        # 创建新的查询tab
+        from PyQt6.QtWidgets import QWidget, QVBoxLayout, QSplitter
+        from src.gui.widgets.sql_editor import SQLEditor
+        from src.gui.widgets.multi_result_table import MultiResultTable
+        
+        query_tab = QWidget()
+        query_layout = QVBoxLayout()
+        query_layout.setContentsMargins(5, 5, 5, 5)
+        query_layout.setSpacing(5)
+        query_tab.setLayout(query_layout)
+        
+        query_splitter = QSplitter(Qt.Orientation.Vertical)
+        query_splitter.setChildrenCollapsible(False)
+        query_splitter.setHandleWidth(6)
+        
+        # 创建新的SQL编辑器
+        sql_editor = SQLEditor()
+        sql_editor._main_window = self
+        sql_editor.set_database_info(self.db_manager, connection_id, database)
+        query_splitter.addWidget(sql_editor)
+        
+        # 创建新的结果表格
+        result_table = MultiResultTable()
+        result_table._main_window = self
+        query_splitter.addWidget(result_table)
+        
+        # 设置拉伸因子
+        query_splitter.setStretchFactor(0, 2)
+        query_splitter.setStretchFactor(1, 3)
+        query_splitter.setSizes([450, 650])
+        
+        query_layout.addWidget(query_splitter)
+        
+        # 保存对这个tab的编辑器和结果表格的引用
+        query_tab._sql_editor = sql_editor
+        query_tab._result_table = result_table
+        query_tab._connection_id = connection_id
+        query_tab._database = database
+        
+        # 为这个tab的SQL编辑器创建独立的执行函数
+        def execute_query_in_this_tab(sql: str = None):
+            """在当前tab中执行查询"""
+            if sql is None:
+                sql = sql_editor.get_sql()
+            
+            if not sql or not sql.strip():
+                QMessageBox.warning(self, "警告", "请输入SQL语句")
+                return
+            
+            # 使用查询处理器，但传入新tab的result_table和sql_editor
+            from src.gui.workers.query_worker import QueryWorker
+            
+            # 停止之前的查询（如果有）
+            if hasattr(query_tab, '_query_worker') and query_tab._query_worker:
+                try:
+                    if query_tab._query_worker.isRunning():
+                        query_tab._query_worker.stop()
+                        query_tab._query_worker.wait(1000)
+                    query_tab._query_worker.deleteLater()
+                except:
+                    pass
+            
+            # 获取连接对象
+            connection = self.db_manager.get_connection(query_tab._connection_id)
+            if not connection:
+                QMessageBox.warning(self, "错误", "无法获取数据库连接")
+                return
+            
+            # 创建新的查询worker
+            query_tab._query_worker = QueryWorker(
+                connection.get_connection_string(),
+                connection.get_connect_args(),
+                sql
+            )
+            
+            # 定义回调函数（使用闭包捕获result_table和sql_editor）
+            def on_query_progress(message: str):
+                sql_editor.set_status(message)
+            
+            def on_query_finished(success: bool, data, error, affected_rows, columns=None):
+                try:
+                    query_sql = query_tab._query_worker.sql if hasattr(query_tab, '_query_worker') else sql
+                    
+                    if success:
+                        if data is not None:
+                            result_table.add_result(query_sql, data, None, None, columns, connection_id=query_tab._connection_id)
+                            if data:
+                                sql_editor.set_status(f"查询完成: {len(data)} 行")
+                            else:
+                                sql_editor.set_status(f"查询完成: 0 行")
+                        elif affected_rows is not None:
+                            result_table.add_result(query_sql, None, None, affected_rows, None, connection_id=query_tab._connection_id)
+                            sql_editor.set_status(f"执行成功: 影响 {affected_rows} 行")
+                    else:
+                        result_table.add_result(query_sql, None, error, None, None, connection_id=query_tab._connection_id)
+                        sql_editor.set_status(f"执行失败: {error}", is_error=True)
+                    
+                    # 恢复执行按钮状态
+                    if hasattr(sql_editor, 'execute_btn'):
+                        sql_editor.execute_btn.setText("执行 (F5)")
+                except Exception as e:
+                    logger.error(f"新tab查询回调失败: {str(e)}")
+            
+            def on_multi_query_finished(results: list):
+                try:
+                    total_success = 0
+                    total_failed = 0
+                    
+                    for query_sql, success, data, error, affected_rows, columns in results:
+                        if success:
+                            total_success += 1
+                            result_table.add_result(query_sql, data, error, affected_rows, columns, connection_id=query_tab._connection_id)
+                        else:
+                            total_failed += 1
+                            result_table.add_result(query_sql, None, error, None, None, connection_id=query_tab._connection_id)
+                    
+                    if total_failed == 0:
+                        sql_editor.set_status(f"所有查询完成: {total_success} 条成功")
+                    else:
+                        sql_editor.set_status(f"查询完成: {total_success} 条成功, {total_failed} 条失败", is_error=total_failed > 0)
+                    
+                    if hasattr(sql_editor, 'execute_btn'):
+                        sql_editor.execute_btn.setText("执行 (F5)")
+                except Exception as e:
+                    logger.error(f"新tab多查询回调失败: {str(e)}")
+            
+            # 连接信号
+            query_tab._query_worker.query_progress.connect(on_query_progress)
+            query_tab._query_worker.query_finished.connect(on_query_finished)
+            query_tab._query_worker.multi_query_finished.connect(on_multi_query_finished)
+            
+            # 启动查询
+            query_tab._query_worker.start()
+            sql_editor.set_status("正在执行查询...")
+            if hasattr(sql_editor, 'execute_btn'):
+                sql_editor.execute_btn.setText("执行中...")
+        
+        # 连接信号
+        sql_editor.execute_signal.connect(execute_query_in_this_tab)
+        
+        # 生成查询SQL
+        connection = self.db_manager.get_connection(connection_id)
+        if database and connection and connection.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+            sql = f"SELECT * FROM `{database}`.`{table_name}` LIMIT 100"
+        else:
+            sql = f"SELECT * FROM `{table_name}` LIMIT 100"
+        
+        # 在新的SQL编辑器中显示SQL
+        sql_editor.set_sql(sql)
+        
+        # 添加新tab（使用表名作为tab标题）
+        tab_title = f"{table_name}"
+        if database:
+            tab_title = f"{database}.{table_name}"
+        tab_index = self.right_tab_widget.addTab(query_tab, tab_title)
+        
+        # 切换到新tab
+        self.right_tab_widget.setCurrentIndex(tab_index)
+        
+        # 设置当前连接
+        self.set_current_connection(connection_id, update_completion=False, database=database)
+        
+        # 自动执行查询
+        execute_query_in_this_tab(sql)
+    
     def query_table_data(self, connection_id: str, table_name: str, database: Optional[str] = None):
         """查询表数据（在点击事件中调用，确保不阻塞UI）"""
         if not connection_id:
@@ -1155,14 +1326,11 @@ class MainWindow(QMainWindow):
                     self.completion_worker.deleteLater()
                     self.completion_worker = None
                 
-                # 检查当前是否在新建表或编辑表tab，如果是则切换到查询tab
+                # 双击表项时，始终切换到第一个查询tab
                 current_index = self.right_tab_widget.currentIndex()
-                if current_index > 0:  # 不是查询tab（查询tab是第一个，index为0）
-                    current_tab = self.right_tab_widget.widget(current_index)
-                    from src.gui.widgets.edit_table_tab import EditTableTab
-                    if isinstance(current_tab, CreateTableTab) or isinstance(current_tab, EditTableTab):
-                        # 切换到查询tab（第一个tab）
-                        self.right_tab_widget.setCurrentIndex(0)
+                if current_index != 0:  # 不是第一个查询tab
+                    # 切换到第一个查询tab
+                    self.right_tab_widget.setCurrentIndex(0)
                 
                 # 如果指定了数据库，先切换该连接当前使用的数据库
                 if database:
