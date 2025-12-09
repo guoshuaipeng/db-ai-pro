@@ -24,6 +24,7 @@ logging.basicConfig(
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt
 from src.gui.main_window import MainWindow
 from src.config.settings import Settings
 from src.core.i18n import TranslationManager
@@ -133,10 +134,13 @@ def main():
     
     logger.info(f"翻译系统已初始化，当前语言: {translation_manager.get_current_language()}")
     
-    # 创建并显示主窗口
+    # 创建主窗口（此时窗口是隐藏的）
     window = MainWindow(settings, translation_manager)
     window.setWindowIcon(app_icon)  # 也设置窗口图标
-    window.showMaximized()  # 最大化显示窗口
+    # 移除"不显示在屏幕上"属性，然后最大化显示窗口
+    window.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, False)
+    # 最大化显示窗口（在设置好大小后再显示，避免闪烁）
+    window.showMaximized()
     
     # 运行应用程序
     sys.exit(app.exec())

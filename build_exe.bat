@@ -52,19 +52,10 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM 重命名为社区版
-if exist dist\DataAI.exe (
-    echo [提示] 重命名为社区版...
-    move /y dist\DataAI.exe dist\DataAI-Community.exe >nul
-    if exist dist\DataAI.exe (
-        echo [警告] 重命名失败，文件仍为 DataAI.exe
-    )
-)
-
 echo 打包完成！
 echo.
 echo ========================================
-echo 可执行文件位置: dist\DataAI-Community.exe
+echo 可执行文件位置: dist\DataAI.exe
 echo ========================================
 echo.
 echo 提示：

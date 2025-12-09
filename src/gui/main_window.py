@@ -204,8 +204,8 @@ class MainWindow(QMainWindow):
     def init_ui(self):
         """初始化用户界面"""
         self.setWindowTitle(self.tr("DataAI - AI驱动的数据库管理工具"))
-        # 增大窗口尺寸，让界面更宽敞
-        self.setGeometry(50, 50, 1600, 1000)
+        # 设置最小窗口尺寸
+        self.setMinimumSize(1200, 800)
         
         # 设置窗口图标（如果还没有设置）
         if self.windowIcon().isNull():
