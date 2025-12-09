@@ -581,6 +581,54 @@ class SingleResultTable(QWidget):
         
         return None
     
+    def _get_primary_keys(self, table_name: str) -> List[str]:
+        """获取表的主键列名列表（优先使用主键过滤）"""
+        if not self.main_window or not hasattr(self.main_window, 'db_manager'):
+            return []
+        
+        try:
+            connection_id = getattr(self.main_window, "current_connection_id", None)
+            if not connection_id:
+                return []
+            
+            db_manager = self.main_window.db_manager
+            engine = db_manager.get_engine(connection_id)
+            if not engine:
+                return []
+            
+            connection = db_manager.get_connection(connection_id)
+            current_db = connection.database if connection else None
+            db_type = connection.db_type.value if connection and connection.db_type else ""
+            
+            from sqlalchemy import inspect
+            inspector = inspect(engine)
+            
+            # 解析表名和 schema
+            actual_table = table_name.strip().strip('`')
+            schema_name = None
+            if '.' in actual_table:
+                last_dot = actual_table.rfind('.')
+                schema_name = actual_table[:last_dot].strip().strip('`')
+                actual_table = actual_table[last_dot + 1:].strip().strip('`')
+            elif current_db:
+                schema_name = current_db
+            
+            # 使用 get_pk_constraint 兼容不同数据库/版本
+            if schema_name and db_type in ("mysql", "mariadb", "postgresql"):
+                pk_constraint = inspector.get_pk_constraint(actual_table, schema=schema_name)
+            else:
+                pk_constraint = inspector.get_pk_constraint(actual_table)
+            
+            primary_keys = pk_constraint.get("constrained_columns", []) if pk_constraint else []
+            if not primary_keys:
+                logger.warning(f"未获取到主键: table={table_name}, schema={schema_name}")
+            else:
+                logger.info(f"主键列: {primary_keys} (table={table_name}, schema={schema_name})")
+            return primary_keys
+        except Exception as e:
+            logger.debug(f"获取表 {table_name} 的主键失败: {str(e)}")
+            return []
+    
     def _generate_update_sql(self, table_name: str, col_name: str, new_value, original_row_data: Dict, columns: List[str]) -> Optional[str]:
         """生成UPDATE SQL语句"""
         # 转义表名和列名（处理反引号）
@@ -603,13 +651,21 @@ class SingleResultTable(QWidget):
             # 单个标识符
             return f"`{name}`" if name else name
         
-        # 转义值（处理SQL注入）
+        # 转义值（处理SQL注入和JSON字段）
         def escape_value(value) -> str:
             if value is None:
                 return "NULL"
             elif isinstance(value, str):
-                # 转义单引号
-                escaped = value.replace("'", "''")
+                # 转义字符串中的特殊字符（用于JSON字段等）
+                # 1. 先转义反斜杠（必须在其他转义之前）
+                escaped = value.replace("\\", "\\\\")
+                # 2. 转义单引号
+                escaped = escaped.replace("'", "''")
+                # 3. 转义换行符、回车符、制表符等控制字符
+                escaped = escaped.replace("\n", "\\n")
+                escaped = escaped.replace("\r", "\\r")
+                escaped = escaped.replace("\t", "\\t")
+                escaped = escaped.replace("\0", "\\0")
                 return f"'{escaped}'"
             elif isinstance(value, (int, float)):
                 return str(value)
@@ -617,20 +673,46 @@ class SingleResultTable(QWidget):
                 return "1" if value else "0"
             else:
                 # 其他类型转为字符串
-                escaped = str(value).replace("'", "''")
+                str_value = str(value)
+                # 转义特殊字符
+                escaped = str_value.replace("\\", "\\\\")
+                escaped = escaped.replace("'", "''")
+                escaped = escaped.replace("\n", "\\n")
+                escaped = escaped.replace("\r", "\\r")
+                escaped = escaped.replace("\t", "\\t")
+                escaped = escaped.replace("\0", "\\0")
                 return f"'{escaped}'"
         
         # 构建SET子句
         set_clause = f"{escape_identifier(col_name)} = {escape_value(new_value)}"
         
-        # 构建WHERE子句（使用所有列的值来唯一标识一行）
+        # 获取主键列
+        primary_keys = self._get_primary_keys(table_name)
+        
+        # 构建WHERE子句
+        # 如果有主键，优先使用主键；否则使用所有列
+        where_columns = primary_keys if primary_keys else columns
+        
         where_conditions = []
-        for col in columns:
+        for col in where_columns:
+            # 确保列在原始数据中存在
+            if col not in original_row_data:
+                continue
             value = original_row_data.get(col)
             if value is None:
                 where_conditions.append(f"{escape_identifier(col)} IS NULL")
             else:
                 where_conditions.append(f"{escape_identifier(col)} = {escape_value(value)}")
+        
+        # 如果没有有效的WHERE条件，回退到使用所有列
+        if not where_conditions:
+            where_conditions = []
+            for col in columns:
+                value = original_row_data.get(col)
+                if value is None:
+                    where_conditions.append(f"{escape_identifier(col)} IS NULL")
+                else:
+                    where_conditions.append(f"{escape_identifier(col)} = {escape_value(value)}")
         
         where_clause = " AND ".join(where_conditions)
         
@@ -784,13 +866,21 @@ class SingleResultTable(QWidget):
             # 单个标识符
             return f"`{name}`" if name else name
         
-        # 转义值（处理SQL注入）
+        # 转义值（处理SQL注入和JSON字段）
         def escape_value(value) -> str:
             if value is None:
                 return "NULL"
             elif isinstance(value, str):
-                # 转义单引号
-                escaped = value.replace("'", "''")
+                # 转义字符串中的特殊字符（用于JSON字段等）
+                # 1. 先转义反斜杠（必须在其他转义之前）
+                escaped = value.replace("\\", "\\\\")
+                # 2. 转义单引号
+                escaped = escaped.replace("'", "''")
+                # 3. 转义换行符、回车符、制表符等控制字符
+                escaped = escaped.replace("\n", "\\n")
+                escaped = escaped.replace("\r", "\\r")
+                escaped = escaped.replace("\t", "\\t")
+                escaped = escaped.replace("\0", "\\0")
                 return f"'{escaped}'"
             elif isinstance(value, (int, float)):
                 return str(value)
@@ -798,17 +888,43 @@ class SingleResultTable(QWidget):
                 return "1" if value else "0"
             else:
                 # 其他类型转为字符串
-                escaped = str(value).replace("'", "''")
+                str_value = str(value)
+                # 转义特殊字符
+                escaped = str_value.replace("\\", "\\\\")
+                escaped = escaped.replace("'", "''")
+                escaped = escaped.replace("\n", "\\n")
+                escaped = escaped.replace("\r", "\\r")
+                escaped = escaped.replace("\t", "\\t")
+                escaped = escaped.replace("\0", "\\0")
                 return f"'{escaped}'"
         
-        # 构建WHERE子句（使用所有列的值来唯一标识一行）
+        # 获取主键列
+        primary_keys = self._get_primary_keys(table_name)
+        
+        # 构建WHERE子句
+        # 如果有主键，优先使用主键；否则使用所有列
+        where_columns = primary_keys if primary_keys else columns
+        
         where_conditions = []
-        for col in columns:
+        for col in where_columns:
+            # 确保列在原始数据中存在
+            if col not in original_row_data:
+                continue
             value = original_row_data.get(col)
             if value is None:
                 where_conditions.append(f"{escape_identifier(col)} IS NULL")
             else:
                 where_conditions.append(f"{escape_identifier(col)} = {escape_value(value)}")
+        
+        # 如果没有有效的WHERE条件，回退到使用所有列
+        if not where_conditions:
+            where_conditions = []
+            for col in columns:
+                value = original_row_data.get(col)
+                if value is None:
+                    where_conditions.append(f"{escape_identifier(col)} IS NULL")
+                else:
+                    where_conditions.append(f"{escape_identifier(col)} = {escape_value(value)}")
         
         where_clause = " AND ".join(where_conditions)
         
@@ -825,6 +941,15 @@ class SingleResultTable(QWidget):
         try:
             # 合并多个DELETE语句（如果数据库支持）
             combined_sql = ";\n".join(delete_sqls)
+            
+            # 在日志中打印DELETE SQL
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("=" * 80)
+            logger.info("执行DELETE语句:")
+            for idx, sql in enumerate(delete_sqls, 1):
+                logger.info(f"DELETE {idx}: {sql}")
+            logger.info("=" * 80)
             
             # 在主窗口状态栏显示SQL
             # 如果SQL太长，只显示前200个字符

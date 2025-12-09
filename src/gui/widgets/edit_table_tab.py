@@ -59,6 +59,7 @@ class EditTableTab(QWidget):
         self.conversation_history = []  # 对话历史
         self.ai_worker = None  # AI工作线程
         self.schema_worker = None  # 表结构工作线程
+        self.index_worker = None  # 索引工作线程
         self.current_table_schema = ""  # 当前表结构
         self.init_ui()
         # 异步加载表结构
@@ -130,6 +131,26 @@ class EditTableTab(QWidget):
         self.table_info_label.setStyleSheet("color: #666; padding: 5px; font-size: 11px;")
         self.table_info_label.setWordWrap(True)
         schema_layout.addWidget(self.table_info_label)
+        
+        # 索引列表显示区域
+        index_label = QLabel("索引列表")
+        index_label.setStyleSheet("font-weight: bold; font-size: 12px; padding: 5px; margin-top: 10px;")
+        schema_layout.addWidget(index_label)
+        
+        self.index_list = QTextEdit()
+        self.index_list.setReadOnly(True)
+        self.index_list.setMaximumHeight(150)
+        self.index_list.setPlaceholderText("正在加载索引信息...")
+        self.index_list.setStyleSheet("""
+            QTextEdit {
+                border: 1px solid #ddd;
+                background-color: #fafafa;
+                font-family: Consolas, monospace;
+                font-size: 10px;
+                padding: 5px;
+            }
+        """)
+        schema_layout.addWidget(self.index_list)
         
         main_splitter.addWidget(schema_container)
         main_splitter.setStretchFactor(0, 3)  # 左侧表结构占更多空间
@@ -300,6 +321,21 @@ class EditTableTab(QWidget):
                 pass
             self.schema_worker = None
         
+        # 停止之前的index worker
+        if self.index_worker:
+            try:
+                if self.index_worker.isRunning():
+                    self.index_worker.terminate()
+                    self.index_worker.wait(500)
+                try:
+                    self.index_worker.indexes_ready.disconnect()
+                except:
+                    pass
+                self.index_worker.deleteLater()
+            except RuntimeError:
+                pass
+            self.index_worker = None
+        
         # 显示加载状态
         if force_refresh:
             self.set_status("正在从数据库重新加载表结构...", timeout=0)
@@ -320,6 +356,81 @@ class EditTableTab(QWidget):
         self.schema_worker.schema_ready.connect(self.on_table_schema_ready)
         self.schema_worker.start()
     
+    def load_table_indexes(self):
+        """加载表的索引信息"""
+        if not self.db_manager or not self.connection_id or not self.table_name:
+            return
+        
+        connection = self.db_manager.get_connection(self.connection_id)
+        if not connection:
+            return
+        
+        # 在工作线程中获取索引信息
+        from PyQt6.QtCore import QThread, pyqtSignal
+        
+        class IndexLoaderWorker(QThread):
+            indexes_ready = pyqtSignal(list)
+            
+            def __init__(self, connection_string, connect_args, table_name, database, db_type):
+                super().__init__()
+                self.connection_string = connection_string
+                self.connect_args = connect_args
+                self.table_name = table_name
+                self.database = database
+                self.db_type = db_type
+            
+            def run(self):
+                try:
+                    from sqlalchemy import create_engine, inspect
+                    engine = create_engine(
+                        self.connection_string,
+                        connect_args=self.connect_args,
+                        pool_pre_ping=True,
+                        echo=False
+                    )
+                    
+                    inspector = inspect(engine)
+                    
+                    # 获取索引信息
+                    if self.db_type in ('mysql', 'mariadb') and self.database:
+                        indexes = inspector.get_indexes(self.table_name, schema=self.database)
+                    else:
+                        indexes = inspector.get_indexes(self.table_name)
+                    
+                    self.indexes_ready.emit(indexes)
+                    engine.dispose()
+                except Exception as e:
+                    logger.error(f"获取索引信息失败: {str(e)}")
+                    self.indexes_ready.emit([])
+        
+        self.index_worker = IndexLoaderWorker(
+            connection.get_connection_string(),
+            connection.get_connect_args(),
+            self.table_name,
+            self.database,
+            connection.db_type.value if connection.db_type else 'mysql'
+        )
+        self.index_worker.indexes_ready.connect(self.on_indexes_ready)
+        self.index_worker.start()
+    
+    def on_indexes_ready(self, indexes: list):
+        """索引信息加载完成回调"""
+        if not indexes:
+            self.index_list.setPlainText("无索引")
+            return
+        
+        # 格式化索引信息
+        index_lines = []
+        for idx in indexes:
+            index_name = idx.get('name', '未知')
+            columns = ', '.join(idx.get('column_names', []))
+            unique = "唯一索引" if idx.get('unique', False) else "普通索引"
+            
+            index_info = f"{index_name} ({columns}) - {unique}"
+            index_lines.append(index_info)
+        
+        self.index_list.setPlainText('\n'.join(index_lines))
+    
     def on_table_schema_ready(self, schema_text: str, table_names: list):
         """表结构加载完成回调"""
         self.current_table_schema = schema_text
@@ -327,6 +438,9 @@ class EditTableTab(QWidget):
         logger.info(f"Schema文本长度: {len(schema_text) if schema_text else 0}")
         logger.info(f"Schema文本前500字符:\n{schema_text[:500] if schema_text else '空'}")
         logger.info(f"返回的表名列表: {table_names}")
+        
+        # 加载索引信息
+        self.load_table_indexes()
         
         # 检查是否成功获取到表结构
         if not schema_text or not schema_text.strip():
@@ -422,7 +536,9 @@ class EditTableTab(QWidget):
                     table_info['primary_keys'] = primary_keys
                     table_info['comment'] = comment
                     current_table = table_name
-                    logger.debug(f"解析到表信息: {table_name}, 主键: {primary_keys}, 注释: {comment}")
+                    logger.info(f"解析到表信息: {table_name}, 主键: {primary_keys}, 注释: {comment}")
+                    if primary_keys:
+                        logger.info(f"主键列表: {primary_keys.split(',') if primary_keys else []}")
                 
                 # 解析列信息行：格式为 "  • column_name: TYPE (可空/非空) (注释), 默认: ..."
                 # 注意：需要检查原始行（保留空格），因为列信息行以 "  • " 开头
@@ -507,13 +623,34 @@ class EditTableTab(QWidget):
         # 填充列数据
         self.schema_table.setRowCount(len(columns))
         
+        # 解析主键列表
+        primary_keys_str = table_info.get('primary_keys', '')
+        primary_keys = []
+        if primary_keys_str:
+            primary_keys = [pk.strip() for pk in primary_keys_str.split(',')]
+            logger.info(f"解析到的主键字段列表: {primary_keys}")
+        else:
+            logger.warning(f"表 {table_info.get('name', 'unknown')} 没有主键信息")
+        
         for row, col in enumerate(columns):
-            # 字段名（蓝色加粗）
-            name_item = QTableWidgetItem(col['name'])
+            # 字段名（蓝色加粗，如果是主键则添加标识）
+            col_name = col['name']
+            is_primary_key = col_name in primary_keys
+            if is_primary_key:
+                logger.debug(f"字段 {col_name} 是主键")
+            display_name = f"{col_name} 🔑" if is_primary_key else col_name
+            
+            name_item = QTableWidgetItem(display_name)
             name_item.setForeground(QColor("#1976d2"))
             font = name_item.font()
             font.setBold(True)
             name_item.setFont(font)
+            
+            # 如果是主键，使用特殊背景色
+            if is_primary_key:
+                name_item.setBackground(QColor("#fff3e0"))  # 浅橙色背景
+                name_item.setToolTip("主键字段")
+            
             self.schema_table.setItem(row, 0, name_item)
             
             # 类型（绿色）
@@ -726,4 +863,19 @@ class EditTableTab(QWidget):
             except RuntimeError:
                 pass
             self.schema_worker = None
+        
+        # 停止index worker
+        if self.index_worker:
+            try:
+                if self.index_worker.isRunning():
+                    self.index_worker.terminate()
+                    self.index_worker.wait(500)
+                try:
+                    self.index_worker.indexes_ready.disconnect()
+                except:
+                    pass
+                self.index_worker.deleteLater()
+            except RuntimeError:
+                pass
+            self.index_worker = None
 

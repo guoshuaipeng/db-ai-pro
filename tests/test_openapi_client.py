@@ -260,7 +260,7 @@ def test_aa():
     client = OpenApiClient(BASE_URL, ACCESS_KEY, SECRET_KEY)
 
     # 测试用户ID
-    user_id = "1001"
+    user_id = "1997899149780496387"
 
     # 1. 查询积分
     print("\n" + "=" * 70)
@@ -277,7 +277,7 @@ def test_aa():
     result = client.deduct_point(
         user_id=user_id,
         request_id=request_id,
-        points=100,
+        points=5000,
         biz_scene="AI_CHAT",
         reason="AI对话消费测试"
     )

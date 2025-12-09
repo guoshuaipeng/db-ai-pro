@@ -98,10 +98,8 @@ class AIModelDialog(QDialog):
         self.active_check.setChecked(True)
         form_layout.addRow("激活:", self.active_check)
         
-        # 设为默认（已禁用，因为默认模型是硬编码的）
+        # 设为默认
         self.default_check = QCheckBox()
-        self.default_check.setEnabled(False)  # 禁用，因为默认模型是硬编码的
-        self.default_check.setToolTip("默认模型是硬编码在程序中的，用户配置的模型不能设置为默认")
         form_layout.addRow("设为默认:", self.default_check)
         
         layout.addLayout(form_layout)

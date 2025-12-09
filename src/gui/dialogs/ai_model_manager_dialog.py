@@ -119,6 +119,11 @@ class AIModelManagerDialog(QDialog):
         self.stats_text.setPlaceholderText("选择模型查看Token使用统计")
         stats_layout.addWidget(self.stats_text)
         
+        # 清空统计按钮
+        self.clear_stats_btn = QPushButton("清空统计")
+        self.clear_stats_btn.clicked.connect(self.clear_current_stats)
+        stats_layout.addWidget(self.clear_stats_btn)
+        
         stats_group.setLayout(stats_layout)
         splitter.addWidget(stats_group)
         
@@ -165,33 +170,15 @@ class AIModelManagerDialog(QDialog):
         # 更新统计信息
         self.update_stats_display(model_id)
         
-        # 如果是默认模型（硬编码的），禁用编辑和删除按钮
-        from src.core.default_ai_model import DEFAULT_MODEL_ID
-        if model and (model.id == DEFAULT_MODEL_ID or model.is_default):
-            self.edit_btn.setEnabled(False)
-            self.edit_btn.setToolTip("默认模型是硬编码的，不允许编辑")
-        else:
-            self.edit_btn.setEnabled(True)
-            self.edit_btn.setToolTip("")
+        # 默认模型也允许编辑
+        self.edit_btn.setEnabled(True)
+        self.edit_btn.setToolTip("")
     
     def on_item_double_clicked(self, item: QListWidgetItem):
         """列表项双击事件"""
         model_id = item.data(Qt.ItemDataRole.UserRole)
         model = next((m for m in self.models if m.id == model_id), None)
         
-        # 如果是默认模型（硬编码的），不允许编辑
-        from src.core.default_ai_model import DEFAULT_MODEL_ID
-        if model and (model.id == DEFAULT_MODEL_ID or model.is_default):
-            QMessageBox.warning(
-                self,
-                "提示",
-                "默认模型不允许编辑。\n\n"
-                "默认模型是硬编码在程序中的，无法修改。\n"
-                "您可以添加新的模型配置。"
-            )
-            return
-        
-        # 非默认模型可以编辑
         self.edit_model(item)
     
     def update_stats_display(self, model_id: str):
@@ -226,6 +213,32 @@ class AIModelManagerDialog(QDialog):
         
         self.stats_text.setHtml(stats_text)
     
+    def clear_current_stats(self):
+        """清空当前选中模型的Token统计"""
+        current_item = self.model_list.currentItem()
+        if not current_item:
+            QMessageBox.warning(self, "警告", "请先选择一个模型配置")
+            return
+        
+        model_id = current_item.data(Qt.ItemDataRole.UserRole)
+        model = next((m for m in self.models if m.id == model_id), None)
+        if not model:
+            return
+        
+        reply = QMessageBox.question(
+            self,
+            "确认清空",
+            f"确定要清空模型 '{model.name}' 的Token使用统计吗？\n\n此操作不可撤销！",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.token_storage.clear_stats(model_id)
+            # 刷新统计显示
+            self.update_stats_display(model_id)
+            QMessageBox.information(self, "成功", "Token统计已清空")
+    
     def refresh_list(self):
         """刷新列表显示"""
         from src.core.default_ai_model import DEFAULT_MODEL_ID
@@ -239,9 +252,8 @@ class AIModelManagerDialog(QDialog):
         for model in self.models:
             item = QListWidgetItem()
             display_text = model.name
-            # 标记默认模型（硬编码的）
-            if model.id == DEFAULT_MODEL_ID or model.is_default:
-                display_text += " [默认-硬编码]"
+            if model.is_default:
+                display_text += " [默认]"
             if not model.is_active:
                 display_text += " [未激活]"
             item.setText(display_text)
@@ -280,8 +292,11 @@ class AIModelManagerDialog(QDialog):
         dialog = AIModelDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_model = dialog.get_model()
-            # 用户添加的模型不能是默认模型（默认模型是硬编码的）
-            new_model.is_default = False
+            
+            # 如果设置为默认，取消其他模型的默认标记
+            if new_model.is_default:
+                for m in self.models:
+                    m.is_default = False
             self.models.append(new_model)
             self.refresh_list()
     
@@ -313,8 +328,6 @@ class AIModelManagerDialog(QDialog):
     
     def edit_model(self, item: QListWidgetItem):
         """编辑模型"""
-        from src.core.default_ai_model import DEFAULT_MODEL_ID
-        
         model_id = item.data(Qt.ItemDataRole.UserRole)
         model = next((m for m in self.models if m.id == model_id), None)
         if not model:
@@ -323,14 +336,18 @@ class AIModelManagerDialog(QDialog):
         dialog = AIModelDialog(self, model)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             updated_model = dialog.get_model()
-            # 用户配置的模型不能是默认模型（默认模型是硬编码的）
-            updated_model.is_default = False
             
             # 更新模型
             for i, m in enumerate(self.models):
                 if m.id == model_id:
                     self.models[i] = updated_model
                     break
+            
+            # 确保仅有一个默认模型
+            if updated_model.is_default:
+                for m in self.models:
+                    if m.id != updated_model.id:
+                        m.is_default = False
             
             self.refresh_list()
     
@@ -346,14 +363,13 @@ class AIModelManagerDialog(QDialog):
         if not model:
             return
         
-        # 检查是否为默认模型（硬编码的默认模型不允许删除）
-        from src.core.default_ai_model import DEFAULT_MODEL_ID
-        if model.id == DEFAULT_MODEL_ID or model.is_default:
+        # 默认模型不允许删除，防止无默认可用
+        if model.is_default:
             QMessageBox.warning(
                 self,
                 "提示",
                 "默认模型不允许删除。\n\n"
-                "默认模型是硬编码在程序中的，无法删除。"
+                "请先将其他模型设为默认，再删除当前模型。"
             )
             return
         
@@ -370,9 +386,7 @@ class AIModelManagerDialog(QDialog):
             self.refresh_list()
     
     def set_default_model(self):
-        """设置默认模型（实际上默认模型是硬编码的，此功能已禁用）"""
-        from src.core.default_ai_model import DEFAULT_MODEL_ID
-        
+        """设置默认模型"""
         current_item = self.model_list.currentItem()
         if not current_item:
             QMessageBox.warning(self, "警告", "请先选择一个模型配置")
@@ -380,25 +394,13 @@ class AIModelManagerDialog(QDialog):
         
         model_id = current_item.data(Qt.ItemDataRole.UserRole)
         model = next((m for m in self.models if m.id == model_id), None)
-        
-        # 如果选择的是硬编码的默认模型，提示用户
-        if model_id == DEFAULT_MODEL_ID:
-            QMessageBox.information(
-                self,
-                "提示",
-                "默认模型已经是系统默认模型，无需设置。\n\n"
-                "默认模型是硬编码在程序中的，始终作为默认使用。"
-            )
+        if not model:
             return
         
-        # 用户配置的模型不能设置为默认
-        QMessageBox.information(
-            self,
-            "提示",
-            "默认模型是硬编码在程序中的，无法更改。\n\n"
-            "系统会始终使用硬编码的默认模型作为默认配置。\n"
-            "您添加的其他模型配置可以作为备选使用。"
-        )
+        # 将选中的模型设为默认，其他取消默认
+        for m in self.models:
+            m.is_default = (m.id == model_id)
+        self.refresh_list()
     
     def edit_prompts(self):
         """编辑提示词"""
@@ -407,27 +409,13 @@ class AIModelManagerDialog(QDialog):
     
     def save_and_accept(self):
         """保存并接受"""
-        from src.core.default_ai_model import DEFAULT_MODEL_ID
-        
-        # 检查是否有用户配置的模型（排除硬编码的默认模型）
-        user_models = [m for m in self.models if m.id != DEFAULT_MODEL_ID]
-        
-        if not user_models:
-            reply = QMessageBox.question(
-                self,
-                "确认",
-                "没有配置任何用户模型，确定要继续吗？\n\n"
-                "系统将使用硬编码的默认模型（如果已配置API密钥）。",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.No:
-                return
-        
-        # 确保用户配置的模型都不是默认模型（默认模型是硬编码的）
-        for model in self.models:
-            if model.id != DEFAULT_MODEL_ID:
-                model.is_default = False
+        # 确保至少有一个默认模型
+        if not any(m.is_default for m in self.models if m.is_active):
+            # 若没有默认，自动将第一个激活的设为默认
+            for model in self.models:
+                if model.is_active:
+                    model.is_default = True
+                    break
         
         if self.storage.save_models(self.models):
             QMessageBox.information(self, "成功", "模型配置已保存")

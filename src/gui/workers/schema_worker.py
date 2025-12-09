@@ -126,15 +126,38 @@ class SchemaWorker(QThread):
                 try:
                     logger.debug(f"SchemaWorker: 正在处理第 {idx}/{len(tables_to_process)} 个表: {table_name}")
                     
-                    columns = inspector.get_columns(table_name)
+                    # 解析表名（可能包含数据库名，如 database.table）
+                    actual_table_name = table_name
+                    schema_name = None
+                    if '.' in table_name:
+                        # 找到最后一个点号（数据库名可能包含点号）
+                        last_dot_index = table_name.rfind('.')
+                        schema_name = table_name[:last_dot_index].strip()
+                        actual_table_name = table_name[last_dot_index + 1:].strip()
+                    elif self.database:
+                        # 如果表名不包含数据库名，但 self.database 存在，使用它作为 schema
+                        schema_name = self.database
+                    
+                    # 获取列信息（有 schema 时总是传 schema，兼容 MySQL/PostgreSQL 等）
+                    if schema_name:
+                        columns = inspector.get_columns(actual_table_name, schema=schema_name)
+                    else:
+                        columns = inspector.get_columns(actual_table_name)
                     logger.debug(f"SchemaWorker: 表 {table_name} 有 {len(columns)} 个列")
                     
-                    # 获取主键信息
+                    # 获取主键信息（兼容不同数据库/SQLAlchemy版本，使用 get_pk_constraint）
                     try:
-                        primary_keys = inspector.get_primary_keys(table_name)
+                        if schema_name:
+                            pk_constraint = inspector.get_pk_constraint(actual_table_name, schema=schema_name)
+                        else:
+                            pk_constraint = inspector.get_pk_constraint(actual_table_name)
+                        primary_keys = pk_constraint.get("constrained_columns", []) if pk_constraint else []
+                        logger.info(f"SchemaWorker: 表 {table_name} (schema={schema_name}, table={actual_table_name}) 的主键: {primary_keys}")
                         pk_info = f" [主键: {', '.join(primary_keys)}]" if primary_keys else ""
+                        if not primary_keys:
+                            logger.warning(f"SchemaWorker: 表 {table_name} 没有主键")
                     except Exception as e:
-                        logger.debug(f"获取表 {table_name} 的主键失败: {str(e)}")
+                        logger.error(f"获取表 {table_name} 的主键失败: {str(e)}", exc_info=True)
                         pk_info = ""
                     
                     # 尝试获取表注释

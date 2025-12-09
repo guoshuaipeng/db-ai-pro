@@ -45,8 +45,8 @@ class ConnectionTreeWithSearch(QWidget):
         
         # 创建搜索框
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("搜索表名... (按任意字母键快速搜索)")
-        self.search_box.setVisible(False)  # 默认隐藏
+        self.search_box.setPlaceholderText("搜索表名...")
+        self.search_box.setVisible(True)  # 始终显示
         self.search_box.textChanged.connect(self.on_search_text_changed)
         self.search_box.returnPressed.connect(self.on_search_return_pressed)
         
@@ -83,16 +83,14 @@ class ConnectionTreeWithSearch(QWidget):
         if event.type() == event.Type.KeyPress:
             key_event = event
             
-            # 如果焦点在树上，按任意字母、数字或常用符号键，显示并聚焦搜索框
+            # 如果焦点在树上，按任意字母、数字或常用符号键，聚焦搜索框
             if obj == self.tree:
                 key = key_event.key()
                 # 检查是否是可打印字符（字母、数字、常用符号）
                 if (Qt.Key.Key_A <= key <= Qt.Key.Key_Z) or \
                    (Qt.Key.Key_0 <= key <= Qt.Key.Key_9) or \
                    key in [Qt.Key.Key_Underscore, Qt.Key.Key_Minus, Qt.Key.Key_Period]:
-                    # 显示搜索框并聚焦
-                    self.show_search()
-                    # 将按键事件传递给搜索框
+                    # 聚焦搜索框
                     self.search_box.setFocus()
                     # 将按键文本添加到搜索框
                     text = key_event.text()
@@ -101,10 +99,11 @@ class ConnectionTreeWithSearch(QWidget):
                         self.search_box.selectAll()  # 选中所有文本，方便继续输入
                     return True
             
-            # 如果焦点在搜索框，按 ESC 隐藏搜索框并返回焦点到树
+            # 如果焦点在搜索框，按 ESC 清空搜索并返回焦点到树
             if obj == self.search_box:
                 if key_event.key() == Qt.Key.Key_Escape:
-                    self.hide_search()
+                    self.search_box.clear()
+                    self.tree.setFocus()
                     return True
                 elif key_event.key() == Qt.Key.Key_Down:
                     # 按向下键，聚焦到树并选中第一个匹配项

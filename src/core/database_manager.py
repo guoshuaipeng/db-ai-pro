@@ -321,6 +321,12 @@ class DatabaseManager:
         if not engine:
             return False, None, "连接不存在"
         
+        # 如果是DELETE语句，在日志中打印
+        if sql.strip().upper().startswith('DELETE'):
+            logger.info("=" * 80)
+            logger.info(f"执行DELETE语句: {sql}")
+            logger.info("=" * 80)
+        
         try:
             with engine.begin() as conn:
                 result = conn.execute(text(sql))

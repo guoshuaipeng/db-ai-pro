@@ -85,10 +85,8 @@ class AIModelStorage:
             return ""
     
     def save_models(self, models: List[AIModelConfig]) -> bool:
-        """保存模型配置列表（只保存用户配置的模型，不保存硬编码的默认模型）"""
+        """保存模型配置列表（包含默认模型的修改）"""
         try:
-            from src.core.default_ai_model import DEFAULT_MODEL_ID
-            
             if not models:
                 logger.warning("模型配置列表为空，跳过保存")
                 return False
@@ -96,11 +94,6 @@ class AIModelStorage:
             data = []
             for model in models:
                 try:
-                    # 跳过默认模型（硬编码的，不保存到JSON）
-                    if model.id == DEFAULT_MODEL_ID:
-                        logger.debug(f"跳过保存默认模型: {model.name}")
-                        continue
-                    
                     model_dict = {
                         "id": model.id,
                         "name": model.name,
@@ -110,7 +103,7 @@ class AIModelStorage:
                         "default_model": model.default_model,
                         "turbo_model": model.turbo_model,
                         "is_active": model.is_active,
-                        "is_default": False,  # 用户配置的模型不能是默认模型
+                        "is_default": model.is_default,
                     }
                     data.append(model_dict)
                 except Exception as e:
@@ -162,28 +155,38 @@ class AIModelStorage:
             
             for model_dict in data:
                 try:
-                    # 跳过默认模型（如果JSON中有，忽略它，因为默认模型是硬编码的）
-                    model_id = model_dict.get("id", "")
-                    if model_id == DEFAULT_MODEL_ID:
-                        logger.warning("JSON中发现默认模型配置，已忽略（默认模型是硬编码的）")
-                        continue
+                    model_id = model_dict.get("id", str(uuid.uuid4()))
                     
                     # 解密API密钥
                     encrypted_api_key = model_dict.get("api_key", "")
                     api_key = self._decrypt_api_key(encrypted_api_key)
                     
-                    model = AIModelConfig(
-                        id=model_dict.get("id", str(uuid.uuid4())),
-                        name=model_dict.get("name", ""),
-                        provider=AIModelProvider(model_dict.get("provider", "aliyun_qianwen")),
-                        api_key=SecretStr(api_key),
-                        base_url=model_dict.get("base_url"),
-                        default_model=model_dict.get("default_model", "qwen-plus"),
-                        turbo_model=model_dict.get("turbo_model", "qwen-turbo"),
-                        is_active=model_dict.get("is_active", True),
-                        is_default=False,  # 用户配置的模型不能是默认模型
-                    )
-                    models.append(model)
+                    # 如果是默认模型ID，覆盖硬编码的默认模型（允许用户修改默认模型）
+                    if model_id == DEFAULT_MODEL_ID:
+                        models[0] = AIModelConfig(
+                            id=DEFAULT_MODEL_ID,
+                            name=model_dict.get("name", default_model.name),
+                            provider=AIModelProvider(model_dict.get("provider", default_model.provider.value)),
+                            api_key=SecretStr(api_key),
+                            base_url=model_dict.get("base_url"),
+                            default_model=model_dict.get("default_model", default_model.default_model),
+                            turbo_model=model_dict.get("turbo_model", default_model.turbo_model),
+                            is_active=model_dict.get("is_active", default_model.is_active),
+                            is_default=True,
+                        )
+                    else:
+                        model = AIModelConfig(
+                            id=model_id,
+                            name=model_dict.get("name", ""),
+                            provider=AIModelProvider(model_dict.get("provider", "aliyun_qianwen")),
+                            api_key=SecretStr(api_key),
+                            base_url=model_dict.get("base_url"),
+                            default_model=model_dict.get("default_model", "qwen-plus"),
+                            turbo_model=model_dict.get("turbo_model", "qwen-turbo"),
+                            is_active=model_dict.get("is_active", True),
+                            is_default=model_dict.get("is_default", False),
+                        )
+                        models.append(model)
                 except Exception as e:
                     logger.error(f"加载模型配置失败: {str(e)}, 数据: {model_dict}")
                     continue
@@ -221,7 +224,7 @@ class AIModelStorage:
             logger.warning(f"保存上次使用的模型ID失败: {str(e)}")
     
     def get_default_model(self) -> Optional[AIModelConfig]:
-        """获取默认模型配置（优先使用上次使用的模型）"""
+        """获取默认模型配置（优先使用上次使用的模型；允许用户修改默认模型）"""
         models = self.load_models()
         
         # 优先使用上次使用的模型
@@ -233,21 +236,18 @@ class AIModelStorage:
                     return model
             logger.warning(f"上次使用的模型ID {last_used_id} 不存在或未激活，使用默认模型")
         
-        # 如果没有上次使用的模型，使用硬编码的默认模型
-        from src.core.default_ai_model import get_default_model_config
-        default_model = get_default_model_config()
-        
-        # 如果默认模型已激活（有API密钥），返回它
-        if default_model.is_active:
-            logger.info("使用硬编码的默认模型")
-            return default_model
-        
-        # 如果默认模型未激活，尝试从用户配置的模型中找一个激活的
+        # 查找标记为默认的模型
         for model in models:
-            if model.id != default_model.id and model.is_active:
-                logger.warning("默认模型未激活，使用用户配置的模型")
+            if model.is_default and model.is_active:
+                logger.info(f"使用标记为默认的模型: {model.name}")
                 return model
         
-        # 如果都没有，返回默认模型（即使未激活）
-        return default_model
+        # 如果没有默认标记，返回第一个激活的
+        for model in models:
+            if model.is_active:
+                logger.info(f"未找到默认标记，使用第一个激活的模型: {model.name}")
+                return model
+        
+        # 如果都没有激活的，返回第一个模型或 None
+        return models[0] if models else None
 

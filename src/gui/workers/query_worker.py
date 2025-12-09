@@ -118,6 +118,12 @@ class QueryWorker(QThread):
                                 results.append((sql_stmt, True, rows, None, None, columns))
                         else:
                             # 执行非查询语句
+                            # 如果是DELETE语句，在日志中打印
+                            if sql_stmt.strip().upper().startswith('DELETE'):
+                                logger.info("=" * 80)
+                                logger.info(f"执行DELETE语句: {sql_stmt}")
+                                logger.info("=" * 80)
+                            
                             with engine.begin() as conn:
                                 result = conn.execute(text(sql_stmt))
                                 affected_rows = result.rowcount
@@ -158,6 +164,12 @@ class QueryWorker(QThread):
                         self.query_finished.emit(True, rows, None, None, columns)
                 else:
                     # 执行非查询语句（INSERT, UPDATE, DELETE等）
+                    # 如果是DELETE语句，在日志中打印
+                    if self.sql.strip().upper().startswith('DELETE'):
+                        logger.info("=" * 80)
+                        logger.info(f"执行DELETE语句: {self.sql}")
+                        logger.info("=" * 80)
+                    
                     with engine.begin() as conn:
                         if self.isInterruptionRequested() or self._should_stop:
                             return
