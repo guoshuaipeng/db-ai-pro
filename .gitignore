@@ -157,7 +157,4 @@ data/
 temp/
 *.db
 *.sqlite
-
-
-
-/tests/test_openapi_client.py
+!/tests/test_openapi_client.py

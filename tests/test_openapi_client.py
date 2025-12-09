@@ -304,6 +304,7 @@ def test_aa():
 if __name__ == "__main__":
     print("🚀 OpenAPI积分接口测试")
     print("📋 配置信息：")
+
     print("   Base URL: http://localhost:9104")
     print("   AccessKey: qifei")
     print("   SecretKey: a7VQBeEa1A7EPw6FwCTf+QTrHUKx/PNHS0AKGiEWYbE=")
