@@ -369,6 +369,12 @@ class DatabaseManager:
                     """))
                     databases = [row[0] for row in result]
                     return databases
+            elif connection.db_type == DatabaseType.HIVE:
+                # Hive: 查询所有数据库
+                with engine.connect() as conn:
+                    result = conn.execute(text("SHOW DATABASES"))
+                    databases = [row[0] for row in result]
+                    return databases
             else:
                 # 其他数据库类型，返回当前数据库
                 return [connection.database] if connection.database else []

@@ -14,6 +14,7 @@ class DatabaseType(str, Enum):
     ORACLE = "oracle"
     SQLSERVER = "sqlserver"
     MARIADB = "mariadb"
+    HIVE = "hive"
 
 
 class DatabaseConnection(BaseModel):
@@ -57,6 +58,7 @@ class DatabaseConnection(BaseModel):
             DatabaseType.SQLITE: "sqlite",
             DatabaseType.ORACLE: "oracle+oracledb",
             DatabaseType.SQLSERVER: "mssql+pyodbc",
+            DatabaseType.HIVE: "hive",
         }
         
         driver = db_type_map.get(self.db_type, "mysql+pymysql")
@@ -112,6 +114,13 @@ class DatabaseConnection(BaseModel):
             connect_args['connect_timeout'] = self.timeout
         elif self.db_type == DatabaseType.SQLSERVER:
             # SQL Server (pyodbc) 连接参数
+            connect_args['timeout'] = self.timeout
+        elif self.db_type == DatabaseType.HIVE:
+            # Hive (pyhive) 连接参数
+            # Hive 使用 auth_mechanism 参数，默认为 'PLAIN'
+            # 如果需要 Kerberos 认证，可以设置 auth_mechanism='KERBEROS'
+            connect_args['auth_mechanism'] = 'PLAIN'
+            # 超时设置
             connect_args['timeout'] = self.timeout
         
         return connect_args

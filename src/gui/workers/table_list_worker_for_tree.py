@@ -53,6 +53,8 @@ class TableListWorkerForTree(QThread):
                 connect_args['connect_timeout'] = min(connect_args.get('connect_timeout', 30), self._max_connect_timeout)
             elif self.db_type == DatabaseType.SQLSERVER:
                 connect_args['timeout'] = min(connect_args.get('timeout', 30), self._max_connect_timeout)
+            elif self.db_type == DatabaseType.HIVE:
+                connect_args['timeout'] = min(connect_args.get('timeout', 30), self._max_connect_timeout)
             
             # 在线程中创建新的数据库引擎
             # 不使用 pool_pre_ping，避免立即尝试连接导致卡顿

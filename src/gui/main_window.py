@@ -1066,6 +1066,7 @@ class MainWindow(QMainWindow):
                 DatabaseType.SQLITE: "SQLite",
                 DatabaseType.ORACLE: "Oracle",
                 DatabaseType.SQLSERVER: "SQL Server",
+                DatabaseType.HIVE: "Hive",
             }.get(conn.db_type, conn.db_type.value)
             
             tooltip = (

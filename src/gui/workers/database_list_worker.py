@@ -88,6 +88,13 @@ class DatabaseListWorker(QThread):
                         ORDER BY datname
                     """))
                     databases = [row[0] for row in result]
+            elif self.db_type == DatabaseType.HIVE:
+                # Hive: 查询所有数据库
+                with engine.connect() as conn:
+                    if self.isInterruptionRequested() or self._should_stop:
+                        return
+                    result = conn.execute(text("SHOW DATABASES"))
+                    databases = [row[0] for row in result]
             else:
                 # 其他数据库类型，返回空列表（由调用者处理）
                 databases = []

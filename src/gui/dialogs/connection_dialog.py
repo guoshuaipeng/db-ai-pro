@@ -322,6 +322,7 @@ class ConnectionDialog(QDialog):
             DatabaseType.SQLITE.value: 0,
             DatabaseType.ORACLE.value: 1521,
             DatabaseType.SQLSERVER.value: 1433,
+            DatabaseType.HIVE.value: 10000,
         }
         
         if db_type in default_ports:

@@ -198,6 +198,7 @@ class NavicatImporter:
                 "oracle": DatabaseType.ORACLE,
                 "sqlserver": DatabaseType.SQLSERVER,
                 "sqlite": DatabaseType.SQLITE,
+                "hive": DatabaseType.HIVE,
             }
             db_type = db_type_map.get(db_type_str, DatabaseType.MYSQL)
             

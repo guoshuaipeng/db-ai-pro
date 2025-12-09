@@ -9,6 +9,7 @@ psycopg2-binary>=2.9.0  # PostgreSQL驱动
 oracledb>=3.0.0  # Oracle驱动（推荐，支持Python 3.13+）
 # cx-Oracle>=8.3.0  # Oracle驱动（旧版，Python 3.13需要编译工具）
 pyodbc>=5.0.0  # SQL Server/ODBC驱动
+pyhive>=0.7.0  # Hive驱动
 
 # 配置和工具
 python-dotenv>=1.0.0  # 环境变量管理
