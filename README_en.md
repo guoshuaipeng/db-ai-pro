@@ -1,7 +1,7 @@
 # DataAI - AI-Powered Database Management Tool
 
 A database management tool similar to DataGrip, supporting multiple database connections and SQL queries.
-
+download : https://gitee.com/CodeYG/db-ai-pro/releases/tag/v1.1.0
 **Author**: codeyG (550187704@qq.com)
 
 ## Features

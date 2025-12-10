@@ -1,7 +1,7 @@
 # DataAI - AI驱动的数据库管理工具
 
 第一款全功能且支持AI的数据库管理工具，让数据库操作更智能、更高效。
-下载地址 https://gitee.com/CodeYG/db-ai-pro/releases/tag/v1.0.2
+下载地址 https://gitee.com/CodeYG/db-ai-pro/releases/tag/v1.1.0
 
 **作者**: codeyG (550187704@qq.com)
 
