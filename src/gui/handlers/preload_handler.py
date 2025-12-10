@@ -24,6 +24,8 @@ class PreloadHandler:
     
     def __init__(self, main_window: 'MainWindow'):
         self.main_window = main_window
+        from src.core.tree_cache import TreeCache
+        self.tree_cache = TreeCache()
     
     def start_preload(self):
         """启动预加载所有连接的表"""
@@ -57,22 +59,41 @@ class PreloadHandler:
         # 使用QTimer延迟执行，避免在信号回调中直接修改UI导致dataChanged警告
         def update_tree():
             try:
-                # 找到对应的连接项和数据库项
+                # 找到根节点（"我的连接"）
+                root_item = None
+                if self.main_window.connection_tree.topLevelItemCount() > 0:
+                    root_item = self.main_window.connection_tree.topLevelItem(0)
+                
+                if not root_item:
+                    return
+                
+                # 在根节点的子节点中查找连接项
                 connection_item = None
-                for i in range(self.main_window.connection_tree.topLevelItemCount()):
-                    item = self.main_window.connection_tree.topLevelItem(i)
-                    if item and item.data(0, Qt.ItemDataRole.UserRole) == connection_id:
-                        connection_item = item
+                for i in range(root_item.childCount()):
+                    child = root_item.child(i)
+                    if not child:
+                        continue
+                    
+                    # 使用 TreeItemData 获取连接ID
+                    child_connection_id = TreeItemData.get_item_data(child)
+                    child_type = TreeItemData.get_item_type(child)
+                    
+                    if child_type == TreeItemType.CONNECTION and child_connection_id == connection_id:
+                        connection_item = child
                         break
                 
                 if not connection_item:
                     return
                 
-                # 找到对应的数据库项
+                # 找到对应的数据库项（使用 TreeItemData 获取数据）
                 db_item = None
                 for i in range(connection_item.childCount()):
                     child = connection_item.child(i)
-                    if child and child.data(0, Qt.ItemDataRole.UserRole) == database:
+                    if not child:
+                        continue
+                    child_type = TreeItemData.get_item_type(child)
+                    child_data = TreeItemData.get_item_data(child)
+                    if child_type == TreeItemType.DATABASE and child_data == database:
                         db_item = child
                         break
                 
@@ -83,7 +104,8 @@ class PreloadHandler:
                     db_icon = get_database_icon_simple(18)
                     db_item.setIcon(0, db_icon)
                     db_item.setText(0, database)
-                    db_item.setData(0, Qt.ItemDataRole.UserRole, database)
+                    # 使用 TreeItemData 设置数据
+                    TreeItemData.set_item_type_and_data(db_item, TreeItemType.DATABASE, database)
                     db_item.setToolTip(0, f"数据库: {database}\n双击展开查看表")
                 
                 # 检查是否已经加载过表（查找"表"分类）
@@ -101,8 +123,14 @@ class PreloadHandler:
                                 break
                         break
                 
-                # 如果已经加载过，跳过（避免重复）
+                # 如果已经加载过，跳过UI更新（但仍然需要保存缓存）
                 if has_tables:
+                    # 保存到缓存（更新缓存）
+                    try:
+                        self.tree_cache.set_tables(connection_id, database, tables)
+                        logger.debug(f"预加载完成并缓存: {connection_id}.{database} ({len(tables)} 个表)")
+                    except Exception as e:
+                        logger.error(f"预加载缓存保存失败: {str(e)}", exc_info=True)
                     return
                 
                 # 如果没有"表"分类，创建它
@@ -129,6 +157,14 @@ class PreloadHandler:
                     )
                 
                 logger.debug(f"预加载完成: {connection_id} -> {database} ({len(tables)} 个表)")
+                
+                # 保存到缓存
+                try:
+                    self.tree_cache.set_tables(connection_id, database, tables)
+                    logger.debug(f"预加载完成并缓存: {connection_id}.{database} ({len(tables)} 个表)")
+                except Exception as e:
+                    logger.error(f"预加载缓存保存失败: {str(e)}", exc_info=True)
+                    
             except RuntimeError:
                 # 树结构已改变，忽略
                 pass

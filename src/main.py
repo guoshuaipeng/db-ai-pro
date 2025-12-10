@@ -28,6 +28,8 @@ from PyQt6.QtCore import Qt
 from src.gui.main_window import MainWindow
 from src.config.settings import Settings
 from src.core.i18n import TranslationManager
+from src.core.config_db import get_config_db
+import os
 
 
 def get_app_icon() -> QIcon:
@@ -102,6 +104,56 @@ def setup_windows_taskbar_icon(app: QApplication):
             # 如果设置失败，不影响程序运行
 
 
+def init_config_database():
+    """初始化配置数据库并迁移旧配置"""
+    logger = logging.getLogger(__name__)
+    
+    # 初始化 SQLite 配置数据库
+    config_db = get_config_db()
+    logger.info("配置数据库已初始化")
+    
+    # 迁移旧的 JSON 配置文件到 SQLite（如果存在）
+    try:
+        config_dir = Settings.get_config_dir()
+        
+        # 检查是否需要迁移
+        connections_file = os.path.join(config_dir, "connections.json")
+        prompts_file = os.path.join(config_dir, "prompts.json")
+        tree_cache_file = os.path.join(config_dir, "tree_cache.json")
+        
+        needs_migration = (
+            os.path.exists(connections_file) or 
+            os.path.exists(prompts_file) or 
+            os.path.exists(tree_cache_file)
+        )
+        
+        if needs_migration:
+            logger.info("检测到旧配置文件，开始迁移到 SQLite...")
+            migrated_count = config_db.migrate_from_json(
+                connections_file=connections_file,
+                prompts_file=prompts_file,
+                tree_cache_file=tree_cache_file
+            )
+            
+            if migrated_count > 0:
+                logger.info(f"配置文件迁移完成，共迁移 {migrated_count} 项")
+                
+                # 迁移成功后，备份并删除旧文件
+                for old_file in [connections_file, prompts_file, tree_cache_file]:
+                    if os.path.exists(old_file):
+                        try:
+                            backup_file = f"{old_file}.backup"
+                            os.rename(old_file, backup_file)
+                            logger.info(f"旧配置文件已备份: {backup_file}")
+                        except Exception as e:
+                            logger.warning(f"备份旧配置文件失败: {e}")
+        else:
+            logger.debug("无需迁移旧配置文件")
+    
+    except Exception as e:
+        logger.error(f"配置迁移失败: {str(e)}", exc_info=True)
+
+
 def main():
     """主函数"""
     # 创建应用程序
@@ -115,6 +167,9 @@ def main():
     # 设置应用程序图标
     app_icon = get_app_icon()
     app.setWindowIcon(app_icon)
+    
+    # 初始化配置数据库（必须在加载配置之前）
+    init_config_database()
     
     # 加载配置
     settings = Settings()

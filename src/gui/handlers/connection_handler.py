@@ -37,7 +37,8 @@ class ConnectionHandler:
             selected_connections = dialog.get_selected_connections()
             
             if not selected_connections:
-                QMessageBox.information(self.main_window, "提示", "未选择任何连接")
+                from src.utils.toast_manager import show_info
+                show_info("ℹ️ 未选择任何连接", 2000)
                 return
             
             # 导入选中的连接（不测试连接，因为密码可能无法解密）
@@ -56,15 +57,9 @@ class ConnectionHandler:
                 self.save_connections()
             
             # 显示结果和提示
+            from src.utils.toast_manager import show_success
             if success_count > 0:
-                QMessageBox.information(
-                    self.main_window, 
-                    "导入成功", 
-                    f"成功导入 {success_count} 个数据库连接\n\n"
-                    "注意：导入的连接未测试，密码可能需要手动输入。\n"
-                    "您可以在连接列表中右键点击连接进行编辑。",
-                    QMessageBox.StandardButton.Ok
-                )
+                show_success(f"✅ 成功导入 {success_count} 个数据库连接", 3000)
             else:
                 QMessageBox.warning(
                     self.main_window,
@@ -150,13 +145,16 @@ class ConnectionHandler:
                 self.main_window.refresh_connections()
                 self.save_connections()
                 self.main_window.statusBar().showMessage("连接测试成功", 3000)
+                # 显示 Toast 通知（非阻塞）
+                from src.utils.toast_manager import show_success
                 if is_edit:
-                    QMessageBox.information(self.main_window, "成功", "成功更新数据库连接")
+                    show_success("✅ 成功更新数据库连接", 2000)
                 else:
-                    QMessageBox.information(self.main_window, "成功", f"成功添加数据库连接: {connection.name}")
+                    show_success(f"✅ 成功添加数据库连接: {connection.name}", 2000)
             else:
                 self.main_window.statusBar().showMessage("添加连接失败", 3000)
-                QMessageBox.warning(self.main_window, "失败", "添加数据库连接失败")
+                from src.utils.toast_manager import show_error
+                show_error("❌ 添加数据库连接失败", 2000)
         else:
             # 测试失败，询问是否仍要保存
             self.main_window.statusBar().showMessage("连接测试失败", 3000)
@@ -189,18 +187,8 @@ class ConnectionHandler:
                 if self.main_window.db_manager.add_connection(connection, test_connection=False):
                     self.main_window.refresh_connections()
                     self.save_connections()
-                    if is_edit:
-                        QMessageBox.information(
-                            self.main_window,
-                            "已保存",
-                            "连接配置已保存，但连接测试失败。\n请检查连接信息（特别是密码）是否正确。"
-                        )
-                    else:
-                        QMessageBox.information(
-                            self.main_window,
-                            "已保存",
-                            f"连接配置已保存，但连接测试失败。\n请检查连接信息（特别是密码）是否正确。"
-                        )
+                    from src.utils.toast_manager import show_warning
+                    show_warning("⚠️ 连接配置已保存，但测试失败", 3000)
                 else:
                     QMessageBox.warning(self.main_window, "失败", "保存连接配置失败")
     
@@ -226,18 +214,41 @@ class ConnectionHandler:
                     self.main_window.sql_editor.set_status("已断开连接")
     
     def save_connections(self):
-        """保存所有连接"""
+        """保存所有连接到 SQLite 配置数据库"""
         try:
+            from src.core.config_db import get_config_db
+            config_db = get_config_db()
+            
             connections = self.main_window.db_manager.get_all_connections()
             if not connections:
                 logger.warning("连接列表为空，跳过保存以避免覆盖已有数据")
                 return
             
             # 记录保存的连接数量，用于调试
-            logger.info(f"准备保存 {len(connections)} 个连接")
-            result = self.main_window.connection_storage.save_connections(connections)
-            if not result:
-                logger.error("保存连接失败")
+            logger.info(f"准备保存 {len(connections)} 个连接到 SQLite")
+            
+            # 保存每个连接到 SQLite
+            for conn in connections:
+                try:
+                    # Pydantic v2 使用 model_dump()，v1 使用 dict()
+                    # 尝试使用 v2 的方法，如果失败则使用 v1
+                    try:
+                        conn_dict = conn.model_dump()
+                    except AttributeError:
+                        conn_dict = conn.dict()
+                    
+                    # 处理 SecretStr 字段：转换为普通字符串
+                    if 'password' in conn_dict:
+                        from pydantic import SecretStr
+                        if isinstance(conn_dict['password'], SecretStr):
+                            conn_dict['password'] = conn_dict['password'].get_secret_value()
+                    
+                    config_db.save_connection(conn_dict)
+                    logger.debug(f"已保存连接: {conn.name}")
+                except Exception as e:
+                    logger.error(f"保存连接 {conn.name} 失败: {str(e)}")
+            
+            logger.info(f"✅ 已成功保存 {len(connections)} 个连接到 SQLite")
         except Exception as e:
             logger.error(f"保存连接时发生异常: {str(e)}", exc_info=True)
     
@@ -287,10 +298,11 @@ class ConnectionHandler:
     
     def _on_test_result_ready(self, success: bool, message: str):
         """连接测试完成后的回调"""
+        from src.utils.toast_manager import show_success, show_error
         if success:
             self.main_window.statusBar().showMessage("连接测试成功", 3000)
-            QMessageBox.information(self.main_window, "成功", message)
+            show_success(f"✅ {message}", 2000)
         else:
             self.main_window.statusBar().showMessage("连接测试失败", 3000)
-            QMessageBox.warning(self.main_window, "失败", message)
+            show_error(f"❌ {message}", 3000)
 

@@ -7,6 +7,7 @@ from typing import List, TYPE_CHECKING
 import logging
 
 from src.core.database_connection import DatabaseType
+from src.core.tree_cache import TreeCache
 from src.gui.utils.tree_item_types import TreeItemType, TreeItemData
 from src.utils.ui_helpers import (
     get_database_icon_simple,
@@ -26,6 +27,7 @@ class TreeDataHandler:
     
     def __init__(self, main_window: 'MainWindow'):
         self.main_window = main_window
+        self.tree_cache = TreeCache()
     
     def refresh_connections(self):
         """刷新连接列表"""
@@ -79,6 +81,9 @@ class TreeDataHandler:
             
             # 不自动展开，让用户手动展开
             item.setExpanded(False)
+            
+            # 从缓存加载数据库列表（如果有缓存）
+            self._load_databases_from_cache(item, conn.id)
             
             # 添加到下拉框
             display_name = conn.get_display_name()
@@ -229,7 +234,7 @@ class TreeDataHandler:
             worker.connection_id = connection_id
             # 明确使用QueuedConnection，确保信号在UI线程的事件循环中异步处理
             worker.databases_ready.connect(
-                lambda databases, conn_id=connection_id: self.on_databases_loaded(connection_item, loading_item, databases),
+                lambda databases, conn_id=connection_id: self.on_databases_loaded(connection_item, loading_item, databases, conn_id),
                 Qt.ConnectionType.QueuedConnection
             )
             worker.error_occurred.connect(
@@ -244,7 +249,7 @@ class TreeDataHandler:
         # 延迟1ms执行，确保展开事件处理函数立即返回
         QTimer.singleShot(1, start_database_loading)
     
-    def on_databases_loaded(self, connection_item: QTreeWidgetItem, loading_item: QTreeWidgetItem, databases: List[str]):
+    def on_databases_loaded(self, connection_item: QTreeWidgetItem, loading_item: QTreeWidgetItem, databases: List[str], connection_id: str = None):
         """数据库列表加载完成回调"""
         # 检查对象是否仍然有效
         try:
@@ -280,17 +285,13 @@ class TreeDataHandler:
             no_db_item.setFlags(Qt.ItemFlag.NoItemFlags)  # 禁用交互
             return
         
-        # 获取连接信息
-        connection_id = None
-        try:
-            # 查找对应的连接ID（从workers字典中查找）
-            for conn_id, worker in self.main_window.database_list_workers.items():
-                if worker and hasattr(worker, 'connection_item') and worker.connection_item == connection_item:
-                    connection_id = conn_id
-                    break
-        except RuntimeError:
-            pass
+        # 获取连接信息（connection_id 现在作为参数传入）
         connection = self.main_window.db_manager.get_connection(connection_id) if connection_id else None
+        
+        # 保存到缓存
+        if connection_id:
+            self.tree_cache.set_databases(connection_id, databases)
+            logger.debug(f"已缓存连接 {connection_id} 的 {len(databases)} 个数据库")
         
         # 清理worker（加载完成后）
         if connection_id and connection_id in self.main_window.database_list_workers:
@@ -565,16 +566,45 @@ class TreeDataHandler:
             except (RuntimeError, AttributeError):
                 pass
         
+        # 获取连接ID和数据库名，用于缓存
+        connection_id = None
+        database = ""
+        
+        if hasattr(self.main_window.table_list_worker_for_tree, 'connection_id'):
+            connection_id = self.main_window.table_list_worker_for_tree.connection_id
+        else:
+            logger.warning("worker 没有 connection_id 属性")
+            
+        if hasattr(self.main_window.table_list_worker_for_tree, 'database'):
+            database = self.main_window.table_list_worker_for_tree.database
+        else:
+            logger.warning("worker 没有 database 属性")
+        
         if not tables:
-            # 没有表
+            # 没有表，保存空列表到缓存
+            if connection_id and database:
+                logger.info(f"保存空表列表缓存: {connection_id}.{database}")
+                self.tree_cache.set_tables(connection_id, database, [])
+            else:
+                logger.warning(f"无法保存空表列表缓存: connection_id={connection_id}, database={database}")
+            
             no_table_item = QTreeWidgetItem(tables_category)
             no_table_item.setText(0, "无表")
             TreeItemData.set_item_type_and_data(no_table_item, TreeItemType.EMPTY)
             no_table_item.setFlags(Qt.ItemFlag.NoItemFlags)  # 禁用交互
             return
         
+        # 保存到缓存
+        if connection_id and database:
+            try:
+                self.tree_cache.set_tables(connection_id, database, tables)
+                logger.info(f"已成功缓存数据库 {database} 的 {len(tables)} 个表")
+            except Exception as e:
+                logger.error(f"保存表缓存失败: {str(e)}", exc_info=True)
+        else:
+            logger.warning(f"无法保存表缓存 (缺少必要信息): connection_id={connection_id}, database={database}")
+        
         # 添加表项（按字母顺序排序）
-        database = self.main_window.table_list_worker_for_tree.database if hasattr(self.main_window.table_list_worker_for_tree, 'database') else ""
         for table_name in sorted(tables):
             table_item = QTreeWidgetItem(tables_category)
             table_item.setText(0, table_name)
@@ -705,4 +735,309 @@ class TreeDataHandler:
                     self.load_tables_for_database(current_item, connection_id, database, force_reload=True)
                     self.main_window.statusBar().showMessage(f"正在刷新数据库 '{database}' 的表列表...", 3000)
                     return
+    
+    def _load_databases_from_cache(self, connection_item: QTreeWidgetItem, connection_id: str):
+        """从缓存加载数据库列表（如果有）"""
+        cached_databases = self.tree_cache.get_databases(connection_id)
+        if not cached_databases:
+            return
+        
+        logger.info(f"从缓存加载连接 {connection_id} 的 {len(cached_databases)} 个数据库")
+        
+        # 获取连接信息
+        connection = self.main_window.db_manager.get_connection(connection_id)
+        
+        # 添加数据库项
+        for db_name in sorted(cached_databases):
+            db_item = QTreeWidgetItem(connection_item)
+            db_item.setText(0, db_name)
+            TreeItemData.set_item_type_and_data(db_item, TreeItemType.DATABASE, db_name)
+            db_item.setIcon(0, get_database_icon_simple(18))
+            db_item.setToolTip(0, f"数据库: {db_name}\n双击展开表列表")
+            
+            # 如果是当前连接的数据库，标记为已选中
+            if connection and connection.database == db_name:
+                font = db_item.font(0)
+                font.setBold(True)
+                db_item.setFont(0, font)
+            
+            # 从缓存加载表列表（如果有）
+            self._load_tables_from_cache(db_item, connection_id, db_name)
+        
+        # 后台异步刷新数据库列表（无感更新）
+        QTimer.singleShot(100, lambda: self._async_refresh_databases(connection_item, connection_id))
+    
+    def _load_tables_from_cache(self, db_item: QTreeWidgetItem, connection_id: str, database: str):
+        """从缓存加载表列表（如果有缓存的话）"""
+        logger.debug(f"尝试从缓存加载: connection_id={connection_id}, database={database}")
+        cached_tables = self.tree_cache.get_tables(connection_id, database)
+        logger.debug(f"缓存结果: {cached_tables}")
+        
+        # 只有缓存存在时才加载（首次打开不自动加载）
+        # None表示没有缓存，[]表示缓存为空表
+        if cached_tables is None:
+            logger.debug(f"数据库 {database} 没有表缓存，等待用户手动展开")
+            return
+        
+        if not cached_tables:  # 空列表
+            logger.debug(f"数据库 {database} 缓存为空表列表")
+            return
+        
+        logger.info(f"从缓存加载数据库 {database} 的 {len(cached_tables)} 个表")
+        
+        # 创建"表"分类项
+        tables_category = QTreeWidgetItem(db_item)
+        tables_category.setText(0, "表")
+        TreeItemData.set_item_type_and_data(tables_category, TreeItemType.TABLE_CATEGORY)
+        tables_category.setIcon(0, get_category_icon("表", 16))
+        tables_category.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        
+        # 添加表项
+        for table_name in sorted(cached_tables):
+            table_item = QTreeWidgetItem(tables_category)
+            table_item.setText(0, table_name)
+            TreeItemData.set_item_type_and_data(table_item, TreeItemType.TABLE, (database, table_name))
+            table_item.setToolTip(0, f"表: {database}.{table_name}\n双击或单击查询前100条数据")
+            table_item.setIcon(0, get_table_icon(16))
+            table_item.setFlags(
+                Qt.ItemFlag.ItemIsEnabled
+                | Qt.ItemFlag.ItemIsSelectable
+            )
+        
+        # 后台异步刷新表列表（无感更新），稍微延迟一点避免启动时过多请求
+        QTimer.singleShot(500, lambda: self._async_refresh_tables(db_item, connection_id, database))
+    
+    def _async_refresh_databases(self, connection_item: QTreeWidgetItem, connection_id: str):
+        """后台异步刷新数据库列表（无感更新）"""
+        # 这个方法会在后台更新数据库列表，不显示"加载中..."
+        # 获取连接信息
+        connection = self.main_window.db_manager.get_connection(connection_id)
+        if not connection:
+            return
+        
+        # 停止该连接之前的数据库列表工作线程（如果存在）
+        if connection_id in self.main_window.database_list_workers:
+            old_worker = self.main_window.database_list_workers[connection_id]
+            try:
+                if old_worker and old_worker.isRunning():
+                    try:
+                        old_worker.databases_ready.disconnect()
+                        old_worker.error_occurred.disconnect()
+                    except:
+                        pass
+                    old_worker.stop()
+                    if not old_worker.wait(200):
+                        old_worker.terminate()
+                        old_worker.wait(100)
+                    old_worker.deleteLater()
+            except RuntimeError:
+                pass
+            except Exception as e:
+                logger.warning(f"停止旧worker时出错: {str(e)}")
+            finally:
+                if connection_id in self.main_window.database_list_workers:
+                    del self.main_window.database_list_workers[connection_id]
+        
+        # 创建并启动数据库列表工作线程
+        from src.gui.workers.database_list_worker import DatabaseListWorker
+        worker = DatabaseListWorker(
+            connection.get_connection_string(),
+            connection.get_connect_args(),
+            connection.db_type
+        )
+        
+        worker.connection_item = connection_item
+        worker.connection_id = connection_id
+        
+        # 连接信号（静默更新）
+        worker.databases_ready.connect(
+            lambda databases: self._on_databases_refreshed(connection_item, connection_id, databases),
+            Qt.ConnectionType.QueuedConnection
+        )
+        worker.error_occurred.connect(
+            lambda error: logger.warning(f"后台刷新数据库列表失败: {error}"),
+            Qt.ConnectionType.QueuedConnection
+        )
+        
+        self.main_window.database_list_workers[connection_id] = worker
+        worker.start()
+        logger.debug(f"启动后台刷新连接 {connection_id} 的数据库列表")
+    
+    def _on_databases_refreshed(self, connection_item: QTreeWidgetItem, connection_id: str, databases: List[str]):
+        """后台刷新数据库列表完成（静默更新）"""
+        try:
+            if not connection_item or not hasattr(connection_item, 'text'):
+                return
+        except RuntimeError:
+            return
+        
+        # 保存到缓存
+        self.tree_cache.set_databases(connection_id, databases)
+        logger.debug(f"后台刷新完成，已更新缓存: {len(databases)} 个数据库")
+        
+        # 获取当前已有的数据库项
+        existing_databases = {}
+        for i in range(connection_item.childCount()):
+            child = connection_item.child(i)
+            child_type = TreeItemData.get_item_type(child)
+            if child_type == TreeItemType.DATABASE:
+                db_name = TreeItemData.get_item_data(child)
+                if db_name:
+                    existing_databases[db_name] = child
+        
+        # 获取连接信息
+        connection = self.main_window.db_manager.get_connection(connection_id)
+        
+        # 添加新增的数据库
+        for db_name in sorted(databases):
+            if db_name not in existing_databases:
+                logger.debug(f"发现新数据库: {db_name}")
+                db_item = QTreeWidgetItem(connection_item)
+                db_item.setText(0, db_name)
+                TreeItemData.set_item_type_and_data(db_item, TreeItemType.DATABASE, db_name)
+                db_item.setIcon(0, get_database_icon_simple(18))
+                db_item.setToolTip(0, f"数据库: {db_name}\n双击展开表列表")
+                
+                if connection and connection.database == db_name:
+                    font = db_item.font(0)
+                    font.setBold(True)
+                    db_item.setFont(0, font)
+                
+                # 后台刷新新数据库的表列表
+                QTimer.singleShot(200, lambda item=db_item: self._async_refresh_tables(item, connection_id, db_name))
+        
+        # 移除已删除的数据库
+        for db_name, db_item in existing_databases.items():
+            if db_name not in databases:
+                logger.debug(f"数据库已删除: {db_name}")
+                try:
+                    connection_item.removeChild(db_item)
+                except (RuntimeError, AttributeError):
+                    pass
+        
+        # 清理worker
+        if connection_id in self.main_window.database_list_workers:
+            try:
+                worker = self.main_window.database_list_workers[connection_id]
+                if worker:
+                    try:
+                        worker.databases_ready.disconnect()
+                        worker.error_occurred.disconnect()
+                    except:
+                        pass
+                    worker.deleteLater()
+                del self.main_window.database_list_workers[connection_id]
+            except RuntimeError:
+                pass
+    
+    def _async_refresh_tables(self, db_item: QTreeWidgetItem, connection_id: str, database: str):
+        """后台异步刷新表列表（无感更新）"""
+        # 检查是否已有表分类项
+        tables_category = None
+        for i in range(db_item.childCount()):
+            child = db_item.child(i)
+            if TreeItemData.get_item_type(child) == TreeItemType.TABLE_CATEGORY:
+                tables_category = child
+                break
+        
+        if not tables_category:
+            # 如果没有表分类项，说明还没展开过，不需要刷新
+            return
+        
+        # 获取连接信息
+        connection = self.main_window.db_manager.get_connection(connection_id)
+        if not connection:
+            return
+        
+        # 停止之前的表列表工作线程（如果存在）
+        if self.main_window.table_list_worker_for_tree:
+            try:
+                if self.main_window.table_list_worker_for_tree.isRunning():
+                    try:
+                        self.main_window.table_list_worker_for_tree.tables_ready.disconnect()
+                        self.main_window.table_list_worker_for_tree.error_occurred.disconnect()
+                    except:
+                        pass
+                    self.main_window.table_list_worker_for_tree.stop()
+                    if not self.main_window.table_list_worker_for_tree.wait(200):
+                        self.main_window.table_list_worker_for_tree.terminate()
+                        self.main_window.table_list_worker_for_tree.wait(100)
+                    self.main_window.table_list_worker_for_tree.deleteLater()
+            except RuntimeError:
+                pass
+            except Exception as e:
+                logger.warning(f"停止旧表列表worker时出错: {str(e)}")
+            finally:
+                self.main_window.table_list_worker_for_tree = None
+        
+        # 创建并启动表列表工作线程
+        from src.gui.workers.table_list_worker_for_tree import TableListWorkerForTree
+        self.main_window.table_list_worker_for_tree = TableListWorkerForTree(
+            connection.get_connection_string(),
+            connection.get_connect_args(),
+            connection.db_type,
+            database
+        )
+        
+        self.main_window.table_list_worker_for_tree.db_item = db_item
+        self.main_window.table_list_worker_for_tree.connection_id = connection_id
+        self.main_window.table_list_worker_for_tree.database = database
+        
+        # 连接信号（静默更新）
+        self.main_window.table_list_worker_for_tree.tables_ready.connect(
+            lambda tables: self._on_tables_refreshed(db_item, tables_category, connection_id, database, tables)
+        )
+        self.main_window.table_list_worker_for_tree.error_occurred.connect(
+            lambda error: logger.warning(f"后台刷新表列表失败: {error}")
+        )
+        
+        self.main_window.table_list_worker_for_tree.start()
+        logger.debug(f"启动后台刷新数据库 {database} 的表列表")
+    
+    def _on_tables_refreshed(self, db_item: QTreeWidgetItem, tables_category: QTreeWidgetItem, 
+                            connection_id: str, database: str, tables: List[str]):
+        """后台刷新表列表完成（静默更新）"""
+        try:
+            if not db_item or not tables_category:
+                return
+        except RuntimeError:
+            return
+        
+        # 保存到缓存
+        self.tree_cache.set_tables(connection_id, database, tables)
+        logger.debug(f"后台刷新完成，已更新缓存: 数据库 {database} 的 {len(tables)} 个表")
+        
+        # 获取当前已有的表项
+        existing_tables = {}
+        for i in range(tables_category.childCount()):
+            child = tables_category.child(i)
+            child_type = TreeItemData.get_item_type(child)
+            if child_type == TreeItemType.TABLE:
+                data = TreeItemData.get_item_data(child)
+                if data and isinstance(data, tuple) and len(data) >= 2:
+                    table_name = data[1]
+                    existing_tables[table_name] = child
+        
+        # 添加新增的表
+        for table_name in sorted(tables):
+            if table_name not in existing_tables:
+                logger.debug(f"发现新表: {table_name}")
+                table_item = QTreeWidgetItem(tables_category)
+                table_item.setText(0, table_name)
+                TreeItemData.set_item_type_and_data(table_item, TreeItemType.TABLE, (database, table_name))
+                table_item.setToolTip(0, f"表: {database}.{table_name}\n双击或单击查询前100条数据")
+                table_item.setIcon(0, get_table_icon(16))
+                table_item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                )
+        
+        # 移除已删除的表
+        for table_name, table_item in existing_tables.items():
+            if table_name not in tables:
+                logger.debug(f"表已删除: {table_name}")
+                try:
+                    tables_category.removeChild(table_item)
+                except (RuntimeError, AttributeError):
+                    pass
 

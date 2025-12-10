@@ -1302,14 +1302,11 @@ class MultiResultTable(QWidget):
     def copy_sql_to_clipboard(self, sql: str):
         """复制SQL到剪贴板"""
         from PyQt6.QtWidgets import QApplication
+        from src.utils.toast_manager import show_success
         clipboard = QApplication.clipboard()
         clipboard.setText(sql)
-        # 显示简短提示
-        QMessageBox.information(
-            self,
-            "已复制",
-            f"SQL已复制到剪贴板\n\n{sql[:100]}{'...' if len(sql) > 100 else ''}"
-        )
+        # 显示简短提示（Toast）
+        show_success(f"✅ SQL已复制到剪贴板")
     
     def _extract_table_name(self, sql: str) -> Optional[str]:
         """

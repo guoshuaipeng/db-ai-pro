@@ -69,6 +69,12 @@ class MenuHandler:
             # 数据库项的右键菜单
             database = TreeItemData.get_item_data(item)
             if database:
+                # 新建表
+                create_table_action = menu.addAction("📝 新建表")
+                create_table_action.triggered.connect(lambda: self.main_window.create_table_in_database(connection_id, database))
+                
+                menu.addSeparator()
+                
                 refresh_action = menu.addAction("🔄 刷新")
                 refresh_action.triggered.connect(lambda: self.main_window.tree_data_handler.refresh_database_tables(connection_id, database))
         else:
@@ -78,6 +84,12 @@ class MenuHandler:
             
             test_action = menu.addAction("🔌 测试连接")
             test_action.triggered.connect(lambda: self.main_window.connection_handler.test_connection(connection_id))
+            
+            menu.addSeparator()
+            
+            # 新建数据库
+            create_db_action = menu.addAction("🗄️ 新建数据库")
+            create_db_action.triggered.connect(lambda: self.main_window.create_database(connection_id, item))
             
             menu.addSeparator()
             

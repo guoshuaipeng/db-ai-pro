@@ -26,7 +26,6 @@ from typing import Optional, List
 from src.config.settings import Settings
 from src.core.database_manager import DatabaseManager
 from src.core.database_connection import DatabaseConnection, DatabaseType
-from src.core.connection_storage import ConnectionStorage
 from src.core.i18n import TranslationManager
 from src.core.simple_i18n import get_i18n
 from src.gui.dialogs.connection_dialog import ConnectionDialog
@@ -82,7 +81,6 @@ class MainWindow(QMainWindow):
         self.settings = settings
         self.translation_manager = translation_manager
         self.db_manager = DatabaseManager()
-        self.connection_storage = ConnectionStorage()
         from src.core.ai_model_storage import AIModelStorage
         self.ai_model_storage = AIModelStorage()
         self.current_connection_id: str = None
@@ -108,6 +106,10 @@ class MainWindow(QMainWindow):
         from src.gui.handlers.tree_data_handler import TreeDataHandler
         from src.gui.handlers.menu_handler import MenuHandler
         from src.gui.handlers.settings_handler import SettingsHandler
+        
+        # 设置全局 Toast 管理器的主窗口
+        from src.utils.toast_manager import ToastManager
+        ToastManager.set_main_window(self)
         
         self.connection_handler = ConnectionHandler(self)
         self.ai_model_handler = AIModelHandler(self)
@@ -242,139 +244,31 @@ class MainWindow(QMainWindow):
         self.connection_tree.itemCollapsed.connect(self.tree_handler.on_item_collapsed)
     
     def load_saved_connections(self):
-        """加载保存的连接"""
-        connections = self.connection_storage.load_connections()
-        for conn in connections:
-            # 加载时不测试连接（因为密码可能已过期）
-            self.db_manager.add_connection(conn, test_connection=False)
+        """加载保存的连接（从 SQLite 配置数据库）"""
+        from src.core.config_db import get_config_db
+        from pydantic import SecretStr
+        config_db = get_config_db()
+        
+        # 从 SQLite 加载所有连接
+        connection_dicts = config_db.get_all_connections()
+        connections = []
+        for conn_dict in connection_dicts:
+            try:
+                # 处理密码字段：转换为 SecretStr
+                if 'password' in conn_dict and not isinstance(conn_dict['password'], SecretStr):
+                    conn_dict['password'] = SecretStr(conn_dict['password'])
+                
+                # 使用 Pydantic 的标准方式创建实例
+                conn = DatabaseConnection(**conn_dict)
+                connections.append(conn)
+                # 加载时不测试连接（因为密码可能已过期）
+                self.db_manager.add_connection(conn, test_connection=False)
+            except Exception as e:
+                logger.error(f"加载连接失败: {str(e)}", exc_info=True)
         
         if connections:
             self.refresh_connections()
             logger.info(f"已加载 {len(connections)} 个保存的连接")
-    
-    def start_preload(self):
-        """启动预加载所有连接的表"""
-        connections = self.db_manager.get_all_connections()
-        if not connections:
-            return
-        
-        # 如果已有预加载线程在运行，先停止
-        if self.preload_worker and self.preload_worker.isRunning():
-            self.preload_worker.stop()
-            self.preload_worker.wait(1000)
-            if self.preload_worker.isRunning():
-                self.preload_worker.terminate()
-                self.preload_worker.wait(500)
-        
-        # 创建并启动预加载线程
-        from src.gui.workers.preload_worker import PreloadWorker
-        self.preload_worker = PreloadWorker(self.db_manager)
-        
-        # 连接信号
-        self.preload_worker.connection_loaded.connect(self.on_preload_connection_loaded)
-        self.preload_worker.progress.connect(self.on_preload_progress)
-        self.preload_worker.finished_all.connect(self.on_preload_finished)
-        
-        # 启动线程
-        self.preload_worker.start()
-        logger.info("开始后台预加载所有连接的表...")
-    
-    def on_preload_connection_loaded(self, connection_id: str, database: str, tables: List[str]):
-        """预加载完成一个数据库的回调"""
-        # 使用QTimer延迟执行，避免在信号回调中直接修改UI导致dataChanged警告
-        from PyQt6.QtCore import QTimer
-        
-        def update_tree():
-            try:
-                # 找到对应的连接项和数据库项
-                connection_item = None
-                for i in range(self.connection_tree.topLevelItemCount()):
-                    item = self.connection_tree.topLevelItem(i)
-                    if item and item.data(0, Qt.ItemDataRole.UserRole) == connection_id:
-                        connection_item = item
-                        break
-                
-                if not connection_item:
-                    return
-                
-                # 找到对应的数据库项
-                db_item = None
-                for i in range(connection_item.childCount()):
-                    child = connection_item.child(i)
-                    if child and child.data(0, Qt.ItemDataRole.UserRole) == database:
-                        db_item = child
-                        break
-                
-                if not db_item:
-                    # 如果数据库项不存在，说明还没展开过，先创建它
-                    db_item = QTreeWidgetItem(connection_item)
-                    # 使用简约的绿色数据库图标
-                    db_icon = get_database_icon_simple(18)
-                    db_item.setIcon(0, db_icon)
-                    db_item.setText(0, database)
-                    db_item.setData(0, Qt.ItemDataRole.UserRole, database)
-                    db_item.setToolTip(0, f"数据库: {database}\n双击展开查看表")
-                
-                # 检查是否已经加载过表（查找"表"分类）
-                tables_category = None
-                has_tables = False
-                for i in range(db_item.childCount()):
-                    child = db_item.child(i)
-                    if TreeItemData.get_item_type(child) == TreeItemType.TABLE_CATEGORY:
-                        tables_category = child
-                        # 检查"表"分类下是否有表项
-                        for j in range(tables_category.childCount()):
-                            table_child = tables_category.child(j)
-                            if TreeItemData.get_item_type(table_child) == TreeItemType.TABLE:
-                                has_tables = True
-                                break
-                        break
-                
-                # 如果已经加载过，跳过（避免重复）
-                if has_tables:
-                    return
-                
-                # 如果没有"表"分类，创建它
-                if not tables_category:
-                    tables_category = QTreeWidgetItem(db_item)
-                    tables_category.setText(0, "表")
-                    TreeItemData.set_item_type_and_data(tables_category, TreeItemType.TABLE_CATEGORY)
-                    tables_category.setIcon(0, get_category_icon("表", 16))
-                    # 允许显示和展开，但不允许选中（子项仍然可以选中）
-                    tables_category.setFlags(Qt.ItemFlag.ItemIsEnabled)
-                
-                # 添加表项（按字母顺序排序）
-                for table_name in sorted(tables):
-                    table_item = QTreeWidgetItem(tables_category)
-                    table_item.setText(0, table_name)
-                    # 设置节点类型和数据（表项）
-                    TreeItemData.set_item_type_and_data(table_item, TreeItemType.TABLE, (database, table_name))
-                    table_item.setToolTip(0, f"表: {database}.{table_name}\n双击或单击查询前100条数据")
-                    table_item.setIcon(0, get_table_icon(16))
-                    # 确保表项本身是可选中的（父项 "表" 被设置为 NoItemFlags）
-                    table_item.setFlags(
-                        Qt.ItemFlag.ItemIsEnabled
-                        | Qt.ItemFlag.ItemIsSelectable
-                    )
-                
-                logger.debug(f"预加载完成: {connection_id} -> {database} ({len(tables)} 个表)")
-            except RuntimeError:
-                # 树结构已改变，忽略
-                pass
-            except Exception as e:
-                logger.warning(f"预加载更新树时出错: {str(e)}")
-        
-        QTimer.singleShot(1, update_tree)
-    
-    def on_preload_progress(self, message: str):
-        """预加载进度更新"""
-        # 在状态栏显示进度（可选，避免太频繁更新）
-        logger.debug(f"预加载进度: {message}")
-    
-    def on_preload_finished(self):
-        """预加载全部完成"""
-        logger.info("所有连接的表预加载完成")
-        self.statusBar().showMessage("预加载完成", 3000)  # 显示3秒
     
     def save_connections(self):
         """保存所有连接"""
@@ -383,6 +277,114 @@ class MainWindow(QMainWindow):
     def show_create_table_dialog(self):
         """创建新建表tab"""
         self.table_structure_handler.show_create_table_dialog()
+    
+    def create_table_in_database(self, connection_id: str, database: str):
+        """在指定数据库中创建表（打开新建表tab并设置连接和数据库）"""
+        # 设置当前连接和数据库
+        self.set_current_connection(connection_id, database)
+        
+        # 打开新建表tab
+        self.show_create_table_dialog()
+        
+        logger.info(f"打开新建表页面，连接: {connection_id}, 数据库: {database}")
+    
+    def create_database(self, connection_id: str, connection_item: 'QTreeWidgetItem'):
+        """新建数据库"""
+        from PyQt6.QtWidgets import QMessageBox
+        from src.gui.dialogs.create_database_dialog import CreateDatabaseDialog
+        
+        # 获取连接信息
+        connection = self.db_manager.get_connection(connection_id)
+        if not connection:
+            QMessageBox.warning(self, "错误", "连接不存在")
+            return
+        
+        # 检查数据库类型是否支持
+        if connection.db_type.value not in ('mysql', 'mariadb', 'postgresql', 'sqlserver'):
+            QMessageBox.warning(self, "错误", f"数据库类型 {connection.db_type.value} 暂不支持创建数据库")
+            return
+        
+        # 显示新建数据库对话框
+        dialog = CreateDatabaseDialog(connection, self)
+        if dialog.exec() != QMessageBox.DialogCode.Accepted:
+            return
+        
+        # 获取用户输入
+        database_name = dialog.get_database_name()
+        charset = dialog.get_charset()
+        collation = dialog.get_collation()
+        
+        if not database_name:
+            return
+        
+        # 创建数据库
+        try:
+            from src.gui.workers.execute_sql_worker import ExecuteSQLWorker
+            
+            # 构建创建数据库的SQL
+            db_type = connection.db_type
+            if db_type.value in ('mysql', 'mariadb'):
+                sql = f"CREATE DATABASE `{database_name}`"
+                if charset:
+                    sql += f" DEFAULT CHARACTER SET {charset}"
+                if collation:
+                    sql += f" COLLATE {collation}"
+            elif db_type.value == 'postgresql':
+                sql = f'CREATE DATABASE "{database_name}"'
+                if charset:
+                    sql += f" ENCODING '{charset}'"
+            elif db_type.value == 'sqlserver':
+                sql = f"CREATE DATABASE [{database_name}]"
+                if collation:
+                    sql += f" COLLATE {collation}"
+            else:
+                QMessageBox.warning(self, "错误", f"数据库类型 {db_type.value} 不支持创建数据库")
+                return
+            
+            self.statusBar().showMessage(f"正在创建数据库 '{database_name}'...", 5000)
+            logger.info(f"执行创建数据库SQL: {sql}")
+            
+            # 创建worker执行SQL
+            worker = ExecuteSQLWorker(
+                connection.get_connection_string(),
+                connection.get_connect_args(),
+                connection.db_type,
+                sql,
+                None  # 不指定数据库，在服务器级别创建
+            )
+            
+            # 连接信号
+            def on_success(result):
+                QMessageBox.information(self, "成功", f"数据库 '{database_name}' 创建成功")
+                self.statusBar().showMessage(f"数据库 '{database_name}' 创建成功", 5000)
+                # 刷新数据库列表
+                self.tree_data_handler.refresh_connection_databases(connection_id, connection_item)
+            
+            def on_error(error):
+                QMessageBox.critical(self, "错误", f"创建数据库失败: {error}")
+                self.statusBar().showMessage(f"创建数据库失败", 5000)
+            
+            worker.finished.connect(on_success)
+            worker.error.connect(on_error)
+            worker.start()
+            
+            # 保存worker引用，避免被垃圾回收
+            if not hasattr(self, '_create_db_workers'):
+                self._create_db_workers = []
+            self._create_db_workers.append(worker)
+            
+            # worker完成后清理
+            def cleanup():
+                if hasattr(self, '_create_db_workers') and worker in self._create_db_workers:
+                    self._create_db_workers.remove(worker)
+                worker.deleteLater()
+            
+            worker.finished.connect(cleanup)
+            worker.error.connect(cleanup)
+            
+        except Exception as e:
+            logger.error(f"创建数据库失败: {str(e)}", exc_info=True)
+            QMessageBox.critical(self, "错误", f"创建数据库失败: {str(e)}")
     
     def close_query_tab(self, index: int):
         """关闭查询tab"""
