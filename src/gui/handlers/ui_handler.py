@@ -254,6 +254,15 @@ class UIHandler:
         toolbar = QToolBar()
         self.main_window.addToolBar(toolbar)
         
+        # AI 配置按钮
+        ai_config_btn = QPushButton("⚙️ AI 配置")
+        ai_config_btn.clicked.connect(self.main_window.configure_ai_models)
+        ai_config_btn.setToolTip("配置 AI 模型和 API 密钥")
+        toolbar.addWidget(ai_config_btn)
+        self.main_window.ai_config_btn = ai_config_btn
+        
+        toolbar.addSeparator()
+        
         # 添加连接按钮
         add_btn = QPushButton(self.main_window.tr("添加连接"))
         add_btn.clicked.connect(self.main_window.add_connection)
@@ -349,6 +358,8 @@ class UIHandler:
                     action.setText(self.main_window.tr("关于(&A)"))
         
         # 更新工具栏按钮和标签
+        if hasattr(self.main_window, 'ai_config_btn'):
+            self.main_window.ai_config_btn.setText(self.main_window.tr("⚙️ AI 配置"))
         if hasattr(self.main_window, 'add_connection_btn'):
             self.main_window.add_connection_btn.setText(self.main_window.tr("添加连接"))
         if hasattr(self.main_window, 'import_navicat_btn'):

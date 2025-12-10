@@ -207,8 +207,16 @@ class ConnectionHandler:
         
         if reply == QMessageBox.StandardButton.Yes:
             if self.main_window.db_manager.remove_connection(connection_id):
+                # 从 SQLite 中删除连接
+                from src.core.config_db import get_config_db
+                config_db = get_config_db()
+                config_db.delete_connection(connection_id)
+                logger.info(f"已从 SQLite 删除连接: {connection_id}")
+                
+                # 刷新连接树
                 self.main_window.refresh_connections()
-                self.save_connections()  # 保存连接
+                
+                # 如果删除的是当前连接，清空当前连接状态
                 if self.main_window.current_connection_id == connection_id:
                     self.main_window.current_connection_id = None
                     self.main_window.sql_editor.set_status("已断开连接")
