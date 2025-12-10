@@ -18,6 +18,8 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMenu,
     QApplication,
+    QLineEdit,
+    QSpinBox,
 )
 from src.utils.toast import show_toast
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -80,8 +82,17 @@ class SingleResultTable(QWidget):
     def __init__(self, parent=None, main_window=None, sql: str = None):
         super().__init__(parent)
         self.main_window = main_window  # 主窗口引用，用于执行SQL
-        self.original_sql = sql  # 原始SQL查询
+        self.original_sql = sql  # 原始SQL查询（不带LIMIT）
         self.original_data: List[Dict] = []  # 原始数据（用于生成WHERE条件）
+        
+        # 分页相关
+        self.all_data = []  # 存储当前页数据
+        self.current_page = 1  # 当前页码
+        self.page_size = 50  # 每页显示的行数
+        self.total_pages = 1  # 总页数
+        self.total_rows = 0  # 总行数
+        self.server_side_paging = False  # 是否使用服务器端分页
+        
         self.init_ui()
     
     def init_ui(self):
@@ -158,6 +169,11 @@ class SingleResultTable(QWidget):
         
         layout.addWidget(self.table)
         
+        # 分页控件
+        self.pagination_widget = self._create_pagination_widget()
+        self.pagination_widget.setVisible(False)  # 默认隐藏
+        layout.addWidget(self.pagination_widget)
+        
         # 状态标签（已隐藏，状态信息显示到主窗口状态栏）
         self.status_label = QLabel("等待查询结果...")
         self.status_label.setStyleSheet("color: #666; padding: 5px; border-top: 1px solid #ddd;")
@@ -174,6 +190,285 @@ class SingleResultTable(QWidget):
         
         # 保存正在执行的UPDATE worker
         self.update_worker = None
+        
+        # 保存正在执行的分页查询 worker
+        self.pagination_worker = None
+        
+        # 保存连接信息（用于分页查询）
+        self.connection_string = None
+        self.connect_args = None
+    
+    def _create_pagination_widget(self):
+        """创建分页控件"""
+        widget = QWidget()
+        layout = QHBoxLayout()
+        layout.setContentsMargins(5, 5, 5, 5)
+        widget.setLayout(layout)
+        
+        # 信息标签（显示当前页/总页数，以及行数范围）
+        self.page_info_label = QLabel("第 1/1 页 (显示 0-0 行，共 0 行)")
+        self.page_info_label.setStyleSheet("color: #666; font-size: 12px;")
+        layout.addWidget(self.page_info_label)
+        
+        layout.addStretch()
+        
+        # 每页显示行数
+        layout.addWidget(QLabel("每页显示:"))
+        self.page_size_spin = QSpinBox()
+        self.page_size_spin.setRange(10, 1000)
+        self.page_size_spin.setSingleStep(10)
+        self.page_size_spin.setValue(self.page_size)
+        self.page_size_spin.setFixedWidth(80)
+        self.page_size_spin.setToolTip("设置每页显示的行数")
+        self.page_size_spin.valueChanged.connect(self._on_page_size_changed)
+        layout.addWidget(self.page_size_spin)
+        
+        layout.addWidget(QLabel(" 行  "))
+        
+        # 首页按钮
+        self.first_page_btn = QPushButton("首页")
+        self.first_page_btn.setFixedWidth(60)
+        self.first_page_btn.clicked.connect(self._go_first_page)
+        layout.addWidget(self.first_page_btn)
+        
+        # 上一页按钮
+        self.prev_page_btn = QPushButton("上一页")
+        self.prev_page_btn.setFixedWidth(70)
+        self.prev_page_btn.clicked.connect(self._go_prev_page)
+        layout.addWidget(self.prev_page_btn)
+        
+        # 页码输入
+        layout.addWidget(QLabel("第"))
+        self.page_input = QLineEdit()
+        self.page_input.setFixedWidth(50)
+        self.page_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.page_input.setText("1")
+        self.page_input.setToolTip("输入页码后按回车跳转")
+        self.page_input.returnPressed.connect(self._on_page_input)
+        layout.addWidget(self.page_input)
+        
+        self.total_pages_label = QLabel("/ 1 页")
+        layout.addWidget(self.total_pages_label)
+        
+        # 下一页按钮
+        self.next_page_btn = QPushButton("下一页")
+        self.next_page_btn.setFixedWidth(70)
+        self.next_page_btn.clicked.connect(self._go_next_page)
+        layout.addWidget(self.next_page_btn)
+        
+        # 末页按钮
+        self.last_page_btn = QPushButton("末页")
+        self.last_page_btn.setFixedWidth(60)
+        self.last_page_btn.clicked.connect(self._go_last_page)
+        layout.addWidget(self.last_page_btn)
+        
+        return widget
+    
+    def _update_pagination_controls(self):
+        """更新分页控件状态"""
+        # 更新按钮状态
+        self.first_page_btn.setEnabled(self.current_page > 1)
+        self.prev_page_btn.setEnabled(self.current_page > 1)
+        self.next_page_btn.setEnabled(self.current_page < self.total_pages)
+        self.last_page_btn.setEnabled(self.current_page < self.total_pages)
+        
+        # 更新页码显示
+        self.page_input.setText(str(self.current_page))
+        self.total_pages_label.setText(f"/ {self.total_pages} 页")
+        
+        # 更新信息标签
+        if self.server_side_paging:
+            # 服务器端分页：使用 total_rows
+            if self.total_rows == 0:
+                self.page_info_label.setText("第 0/0 页 (显示 0-0 行，共 0 行)")
+            else:
+                start_row = (self.current_page - 1) * self.page_size + 1
+                end_row = min(self.current_page * self.page_size, self.total_rows)
+                self.page_info_label.setText(
+                    f"第 {self.current_page}/{self.total_pages} 页 "
+                    f"(显示 {start_row}-{end_row} 行，共 {self.total_rows} 行)"
+                )
+        else:
+            # 客户端分页：使用 len(self.all_data)
+            total_rows = len(self.all_data)
+            if total_rows == 0:
+                self.page_info_label.setText("第 0/0 页 (显示 0-0 行，共 0 行)")
+            else:
+                start_row = (self.current_page - 1) * self.page_size + 1
+                end_row = min(self.current_page * self.page_size, total_rows)
+                self.page_info_label.setText(
+                    f"第 {self.current_page}/{self.total_pages} 页 "
+                    f"(显示 {start_row}-{end_row} 行，共 {total_rows} 行)"
+                )
+    
+    def _go_first_page(self):
+        """跳转到首页"""
+        if self.current_page != 1:
+            self.current_page = 1
+            self._display_current_page()
+    
+    def _go_prev_page(self):
+        """上一页"""
+        if self.current_page > 1:
+            self.current_page -= 1
+            self._display_current_page()
+    
+    def _go_next_page(self):
+        """下一页"""
+        if self.current_page < self.total_pages:
+            self.current_page += 1
+            self._display_current_page()
+    
+    def _go_last_page(self):
+        """跳转到末页"""
+        if self.current_page != self.total_pages:
+            self.current_page = self.total_pages
+            self._display_current_page()
+    
+    def _on_page_input(self):
+        """处理页码输入"""
+        try:
+            page = int(self.page_input.text())
+            if 1 <= page <= self.total_pages:
+                self.current_page = page
+                self._display_current_page()
+            else:
+                show_toast(self, f"页码必须在 1-{self.total_pages} 之间", "warning")
+                self.page_input.setText(str(self.current_page))
+        except ValueError:
+            show_toast(self, "请输入有效的页码", "warning")
+            self.page_input.setText(str(self.current_page))
+    
+    def _on_page_size_changed(self, new_size):
+        """每页显示行数改变"""
+        self.page_size = new_size
+        
+        # 重新计算总页数
+        if self.server_side_paging:
+            # 服务器端分页：使用 total_rows
+            if self.total_rows > 0:
+                self.total_pages = max(1, (self.total_rows + self.page_size - 1) // self.page_size)
+                # 调整当前页码（如果超出范围）
+                if self.current_page > self.total_pages:
+                    self.current_page = self.total_pages
+                # 重新加载当前页
+                self._display_current_page()
+        else:
+            # 客户端分页：使用 len(self.all_data)
+            if self.all_data:
+                self.total_pages = max(1, (len(self.all_data) + self.page_size - 1) // self.page_size)
+                # 调整当前页码（如果超出范围）
+                if self.current_page > self.total_pages:
+                    self.current_page = self.total_pages
+                self._display_current_page()
+    
+    def _display_current_page(self):
+        """显示当前页的数据"""
+        if self.server_side_paging:
+            # 服务器端分页：重新执行SQL
+            self._load_page_from_server()
+        else:
+            # 客户端分页：从 all_data 中切分
+            if not self.all_data:
+                return
+            
+            # 计算当前页的数据范围
+            start_idx = (self.current_page - 1) * self.page_size
+            end_idx = min(start_idx + self.page_size, len(self.all_data))
+            page_data = self.all_data[start_idx:end_idx]
+            
+            # 显示数据（不触发动画）
+            self._fill_table_with_pagination(page_data)
+            
+            # 更新分页控件
+            self._update_pagination_controls()
+    
+    def _start_count_query(self):
+        """启动 COUNT 查询获取总行数"""
+        if not self.connection_string or not self.original_sql:
+            return
+        
+        from src.gui.workers.pagination_worker import PaginationWorker
+        
+        # 如果有正在运行的分页查询，先停止
+        if self.pagination_worker and self.pagination_worker.isRunning():
+            self.pagination_worker.stop()
+            self.pagination_worker.wait(1000)
+        
+        # 创建分页 worker（只获取 COUNT，不查询数据）
+        self.pagination_worker = PaginationWorker(
+            self.connection_string,
+            self.connect_args,
+            self.original_sql,
+            self.current_page,
+            self.page_size,
+            get_count=True  # 只获取 COUNT
+        )
+        
+        # 连接信号
+        self.pagination_worker.count_finished.connect(self._on_count_finished)
+        
+        # 启动线程
+        self.pagination_worker.start()
+    
+    def _on_count_finished(self, total_rows: int):
+        """COUNT 查询完成"""
+        self.total_rows = total_rows
+        self.total_pages = max(1, (total_rows + self.page_size - 1) // self.page_size)
+        
+        # 更新分页控件
+        self._update_pagination_controls()
+        
+        logger.info(f"总行数: {total_rows}, 总页数: {self.total_pages}")
+    
+    def _load_page_from_server(self):
+        """从服务器加载当前页数据"""
+        if not self.connection_string or not self.original_sql:
+            logger.warning("缺少连接信息或SQL，无法执行服务器端分页")
+            return
+        
+        from src.gui.workers.pagination_worker import PaginationWorker
+        
+        # 如果有正在运行的分页查询，先停止
+        if self.pagination_worker and self.pagination_worker.isRunning():
+            self.pagination_worker.stop()
+            self.pagination_worker.wait(1000)
+        
+        # 创建分页 worker
+        self.pagination_worker = PaginationWorker(
+            self.connection_string,
+            self.connect_args,
+            self.original_sql,
+            self.current_page,
+            self.page_size,
+            get_count=False  # 不需要 COUNT（已经有了）
+        )
+        
+        # 连接信号
+        self.pagination_worker.query_finished.connect(self._on_page_loaded)
+        
+        # 启动线程
+        self.pagination_worker.start()
+        
+        logger.info(f"加载第 {self.current_page} 页，每页 {self.page_size} 行")
+    
+    def _on_page_loaded(self, success: bool, data, error: str, columns):
+        """分页数据加载完成"""
+        if success and data is not None:
+            # 更新表格数据
+            self._fill_table_with_pagination(data)
+            
+            # 保存当前页数据
+            self.all_data = data
+            
+            # 更新分页控件
+            self._update_pagination_controls()
+            
+            logger.info(f"第 {self.current_page} 页加载完成: {len(data)} 行")
+        else:
+            # 显示错误
+            logger.error(f"加载第 {self.current_page} 页失败: {error}")
+            self._show_status_to_main_window(f"加载失败: {error}", 5000)
     
     def _show_status_to_main_window(self, message: str, timeout: int = 3000):
         """显示状态信息到主窗口状态栏"""
@@ -185,16 +480,33 @@ class SingleResultTable(QWidget):
         data: List[Dict], 
         error: Optional[str] = None,
         affected_rows: Optional[int] = None,
-        columns: Optional[List[str]] = None
+        columns: Optional[List[str]] = None,
+        connection_string: Optional[str] = None,
+        connect_args: Optional[dict] = None
     ):
-        """显示查询结果"""
+        """显示查询结果
+        
+        Args:
+            data: 查询结果数据
+            error: 错误信息
+            affected_rows: 影响的行数
+            columns: 列名列表
+            connection_string: 数据库连接字符串（用于服务器端分页）
+            connect_args: 连接参数（用于服务器端分页）
+        """
+        # 保存连接信息（用于服务器端分页）
+        if connection_string:
+            self.connection_string = connection_string
+            self.connect_args = connect_args or {}
         if error:
             # 显示错误到主窗口状态栏
             self._show_status_to_main_window(f"错误: {error}", 5000)
             self.table.setRowCount(0)
             self.table.setColumnCount(0)
             self.raw_data = []
+            self.all_data = []
             self.export_btn.setEnabled(False)
+            self.pagination_widget.setVisible(False)
             return
         
         if affected_rows is not None:
@@ -203,7 +515,9 @@ class SingleResultTable(QWidget):
             self.table.setRowCount(0)
             self.table.setColumnCount(0)
             self.raw_data = []
+            self.all_data = []
             self.export_btn.setEnabled(False)
+            self.pagination_widget.setVisible(False)
             return
         
         if not data:
@@ -219,7 +533,9 @@ class SingleResultTable(QWidget):
                     if header_item:
                         header_item.setToolTip("点击复制列名")
                 self.raw_data = []
+                self.all_data = []
                 self.export_btn.setEnabled(False)
+                self.pagination_widget.setVisible(False)
                 # 调整列宽（带最大宽度限制）
                 self._resize_columns_with_max_width()
             else:
@@ -227,7 +543,9 @@ class SingleResultTable(QWidget):
                 self.table.setRowCount(0)
                 self.table.setColumnCount(0)
                 self.raw_data = []
+                self.all_data = []
                 self.export_btn.setEnabled(False)
+                self.pagination_widget.setVisible(False)
             return
         
         # 标记正在更新数据，避免触发itemChanged事件
@@ -235,6 +553,47 @@ class SingleResultTable(QWidget):
         
         # 保存原始数据
         self.raw_data = data
+        
+        # 检测是否启用服务器端分页
+        # 条件：1. 有连接信息  2. 有原始SQL  3. SQL是SELECT查询
+        import re
+        is_select_query = False
+        if self.original_sql:
+            sql_upper = self.original_sql.strip().upper()
+            is_select_query = sql_upper.startswith("SELECT")
+        
+        if self.connection_string and self.original_sql and is_select_query:
+            # 启用服务器端分页
+            self.server_side_paging = True
+            
+            # 移除SQL中的LIMIT子句（如果有）
+            sql_no_limit = re.sub(r'\s+LIMIT\s+\d+(\s+OFFSET\s+\d+)?', '', self.original_sql, flags=re.IGNORECASE)
+            self.original_sql = sql_no_limit.strip().rstrip(';')
+            
+            # 当前页数据
+            self.all_data = data
+            self.current_page = 1
+            
+            # 启动 COUNT 查询获取总行数
+            self._start_count_query()
+            
+            # 暂时使用当前数据量计算总页数（COUNT完成后会更新）
+            self.total_rows = len(data)
+            self.total_pages = max(1, (len(data) + self.page_size - 1) // self.page_size)
+            
+            logger.info(f"启用服务器端分页: page_size={self.page_size}")
+        else:
+            # 使用客户端分页（数据已全部加载）
+            self.server_side_paging = False
+            self.all_data = data
+            self.current_page = 1
+            self.total_rows = len(data)
+            
+            # 计算总页数
+            self.total_pages = max(1, (len(data) + self.page_size - 1) // self.page_size)
+        
+        # 显示分页控件（数据超过10行时显示）
+        self.pagination_widget.setVisible(len(data) > 10)
         
         # 保存原始数据的副本（用于生成WHERE条件）
         import copy
@@ -249,9 +608,12 @@ class SingleResultTable(QWidget):
         else:
             self.export_btn.setEnabled(False)
         
+        # 显示第一页数据
+        page_data = data[:min(self.page_size, len(data))]
+        
         # 显示数据
         columns = list(data[0].keys())
-        self.table.setRowCount(len(data))
+        self.table.setRowCount(len(page_data))
         self.table.setColumnCount(len(columns))
         
         self.table.setHorizontalHeaderLabels(columns)
@@ -263,7 +625,7 @@ class SingleResultTable(QWidget):
                 header_item.setToolTip("点击复制列名")
         
         # 填充数据
-        for row_idx, row_data in enumerate(data):
+        for row_idx, row_data in enumerate(page_data):
             for col_idx, col_name in enumerate(columns):
                 value = row_data.get(col_name)
                 
@@ -288,8 +650,56 @@ class SingleResultTable(QWidget):
         # 调整列宽（带最大宽度限制）
         self._resize_columns_with_max_width()
         
+        # 更新分页控件
+        if self.pagination_widget.isVisible():
+            self._update_pagination_controls()
+        
         # 更新状态到主窗口状态栏
-        self._show_status_to_main_window(f"查询完成: {len(data)} 行, {len(columns)} 列")
+        total_rows = len(data)
+        if total_rows <= self.page_size:
+            self._show_status_to_main_window(f"查询完成: {total_rows} 行, {len(columns)} 列")
+        else:
+            self._show_status_to_main_window(f"查询完成: 共 {total_rows} 行，显示前 {min(self.page_size, total_rows)} 行")
+        
+        # 数据更新完成
+        self._updating_data = False
+    
+    def _fill_table_with_pagination(self, page_data: List[Dict]):
+        """填充表格数据（用于分页切换）"""
+        if not page_data:
+            return
+        
+        # 标记正在更新数据，避免触发itemChanged事件
+        self._updating_data = True
+        
+        columns = list(page_data[0].keys())
+        self.table.setRowCount(len(page_data))
+        
+        # 填充数据
+        for row_idx, row_data in enumerate(page_data):
+            for col_idx, col_name in enumerate(columns):
+                value = row_data.get(col_name)
+                
+                # 处理None值
+                if value is None:
+                    display_value = "NULL"
+                else:
+                    display_value = str(value)
+                
+                item = QTableWidgetItem(display_value)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                
+                # NULL值特殊样式
+                if value is None:
+                    item.setForeground(Qt.GlobalColor.gray)
+                
+                # 设置单元格可编辑（包括NULL值）
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+                
+                self.table.setItem(row_idx, col_idx, item)
+        
+        # 调整列宽（带最大宽度限制）
+        self._resize_columns_with_max_width()
         
         # 数据更新完成
         self._updating_data = False
@@ -1241,6 +1651,24 @@ class MultiResultTable(QWidget):
         self.tab_widget.tabBar().installEventFilter(self)
         layout.addWidget(self.tab_widget)
     
+    def _get_connection_info(self, connection_id: Optional[str]):
+        """获取连接信息"""
+        if not connection_id:
+            return None, None
+        
+        main_window = getattr(self, '_main_window', None)
+        if not main_window or not hasattr(main_window, 'db_manager'):
+            return None, None
+        
+        try:
+            connection = main_window.db_manager.get_connection(connection_id)
+            if connection:
+                return connection.get_connection_string(), connection.get_connect_args()
+        except Exception as e:
+            logger.error(f"获取连接信息失败: {e}")
+        
+        return None, None
+    
     def _format_sql_title(self, sql: str, max_length: int = 40) -> str:
         """格式化SQL为tab标题"""
         sql_clean = sql.strip().replace('\n', ' ').replace('\r', ' ')
@@ -1378,7 +1806,12 @@ class MultiResultTable(QWidget):
                 # 更新SQL和主窗口引用
                 result_table.original_sql = sql
                 result_table.main_window = getattr(self, '_main_window', None)
-                result_table.display_results(data, error, affected_rows, columns)
+                
+                # 获取连接信息
+                connection_string, connect_args = self._get_connection_info(connection_id)
+                
+                result_table.display_results(data, error, affected_rows, columns,
+                                            connection_string, connect_args)
                 
                 # 更新tab标题（可能SQL有变化）
                 tab_title = self._format_sql_title(sql)
@@ -1398,7 +1831,12 @@ class MultiResultTable(QWidget):
             main_window=getattr(self, '_main_window', None),
             sql=sql
         )
-        result_table.display_results(data, error, affected_rows, columns)
+        
+        # 获取连接信息
+        connection_string, connect_args = self._get_connection_info(connection_id)
+        
+        result_table.display_results(data, error, affected_rows, columns,
+                                    connection_string, connect_args)
         
         # 生成Tab标题
         tab_title = self._format_sql_title(sql)
@@ -1496,4 +1934,16 @@ class MultiResultTable(QWidget):
     def clear_results(self):
         """清空结果（兼容旧接口）"""
         self.clear_all()
+    
+    def show_loading(self):
+        """显示加载状态（应用于当前活动的标签页）"""
+        # MultiResultTable 不需要显示加载动画
+        # 因为它是多标签结构，新结果会在新标签中显示
+        # 加载动画已经在 SQL 编辑器的状态栏中显示
+        pass
+    
+    def hide_loading(self):
+        """隐藏加载状态（应用于当前活动的标签页）"""
+        # MultiResultTable 不需要隐藏加载动画
+        pass
 

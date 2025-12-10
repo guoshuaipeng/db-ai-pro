@@ -75,6 +75,12 @@ class MenuHandler:
                 
                 menu.addSeparator()
                 
+                # 删除数据库
+                delete_db_action = menu.addAction("🗑️ 删除数据库")
+                delete_db_action.triggered.connect(lambda: self.main_window.delete_database(connection_id, database, item))
+                
+                menu.addSeparator()
+                
                 refresh_action = menu.addAction("🔄 刷新")
                 refresh_action.triggered.connect(lambda: self.main_window.tree_data_handler.refresh_database_tables(connection_id, database))
         else:

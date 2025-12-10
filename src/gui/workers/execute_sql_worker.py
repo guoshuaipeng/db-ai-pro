@@ -41,48 +41,39 @@ class ExecuteSQLWorker(QThread):
     
     def run(self):
         """执行SQL"""
-        db_manager = None
+        from sqlalchemy import create_engine, text
+        
+        engine = None
         try:
             if self._stop_flag:
                 return
             
-            # 创建临时的数据库管理器
-            db_manager = DatabaseManager()
-            
-            # 如果指定了数据库，使用指定的数据库
-            if self.database:
-                connect_args = self.connect_args.copy()
-                connect_args['database'] = self.database
-            else:
-                connect_args = self.connect_args
-            
-            # 连接数据库
-            connection = db_manager.connect(
+            # 创建数据库引擎
+            engine = create_engine(
                 self.connection_string,
-                connect_args,
-                self.db_type
+                connect_args=self.connect_args,
+                pool_pre_ping=True
             )
             
             if self._stop_flag:
                 return
             
             # 执行SQL
-            cursor = connection.cursor()
-            cursor.execute(self.sql)
-            
-            # 提交事务（对于DDL语句）
-            connection.commit()
-            
-            # 获取结果（如果有）
-            try:
-                result = cursor.fetchall()
-            except:
-                result = None
-            
-            cursor.close()
-            
-            if not self._stop_flag:
-                self.finished.emit(result)
+            with engine.connect() as conn:
+                # 使用 text() 包装 SQL（SQLAlchemy 2.0+）
+                result = conn.execute(text(self.sql))
+                
+                # 提交事务（对于DDL语句）
+                conn.commit()
+                
+                # 获取结果（如果有）
+                try:
+                    rows = result.fetchall()
+                except:
+                    rows = None
+                
+                if not self._stop_flag:
+                    self.finished.emit(rows)
         
         except Exception as e:
             logger.error(f"执行SQL失败: {str(e)}", exc_info=True)
@@ -91,9 +82,9 @@ class ExecuteSQLWorker(QThread):
         
         finally:
             # 清理资源
-            if db_manager:
+            if engine:
                 try:
-                    db_manager.close_all()
+                    engine.dispose()
                 except:
                     pass
 

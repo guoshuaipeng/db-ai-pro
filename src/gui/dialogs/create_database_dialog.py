@@ -4,9 +4,10 @@
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLineEdit, QComboBox, QPushButton, QLabel,
-    QDialogButtonBox, QMessageBox, QProgressBar
+    QDialogButtonBox, QMessageBox, QProgressBar, QFrame
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QFont
 from typing import Optional, List, Tuple
 import logging
 
@@ -109,8 +110,65 @@ class CreateDatabaseDialog(QDialog):
         self.charset_worker = None
         
         self.setWindowTitle("新建数据库")
-        self.setMinimumWidth(500)
+        self.setMinimumWidth(480)
         self.setModal(True)
+        
+        # 设置对话框样式
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f5f5f5;
+            }
+            QLabel {
+                color: #333;
+            }
+            QLineEdit {
+                padding: 6px 10px;
+                border: 2px solid #e0e0e0;
+                border-radius: 4px;
+                background-color: white;
+                font-size: 12px;
+            }
+            QLineEdit:focus {
+                border-color: #2196F3;
+                background-color: #ffffff;
+            }
+            QComboBox {
+                padding: 6px 10px;
+                border: 2px solid #e0e0e0;
+                border-radius: 4px;
+                background-color: white;
+                font-size: 12px;
+                min-height: 16px;
+            }
+            QComboBox:focus {
+                border-color: #2196F3;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 30px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 6px solid #666;
+                margin-right: 8px;
+            }
+            QPushButton {
+                padding: 8px 16px;
+                border: none;
+                border-radius: 4px;
+                font-size: 12px;
+                font-weight: 500;
+                min-width: 70px;
+            }
+            QPushButton:hover {
+                opacity: 0.9;
+            }
+            QPushButton:pressed {
+                opacity: 0.8;
+            }
+        """)
         
         self.init_ui()
         self.load_charsets()
@@ -118,77 +176,186 @@ class CreateDatabaseDialog(QDialog):
     def init_ui(self):
         """初始化UI"""
         layout = QVBoxLayout()
+        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 20)
         self.setLayout(layout)
         
+        # 标题区域
+        title_frame = QFrame()
+        title_frame.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border-radius: 6px;
+                padding: 12px;
+            }
+        """)
+        title_layout = QVBoxLayout()
+        title_layout.setSpacing(4)
+        title_frame.setLayout(title_layout)
+        
+        # 标题
+        title_label = QLabel("🗄️ 新建数据库")
+        title_font = QFont()
+        title_font.setPointSize(13)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        title_label.setStyleSheet("color: #1976D2;")
+        title_layout.addWidget(title_label)
+        
         # 说明标签
-        info_label = QLabel(f"在连接 <b>{self.connection.name}</b> 中创建新数据库")
-        layout.addWidget(info_label)
+        info_label = QLabel(f"在连接 <b>{self.connection.name}</b> ({self.connection.db_type.value.upper()}) 中创建")
+        info_label.setStyleSheet("color: #666; font-size: 11px;")
+        title_layout.addWidget(info_label)
+        
+        layout.addWidget(title_frame)
+        
+        # 表单区域
+        form_frame = QFrame()
+        form_frame.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border-radius: 6px;
+                padding: 12px;
+            }
+        """)
+        form_main_layout = QVBoxLayout()
+        form_frame.setLayout(form_main_layout)
+        
+        # 表单标题
+        form_title = QLabel("📝 基本信息")
+        form_title_font = QFont()
+        form_title_font.setPointSize(11)
+        form_title_font.setBold(True)
+        form_title.setFont(form_title_font)
+        form_title.setStyleSheet("color: #333; margin-bottom: 6px;")
+        form_main_layout.addWidget(form_title)
         
         # 表单布局
         form_layout = QFormLayout()
+        form_layout.setSpacing(10)
+        form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         
         # 数据库名称
         self.database_name_edit = QLineEdit()
-        self.database_name_edit.setPlaceholderText("输入数据库名称")
-        form_layout.addRow("数据库名称*:", self.database_name_edit)
+        self.database_name_edit.setPlaceholderText("例如：my_database")
+        name_label = QLabel("数据库名称 *")
+        name_label.setStyleSheet("font-weight: 500; color: #333;")
+        form_layout.addRow(name_label, self.database_name_edit)
         
         # 字符集（根据数据库类型显示）
         if self.connection.db_type.value in ('mysql', 'mariadb', 'postgresql'):
             self.charset_combo = QComboBox()
             self.charset_combo.setEditable(False)
-            form_layout.addRow("字符集:", self.charset_combo)
+            charset_label = QLabel("字符集")
+            charset_label.setStyleSheet("font-weight: 500; color: #333;")
+            form_layout.addRow(charset_label, self.charset_combo)
             
             # 加载提示
-            self.charset_loading_label = QLabel("正在加载字符集列表...")
+            self.charset_loading_label = QLabel("⏳ 正在加载字符集列表...")
+            self.charset_loading_label.setStyleSheet("color: #2196F3; font-size: 11px;")
             form_layout.addRow("", self.charset_loading_label)
         
         # 排序规则（MySQL/MariaDB 和 SQL Server）
         if self.connection.db_type.value in ('mysql', 'mariadb', 'sqlserver'):
             self.collation_combo = QComboBox()
             self.collation_combo.setEditable(True)
-            form_layout.addRow("排序规则:", self.collation_combo)
+            collation_label = QLabel("排序规则")
+            collation_label.setStyleSheet("font-weight: 500; color: #333;")
+            form_layout.addRow(collation_label, self.collation_combo)
             
             if self.connection.db_type.value in ('mysql', 'mariadb'):
                 # MySQL: 字符集改变时更新排序规则
                 self.charset_combo.currentTextChanged.connect(self.on_charset_changed)
         
-        layout.addLayout(form_layout)
+        form_main_layout.addLayout(form_layout)
+        layout.addWidget(form_frame)
         
-        # 提示信息
+        # 提示信息区域
+        tip_frame = QFrame()
+        tip_frame.setStyleSheet("""
+            QFrame {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                          stop:0 #E3F2FD, stop:1 #BBDEFB);
+                border-left: 3px solid #2196F3;
+                border-radius: 4px;
+                padding: 10px;
+            }
+        """)
+        tip_layout = QVBoxLayout()
+        tip_layout.setSpacing(4)
+        tip_frame.setLayout(tip_layout)
+        
+        # 提示标题
+        tip_title = QLabel("💡 推荐配置")
+        tip_title_font = QFont()
+        tip_title_font.setBold(True)
+        tip_title.setFont(tip_title_font)
+        tip_title.setStyleSheet("color: #1976D2; font-size: 11px;")
+        tip_layout.addWidget(tip_title)
+        
+        # 提示内容
         tip_label = QLabel()
         if self.connection.db_type.value in ('mysql', 'mariadb'):
             tip_label.setText(
-                "提示：\n"
-                "• 推荐使用 utf8mb4 字符集（支持完整的 Unicode）\n"
-                "• 推荐使用 utf8mb4_unicode_ci 排序规则（不区分大小写）\n"
-                "• utf8mb4_general_ci 性能更好但排序准确性略低"
+                "✓ 字符集：<b>utf8mb4</b><br>"
+                "✓ 排序规则：<b>utf8mb4_unicode_ci</b>"
             )
         elif self.connection.db_type.value == 'postgresql':
             tip_label.setText(
-                "提示：\n"
-                "• 推荐使用 UTF8 编码（支持完整的 Unicode）\n"
-                "• PostgreSQL 的编码是在创建数据库时指定的"
+                "✓ 编码：<b>UTF8</b>（支持完整 Unicode）"
             )
         elif self.connection.db_type.value == 'sqlserver':
             tip_label.setText(
-                "提示：\n"
-                "• 推荐使用 Chinese_PRC_CI_AS（简体中文，不区分大小写）\n"
-                "• Latin1_General_CI_AS（通用拉丁文，不区分大小写）"
+                "✓ 推荐：<b>Chinese_PRC_CI_AS</b>"
             )
         
         tip_label.setWordWrap(True)
-        tip_label.setStyleSheet("color: #666; font-size: 11px; padding: 10px; background-color: #f0f0f0; border-radius: 4px;")
-        layout.addWidget(tip_label)
+        tip_label.setStyleSheet("color: #0D47A1; font-size: 10px; line-height: 1.4;")
+        tip_layout.addWidget(tip_label)
+        
+        layout.addWidget(tip_frame)
         
         layout.addStretch()
         
-        # 按钮
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
+        # 按钮区域
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(8)
+        button_layout.addStretch()
+        
+        # 取消按钮
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f5f5f5;
+                color: #666;
+                border: 1px solid #ddd;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+        """)
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+        
+        # 创建按钮
+        create_btn = QPushButton("✓ 创建数据库")
+        create_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:pressed {
+                background-color: #0D47A1;
+            }
+        """)
+        create_btn.clicked.connect(self.accept)
+        create_btn.setDefault(True)
+        button_layout.addWidget(create_btn)
+        
+        layout.addLayout(button_layout)
         
         # 设置焦点
         self.database_name_edit.setFocus()

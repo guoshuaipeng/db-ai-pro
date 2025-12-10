@@ -57,6 +57,20 @@ class QueryHandler:
         sql_upper = sql.strip().upper()
         is_query = sql_upper.startswith(("SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"))
         
+        # 自动添加 LIMIT（如果是 SELECT 查询且没有 LIMIT）
+        if is_query and sql_upper.startswith("SELECT"):
+            # 检查是否已经有 LIMIT 子句
+            import re
+            # 匹配 LIMIT 关键字（忽略大小写，且不在字符串中）
+            if not re.search(r'\bLIMIT\b', sql, re.IGNORECASE):
+                # 默认添加 LIMIT 100
+                sql = sql.strip()
+                if not sql.endswith(';'):
+                    sql += ' LIMIT 100'
+                else:
+                    sql = sql[:-1].strip() + ' LIMIT 100;'
+                logger.info(f"自动添加 LIMIT: {sql}")
+        
         # 获取连接信息
         connection = self.main_window.db_manager.get_connection(self.main_window.current_connection_id)
         if not connection:
@@ -80,6 +94,9 @@ class QueryHandler:
         # 显示加载状态
         self.main_window.sql_editor.set_status("执行中...")
         # 注意：不清空结果，因为可能有多条SQL，每条SQL会创建一个新的Tab
+        
+        # 显示加载动画
+        self.main_window.result_table.show_loading()
         
         # 创建并启动工作线程（传递连接信息，在线程中创建引擎）
         self.main_window.query_worker = QueryWorker(
@@ -275,14 +292,14 @@ class QueryHandler:
                 # 设置当前连接（不立即更新完成，避免阻塞），并传递当前数据库
                 self.main_window.set_current_connection(connection_id, update_completion=False, database=database)
                 
-                # 根据数据库类型生成查询SQL
+                # 根据数据库类型生成查询SQL（不添加LIMIT，由分页系统自动处理）
                 connection = self.main_window.db_manager.get_connection(connection_id)
                 if database and connection and connection.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
                     # MySQL/MariaDB 支持跨库访问，使用 database.table 格式
-                    sql = f"SELECT * FROM `{database}`.`{table_name}` LIMIT 100"
+                    sql = f"SELECT * FROM `{database}`.`{table_name}`"
                 else:
                     # 其他数据库类型（如 PostgreSQL）切换数据库后，直接使用表名
-                    sql = f"SELECT * FROM `{table_name}` LIMIT 100"
+                    sql = f"SELECT * FROM `{table_name}`"
                 
                 # 在SQL编辑器中显示
                 self.main_window.sql_editor.set_sql(sql)

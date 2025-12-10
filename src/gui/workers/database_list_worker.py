@@ -45,9 +45,23 @@ class DatabaseListWorker(QThread):
             # 复制连接参数，使用原始超时配置
             connect_args = self.connect_args.copy() if self.connect_args else {}
             
+            # 修改连接字符串，去掉数据库部分（连接到服务器级别）
+            # 这样即使默认数据库被删除，也不会影响连接
+            import re
+            connection_string = self.connection_string
+            
+            # 对于 MySQL/MariaDB/PostgreSQL，移除连接字符串中的数据库部分
+            if self.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB, DatabaseType.POSTGRESQL):
+                # 格式: mysql://user:pass@host:port/database
+                # 改为: mysql://user:pass@host:port/
+                connection_string = re.sub(r'/[^/]+(\?|$)', r'/\1', connection_string)
+                if not connection_string.endswith('/'):
+                    # 如果没有查询参数，添加 /
+                    connection_string = re.sub(r'(:[0-9]+)(\?|$)', r'\1/\2', connection_string)
+            
             # 在线程中创建新的数据库引擎
             engine = create_engine(
-                self.connection_string,
+                connection_string,
                 connect_args=connect_args,
                 pool_pre_ping=False,  # 不使用pool_pre_ping，避免立即连接
                 echo=False,

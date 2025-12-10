@@ -386,6 +386,113 @@ class MainWindow(QMainWindow):
             logger.error(f"创建数据库失败: {str(e)}", exc_info=True)
             QMessageBox.critical(self, "错误", f"创建数据库失败: {str(e)}")
     
+    def delete_database(self, connection_id: str, database_name: str, db_item: 'QTreeWidgetItem'):
+        """删除数据库"""
+        from PyQt6.QtWidgets import QMessageBox, QInputDialog, QLineEdit
+        
+        # 获取连接信息
+        connection = self.db_manager.get_connection(connection_id)
+        if not connection:
+            QMessageBox.warning(self, "错误", "连接不存在")
+            return
+        
+        # 检查数据库类型是否支持
+        if connection.db_type.value not in ('mysql', 'mariadb', 'postgresql', 'sqlserver'):
+            QMessageBox.warning(self, "错误", f"数据库类型 {connection.db_type.value} 暂不支持删除数据库")
+            return
+        
+        # 确认对话框
+        reply = QMessageBox.question(
+            self, 
+            "确认删除",
+            f"确定要删除数据库 <b>{database_name}</b> 吗？\n\n"
+            f"⚠️ 警告：此操作将删除数据库中的所有表和数据，且无法恢复！",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # 二次确认
+        text, ok = QInputDialog.getText(
+            self,
+            "二次确认",
+            f"请输入数据库名称 <b>{database_name}</b> 以确认删除：",
+            QLineEdit.EchoMode.Normal
+        )
+        
+        if not ok or text.strip() != database_name:
+            if ok:
+                QMessageBox.information(self, "取消", "数据库名称不匹配，已取消删除操作")
+            return
+        
+        # 删除数据库
+        try:
+            from src.gui.workers.execute_sql_worker import ExecuteSQLWorker
+            
+            # 构建删除数据库的SQL
+            db_type = connection.db_type
+            if db_type.value in ('mysql', 'mariadb'):
+                sql = f"DROP DATABASE `{database_name}`"
+            elif db_type.value == 'postgresql':
+                sql = f'DROP DATABASE "{database_name}"'
+            elif db_type.value == 'sqlserver':
+                sql = f"DROP DATABASE [{database_name}]"
+            else:
+                QMessageBox.warning(self, "错误", f"数据库类型 {db_type.value} 不支持删除数据库")
+                return
+            
+            self.statusBar().showMessage(f"正在删除数据库 '{database_name}'...", 5000)
+            logger.info(f"执行删除数据库SQL: {sql}")
+            
+            # 创建worker执行SQL
+            worker = ExecuteSQLWorker(
+                connection.get_connection_string(),
+                connection.get_connect_args(),
+                connection.db_type,
+                sql,
+                None  # 不指定数据库，在服务器级别删除
+            )
+            
+            # 连接信号
+            def on_success(result):
+                from src.utils.toast_manager import show_success
+                show_success(f"数据库 '{database_name}' 已删除")
+                self.statusBar().showMessage(f"数据库 '{database_name}' 已删除", 5000)
+                
+                # 从树中移除数据库节点
+                parent = db_item.parent()
+                if parent:
+                    parent.removeChild(db_item)
+            
+            def on_error(error):
+                from src.utils.toast_manager import show_error
+                show_error(f"删除数据库失败: {error}")
+                self.statusBar().showMessage(f"删除数据库失败", 5000)
+            
+            worker.finished.connect(on_success)
+            worker.error.connect(on_error)
+            worker.start()
+            
+            # 保存worker引用，避免被垃圾回收
+            if not hasattr(self, '_delete_db_workers'):
+                self._delete_db_workers = []
+            self._delete_db_workers.append(worker)
+            
+            # worker完成后清理
+            def cleanup():
+                if hasattr(self, '_delete_db_workers') and worker in self._delete_db_workers:
+                    self._delete_db_workers.remove(worker)
+                worker.deleteLater()
+            
+            worker.finished.connect(cleanup)
+            worker.error.connect(cleanup)
+            
+        except Exception as e:
+            logger.error(f"删除数据库失败: {str(e)}", exc_info=True)
+            QMessageBox.critical(self, "错误", f"删除数据库失败: {str(e)}")
+    
     def close_query_tab(self, index: int):
         """关闭查询tab"""
         self.table_structure_handler.close_query_tab(index)
@@ -1273,12 +1380,12 @@ class MainWindow(QMainWindow):
         # 连接信号
         sql_editor.execute_signal.connect(execute_query_in_this_tab)
         
-        # 生成查询SQL
+        # 生成查询SQL（不添加LIMIT，由分页系统自动处理）
         connection = self.db_manager.get_connection(connection_id)
         if database and connection and connection.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
-            sql = f"SELECT * FROM `{database}`.`{table_name}` LIMIT 100"
+            sql = f"SELECT * FROM `{database}`.`{table_name}`"
         else:
-            sql = f"SELECT * FROM `{table_name}` LIMIT 100"
+            sql = f"SELECT * FROM `{table_name}`"
         
         # 在新的SQL编辑器中显示SQL
         sql_editor.set_sql(sql)
@@ -1374,14 +1481,14 @@ class MainWindow(QMainWindow):
                 # 设置当前连接（不立即更新完成，避免阻塞），并传递当前数据库
                 self.set_current_connection(connection_id, update_completion=False, database=database)
                 
-                # 根据数据库类型生成查询SQL
+                # 根据数据库类型生成查询SQL（不添加LIMIT，由分页系统自动处理）
                 connection = self.db_manager.get_connection(connection_id)
                 if database and connection and connection.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
                     # MySQL/MariaDB 支持跨库访问，使用 database.table 格式
-                    sql = f"SELECT * FROM `{database}`.`{table_name}` LIMIT 100"
+                    sql = f"SELECT * FROM `{database}`.`{table_name}`"
                 else:
                     # 其他数据库类型（如 PostgreSQL）切换数据库后，直接使用表名
-                    sql = f"SELECT * FROM `{table_name}` LIMIT 100"
+                    sql = f"SELECT * FROM `{table_name}`"
                 
                 # 在SQL编辑器中显示
                 self.sql_editor.set_sql(sql)
