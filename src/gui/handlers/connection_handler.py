@@ -148,7 +148,7 @@ class ConnectionHandler:
                 # 显示 Toast 通知（非阻塞）
                 from src.utils.toast_manager import show_success
                 if is_edit:
-                    show_success("✅ 成功更新数据库连接", 2000)
+                    show_success("✅ 保存成功", 2000)
                 else:
                     show_success(f"✅ 成功添加数据库连接: {connection.name}", 2000)
             else:

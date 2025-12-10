@@ -1,9 +1,9 @@
 """
 Toast 通知组件
 """
-from PyQt6.QtWidgets import QLabel, QGraphicsOpacityEffect
-from PyQt6.QtCore import QTimer, QPropertyAnimation, QEasingCurve, Qt, pyqtProperty
-from PyQt6.QtGui import QPalette, QColor
+from PyQt6.QtWidgets import QLabel, QGraphicsOpacityEffect, QWidget
+from PyQt6.QtCore import QTimer, QPropertyAnimation, QEasingCurve, Qt, QRectF
+from PyQt6.QtGui import QFont, QPainter, QColor, QPen, QPainterPath
 
 
 class Toast(QLabel):
@@ -11,21 +11,16 @@ class Toast(QLabel):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+        # 使用 SubWindow 而不是 ToolTip，避免样式问题
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | 
+            Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.Tool
+        )
+        # 设置窗口背景透明，让圆角正确显示
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        
-        # 设置样式
-        self.setStyleSheet("""
-            QLabel {
-                background-color: rgba(50, 50, 50, 220);
-                color: white;
-                padding: 12px 20px;
-                border-radius: 6px;
-                font-size: 14px;
-                font-weight: 500;
-            }
-        """)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         
         # 透明度效果
         self.opacity_effect = QGraphicsOpacityEffect(self)
@@ -56,6 +51,28 @@ class Toast(QLabel):
         self.close_timer.stop()
         self.fade_out_animation.start()
     
+    def paintEvent(self, event):
+        """手动绘制圆角背景"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # 创建圆角矩形路径
+        path = QPainterPath()
+        rect = QRectF(0, 0, self.width(), self.height())
+        path.addRoundedRect(rect, 20, 20)  # 20px 圆角
+        
+        # 绘制浅灰色半透明背景（更透明）
+        painter.fillPath(path, QColor(230, 230, 230, 200))
+        
+        # 绘制浅灰色边框
+        pen = QPen(QColor(0, 0, 0, 30))
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.drawPath(path)
+        
+        # 调用父类的 paintEvent 绘制文本
+        super().paintEvent(event)
+    
     def show_message(self, message: str, duration: int = 2000, message_type: str = "info"):
         """
         显示 Toast 消息
@@ -64,34 +81,42 @@ class Toast(QLabel):
         :param duration: 显示时长（毫秒）
         :param message_type: 消息类型 (info/success/warning/error)
         """
+        # 设置文本
         self.setText(message)
-        self.adjustSize()
         
-        # 根据消息类型设置不同的背景色
-        colors = {
-            "info": "rgba(50, 50, 50, 220)",
-            "success": "rgba(67, 160, 71, 220)",  # 绿色
-            "warning": "rgba(251, 140, 0, 220)",  # 橙色
-            "error": "rgba(211, 47, 47, 220)"     # 红色
-        }
-        bg_color = colors.get(message_type, colors["info"])
+        # 设置字体
+        font = QFont()
+        font.setFamily("Microsoft YaHei UI, Segoe UI, Arial")
+        font.setPixelSize(14)
+        font.setWeight(QFont.Weight.Medium)
+        self.setFont(font)
         
-        self.setStyleSheet(f"""
-            QLabel {{
-                background-color: {bg_color};
-                color: white;
-                padding: 12px 20px;
-                border-radius: 6px;
-                font-size: 14px;
-                font-weight: 500;
-            }}
+        # 设置文字样式（背景由 paintEvent 绘制）
+        self.setStyleSheet("""
+            QLabel {
+                background-color: transparent;
+                color: #333333;
+                padding: 10px 20px;
+            }
         """)
         
-        # 居中显示
+        # 设置对齐和换行
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setWordWrap(False)
+        
+        # 设置固定大小
+        # 根据文本长度估算（中文字符约14px，英文约7-8px，emoji约16px）
+        text_length = len(message)
+        estimated_width = max(250, text_length * 12 + 50)
+        estimated_width = min(estimated_width, 600)  # 最大600px
+        
+        self.resize(estimated_width, 50)
+        
+        # 居中显示（水平和垂直都居中）
         if self.parent():
             parent_geometry = self.parent().geometry()
             x = parent_geometry.x() + (parent_geometry.width() - self.width()) // 2
-            y = parent_geometry.y() + parent_geometry.height() - self.height() - 80
+            y = parent_geometry.y() + (parent_geometry.height() - self.height()) // 2
             self.move(x, y)
         
         # 显示并启动淡入动画
@@ -115,4 +140,3 @@ def show_toast(parent, message: str, duration: int = 2000, message_type: str = "
     toast = Toast(parent)
     toast.show_message(message, duration, message_type)
     return toast
-

@@ -33,61 +33,57 @@ class FetchCharsetsWorker(QThread):
     
     def run(self):
         """获取字符集和排序规则"""
-        db_manager = None
+        from sqlalchemy import create_engine, text
+        
+        engine = None
         try:
             if self._stop_flag:
                 return
             
-            db_manager = DatabaseManager()
-            
-            # 连接数据库（不指定具体数据库）
-            conn = db_manager.connect(
+            # 使用 SQLAlchemy 创建连接
+            engine = create_engine(
                 self.connection.get_connection_string(),
-                self.connection.get_connect_args(),
-                self.connection.db_type
+                connect_args=self.connection.get_connect_args()
             )
             
             if self._stop_flag:
                 return
             
-            cursor = conn.cursor()
-            charsets = []
-            collations = []
-            
-            # 根据数据库类型查询字符集
-            if self.connection.db_type.value in ('mysql', 'mariadb'):
-                # MySQL/MariaDB: 查询字符集
-                cursor.execute("SHOW CHARACTER SET")
-                charsets = [(row[0], row[2]) for row in cursor.fetchall()]  # (charset, description)
+            with engine.connect() as conn:
+                charsets = []
+                collations = []
                 
-                # 查询排序规则
-                cursor.execute("SHOW COLLATION")
-                collations = [(row[0], row[1]) for row in cursor.fetchall()]  # (collation, charset)
-            
-            elif self.connection.db_type.value == 'postgresql':
-                # PostgreSQL: 查询编码
-                cursor.execute("SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = 'template1'")
-                # PostgreSQL的编码是系统级的，列出常用的
-                charsets = [
-                    ('UTF8', 'Unicode, 8-bit'),
-                    ('SQL_ASCII', '未指定编码'),
-                    ('LATIN1', 'ISO 8859-1, Western European'),
-                    ('LATIN2', 'ISO 8859-2, Central European'),
-                    ('LATIN9', 'ISO 8859-15, Western European with Euro'),
-                    ('WIN1252', 'Windows CP1252'),
-                    ('WIN1251', 'Windows CP1251'),
-                    ('WIN1250', 'Windows CP1250'),
-                ]
-            
-            elif self.connection.db_type.value == 'sqlserver':
-                # SQL Server: 查询排序规则
-                cursor.execute("SELECT name, description FROM fn_helpcollations()")
-                collations = [(row[0], row[1]) for row in cursor.fetchall()]
-            
-            cursor.close()
-            
-            if not self._stop_flag:
-                self.finished.emit(charsets, collations)
+                # 根据数据库类型查询字符集
+                if self.connection.db_type.value in ('mysql', 'mariadb'):
+                    # MySQL/MariaDB: 查询字符集
+                    result = conn.execute(text("SHOW CHARACTER SET"))
+                    charsets = [(row[0], row[2]) for row in result.fetchall()]  # (charset, description)
+                    
+                    # 查询排序规则
+                    result = conn.execute(text("SHOW COLLATION"))
+                    collations = [(row[0], row[1]) for row in result.fetchall()]  # (collation, charset)
+                
+                elif self.connection.db_type.value == 'postgresql':
+                    # PostgreSQL: 查询编码
+                    # PostgreSQL的编码是系统级的，列出常用的
+                    charsets = [
+                        ('UTF8', 'Unicode, 8-bit'),
+                        ('SQL_ASCII', '未指定编码'),
+                        ('LATIN1', 'ISO 8859-1, Western European'),
+                        ('LATIN2', 'ISO 8859-2, Central European'),
+                        ('LATIN9', 'ISO 8859-15, Western European with Euro'),
+                        ('WIN1252', 'Windows CP1252'),
+                        ('WIN1251', 'Windows CP1251'),
+                        ('WIN1250', 'Windows CP1250'),
+                    ]
+                
+                elif self.connection.db_type.value == 'sqlserver':
+                    # SQL Server: 查询排序规则
+                    result = conn.execute(text("SELECT name, description FROM fn_helpcollations()"))
+                    collations = [(row[0], row[1]) for row in result.fetchall()]
+                
+                if not self._stop_flag:
+                    self.finished.emit(charsets, collations)
         
         except Exception as e:
             logger.error(f"获取字符集列表失败: {str(e)}", exc_info=True)
@@ -95,9 +91,9 @@ class FetchCharsetsWorker(QThread):
                 self.error.emit(str(e))
         
         finally:
-            if db_manager:
+            if engine:
                 try:
-                    db_manager.close_all()
+                    engine.dispose()
                 except:
                     pass
 
