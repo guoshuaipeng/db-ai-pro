@@ -139,13 +139,9 @@ class AIModelManagerDialog(QDialog):
         button_layout.setContentsMargins(0, 8, 0, 0)
         button_layout.addStretch()
         
-        ok_btn = QPushButton("确定")
-        ok_btn.clicked.connect(self.save_and_accept)
-        button_layout.addWidget(ok_btn)
-        
-        cancel_btn = QPushButton("取消")
-        cancel_btn.clicked.connect(self.reject)
-        button_layout.addWidget(cancel_btn)
+        close_btn = QPushButton("关闭")
+        close_btn.clicked.connect(self.accept)
+        button_layout.addWidget(close_btn)
         
         layout.addLayout(button_layout)
     
@@ -298,7 +294,15 @@ class AIModelManagerDialog(QDialog):
                 for m in self.models:
                     m.is_default = False
             self.models.append(new_model)
-            self.refresh_list()
+            
+            # 立即保存到磁盘
+            if self.storage.save_models(self.models):
+                self.refresh_list()
+                QMessageBox.information(self, "成功", "模型配置已添加并保存")
+            else:
+                # 保存失败，撤销添加
+                self.models.pop()
+                QMessageBox.warning(self, "错误", "保存模型配置失败")
     
     def edit_selected_model(self):
         """编辑选中的模型"""
@@ -333,15 +337,16 @@ class AIModelManagerDialog(QDialog):
         if not model:
             return
         
+        # 保存原始模型以便失败时恢复
+        original_model = model
+        original_index = next(i for i, m in enumerate(self.models) if m.id == model_id)
+        
         dialog = AIModelDialog(self, model)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             updated_model = dialog.get_model()
             
             # 更新模型
-            for i, m in enumerate(self.models):
-                if m.id == model_id:
-                    self.models[i] = updated_model
-                    break
+            self.models[original_index] = updated_model
             
             # 确保仅有一个默认模型
             if updated_model.is_default:
@@ -349,7 +354,14 @@ class AIModelManagerDialog(QDialog):
                     if m.id != updated_model.id:
                         m.is_default = False
             
-            self.refresh_list()
+            # 立即保存到磁盘
+            if self.storage.save_models(self.models):
+                self.refresh_list()
+                QMessageBox.information(self, "成功", "模型配置已更新并保存")
+            else:
+                # 保存失败，恢复原始模型
+                self.models[original_index] = original_model
+                QMessageBox.warning(self, "错误", "保存模型配置失败")
     
     def delete_selected_model(self):
         """删除选中的模型"""
@@ -382,8 +394,20 @@ class AIModelManagerDialog(QDialog):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
+            # 保存原始列表以便失败时恢复
+            original_models = self.models.copy()
+            
+            # 删除模型
             self.models = [m for m in self.models if m.id != model_id]
-            self.refresh_list()
+            
+            # 立即保存到磁盘
+            if self.storage.save_models(self.models):
+                self.refresh_list()
+                QMessageBox.information(self, "成功", "模型配置已删除")
+            else:
+                # 保存失败，恢复原始列表
+                self.models = original_models
+                QMessageBox.warning(self, "错误", "删除模型配置失败")
     
     def set_default_model(self):
         """设置默认模型"""
@@ -397,29 +421,25 @@ class AIModelManagerDialog(QDialog):
         if not model:
             return
         
+        # 保存原始状态以便失败时恢复
+        original_defaults = {m.id: m.is_default for m in self.models}
+        
         # 将选中的模型设为默认，其他取消默认
         for m in self.models:
             m.is_default = (m.id == model_id)
-        self.refresh_list()
+        
+        # 立即保存到磁盘
+        if self.storage.save_models(self.models):
+            self.refresh_list()
+            QMessageBox.information(self, "成功", "默认模型已设置并保存")
+        else:
+            # 保存失败，恢复原始状态
+            for m in self.models:
+                m.is_default = original_defaults[m.id]
+            QMessageBox.warning(self, "错误", "设置默认模型失败")
     
     def edit_prompts(self):
         """编辑提示词"""
         dialog = PromptConfigDialog(self)
         dialog.exec()
-    
-    def save_and_accept(self):
-        """保存并接受"""
-        # 确保至少有一个默认模型
-        if not any(m.is_default for m in self.models if m.is_active):
-            # 若没有默认，自动将第一个激活的设为默认
-            for model in self.models:
-                if model.is_active:
-                    model.is_default = True
-                    break
-        
-        if self.storage.save_models(self.models):
-            QMessageBox.information(self, "成功", "模型配置已保存")
-            self.accept()
-        else:
-            QMessageBox.warning(self, "错误", "保存模型配置失败")
 

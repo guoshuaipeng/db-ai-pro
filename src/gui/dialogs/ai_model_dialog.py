@@ -54,24 +54,24 @@ class AIModelDialog(QDialog):
         self.provider_combo = QComboBox()
         self.provider_combo.addItem("阿里云通义千问", AIModelProvider.ALIYUN_QIANWEN)
         self.provider_combo.addItem("OpenAI", AIModelProvider.OPENAI)
+        self.provider_combo.addItem("DeepSeek", AIModelProvider.DEEPSEEK)
+        self.provider_combo.addItem("智谱AI (GLM)", AIModelProvider.ZHIPU_GLM)
+        self.provider_combo.addItem("百度文心一言", AIModelProvider.BAIDU_WENXIN)
+        self.provider_combo.addItem("讯飞星火", AIModelProvider.XUNFEI_XINGHUO)
+        self.provider_combo.addItem("Moonshot (Kimi)", AIModelProvider.MOONSHOT)
+        self.provider_combo.addItem("腾讯混元", AIModelProvider.TENCENT_HUNYUAN)
+        self.provider_combo.addItem("Anthropic Claude", AIModelProvider.ANTHROPIC_CLAUDE)
+        self.provider_combo.addItem("Google Gemini", AIModelProvider.GOOGLE_GEMINI)
+        self.provider_combo.addItem("其他/自定义", AIModelProvider.CUSTOM)
         self.provider_combo.currentIndexChanged.connect(self.on_provider_changed)
         self.provider_combo.setMinimumWidth(300)
         form_layout.addRow("提供商:", self.provider_combo)
         
         # API密钥
         self.api_key_edit = QLineEdit()
-        self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_key_edit.setPlaceholderText("请输入API密钥")
         self.api_key_edit.setMinimumWidth(300)
-        
-        # 显示/隐藏密钥按钮
-        self.show_key_btn = QPushButton("显示")
-        self.show_key_btn.setFixedWidth(60)
-        self.show_key_btn.clicked.connect(self.toggle_api_key_visibility)
-        key_layout = QHBoxLayout()
-        key_layout.addWidget(self.api_key_edit)
-        key_layout.addWidget(self.show_key_btn)
-        form_layout.addRow("API密钥:", key_layout)
+        form_layout.addRow("API密钥:", self.api_key_edit)
         
         # 基础URL（可选）
         self.base_url_edit = QLineEdit()
@@ -118,25 +118,72 @@ class AIModelDialog(QDialog):
     def on_provider_changed(self):
         """提供商改变时的处理"""
         provider = self.provider_combo.currentData()
-        if provider == AIModelProvider.ALIYUN_QIANWEN:
-            self.default_model_edit.setText("qwen-plus")
-            self.turbo_model_edit.setText("qwen-turbo")
+        
+        # 定义每个提供商的默认配置
+        provider_configs = {
+            AIModelProvider.ALIYUN_QIANWEN: {
+                "default_model": "qwen-plus",
+                "turbo_model": "qwen-turbo",
+                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            },
+            AIModelProvider.OPENAI: {
+                "default_model": "gpt-4",
+                "turbo_model": "gpt-3.5-turbo",
+                "base_url": "https://api.openai.com/v1"
+            },
+            AIModelProvider.DEEPSEEK: {
+                "default_model": "deepseek-chat",
+                "turbo_model": "deepseek-chat",
+                "base_url": "https://api.deepseek.com/v1"
+            },
+            AIModelProvider.ZHIPU_GLM: {
+                "default_model": "glm-4",
+                "turbo_model": "glm-3-turbo",
+                "base_url": "https://open.bigmodel.cn/api/paas/v4"
+            },
+            AIModelProvider.BAIDU_WENXIN: {
+                "default_model": "ernie-4.0",
+                "turbo_model": "ernie-3.5",
+                "base_url": "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop"
+            },
+            AIModelProvider.XUNFEI_XINGHUO: {
+                "default_model": "spark-4.0",
+                "turbo_model": "spark-lite",
+                "base_url": "https://spark-api-open.xf-yun.com/v1"
+            },
+            AIModelProvider.MOONSHOT: {
+                "default_model": "moonshot-v1-8k",
+                "turbo_model": "moonshot-v1-8k",
+                "base_url": "https://api.moonshot.cn/v1"
+            },
+            AIModelProvider.TENCENT_HUNYUAN: {
+                "default_model": "hunyuan-large",
+                "turbo_model": "hunyuan-lite",
+                "base_url": "https://api.hunyuan.cloud.tencent.com/v1"
+            },
+            AIModelProvider.ANTHROPIC_CLAUDE: {
+                "default_model": "claude-3-5-sonnet-20241022",
+                "turbo_model": "claude-3-haiku-20240307",
+                "base_url": "https://api.anthropic.com/v1"
+            },
+            AIModelProvider.GOOGLE_GEMINI: {
+                "default_model": "gemini-pro",
+                "turbo_model": "gemini-pro",
+                "base_url": "https://generativelanguage.googleapis.com/v1"
+            },
+            AIModelProvider.CUSTOM: {
+                "default_model": "gpt-3.5-turbo",
+                "turbo_model": "gpt-3.5-turbo",
+                "base_url": "https://api.openai.com/v1"
+            }
+        }
+        
+        config = provider_configs.get(provider)
+        if config:
+            self.default_model_edit.setText(config["default_model"])
+            self.turbo_model_edit.setText(config["turbo_model"])
             if not self.base_url_edit.text():
-                self.base_url_edit.setPlaceholderText("默认: https://dashscope.aliyuncs.com/compatible-mode/v1")
-        elif provider == AIModelProvider.OPENAI:
-            self.default_model_edit.setText("gpt-4")
-            self.turbo_model_edit.setText("gpt-3.5-turbo")
-            if not self.base_url_edit.text():
-                self.base_url_edit.setPlaceholderText("默认: https://api.openai.com/v1")
-    
-    def toggle_api_key_visibility(self):
-        """切换API密钥显示/隐藏"""
-        if self.api_key_edit.echoMode() == QLineEdit.EchoMode.Password:
-            self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Normal)
-            self.show_key_btn.setText("隐藏")
-        else:
-            self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-            self.show_key_btn.setText("显示")
+                self.base_url_edit.setPlaceholderText(f"默认: {config['base_url']}")
     
     def load_model(self):
         """加载模型配置"""
@@ -152,7 +199,10 @@ class AIModelDialog(QDialog):
                 break
         
         # 显示API密钥（已加密，显示为占位符）
-        self.api_key_edit.setPlaceholderText("已配置（编辑时需重新输入）")
+        # 只有在确实配置了密钥时才显示"已配置"
+        if self.model.api_key and self.model.api_key.get_secret_value():
+            self.api_key_edit.setPlaceholderText("已配置（编辑时需重新输入）")
+        
         if self.model.base_url:
             self.base_url_edit.setText(self.model.base_url)
         self.default_model_edit.setText(self.model.default_model)

@@ -11,7 +11,15 @@ class AIModelProvider(str, Enum):
     """AI模型提供商"""
     ALIYUN_QIANWEN = "aliyun_qianwen"  # 阿里云通义千问
     OPENAI = "openai"  # OpenAI
-    # 可以扩展其他提供商
+    DEEPSEEK = "deepseek"  # DeepSeek
+    ZHIPU_GLM = "zhipu_glm"  # 智谱AI (GLM)
+    BAIDU_WENXIN = "baidu_wenxin"  # 百度文心一言
+    XUNFEI_XINGHUO = "xunfei_xinghuo"  # 讯飞星火
+    MOONSHOT = "moonshot"  # Moonshot (月之暗面/Kimi)
+    TENCENT_HUNYUAN = "tencent_hunyuan"  # 腾讯混元
+    ANTHROPIC_CLAUDE = "anthropic_claude"  # Anthropic Claude
+    GOOGLE_GEMINI = "google_gemini"  # Google Gemini
+    CUSTOM = "custom"  # 自定义/其他兼容OpenAI接口的模型
 
 
 class AIModelConfig(BaseModel):
@@ -32,10 +40,19 @@ class AIModelConfig(BaseModel):
             return self.base_url
         
         # 根据提供商返回默认URL
-        if self.provider == AIModelProvider.ALIYUN_QIANWEN:
-            return "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        elif self.provider == AIModelProvider.OPENAI:
-            return "https://api.openai.com/v1"
-        else:
-            return "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        url_map = {
+            AIModelProvider.ALIYUN_QIANWEN: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            AIModelProvider.OPENAI: "https://api.openai.com/v1",
+            AIModelProvider.DEEPSEEK: "https://api.deepseek.com/v1",
+            AIModelProvider.ZHIPU_GLM: "https://open.bigmodel.cn/api/paas/v4",
+            AIModelProvider.BAIDU_WENXIN: "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop",
+            AIModelProvider.XUNFEI_XINGHUO: "https://spark-api-open.xf-yun.com/v1",
+            AIModelProvider.MOONSHOT: "https://api.moonshot.cn/v1",
+            AIModelProvider.TENCENT_HUNYUAN: "https://api.hunyuan.cloud.tencent.com/v1",
+            AIModelProvider.ANTHROPIC_CLAUDE: "https://api.anthropic.com/v1",
+            AIModelProvider.GOOGLE_GEMINI: "https://generativelanguage.googleapis.com/v1",
+            AIModelProvider.CUSTOM: "https://api.openai.com/v1",  # 默认兼容OpenAI接口
+        }
+        
+        return url_map.get(self.provider, "https://api.openai.com/v1")
 
