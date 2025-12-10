@@ -46,6 +46,7 @@ class PreloadHandler:
         self.main_window.preload_worker = PreloadWorker(self.main_window.db_manager)
         
         # 连接信号
+        self.main_window.preload_worker.databases_loaded.connect(self.on_preload_databases_loaded)
         self.main_window.preload_worker.connection_loaded.connect(self.on_preload_connection_loaded)
         self.main_window.preload_worker.progress.connect(self.on_preload_progress)
         self.main_window.preload_worker.finished_all.connect(self.on_preload_finished)
@@ -53,6 +54,14 @@ class PreloadHandler:
         # 启动线程
         self.main_window.preload_worker.start()
         logger.info("开始后台预加载所有连接的表...")
+    
+    def on_preload_databases_loaded(self, connection_id: str, databases: List[str]):
+        """预加载获取到数据库列表的回调 - 保存到缓存"""
+        try:
+            self.tree_cache.set_databases(connection_id, databases)
+            logger.info(f"✅ [PreloadHandler] 已缓存连接的数据库列表: {connection_id} ({len(databases)} 个数据库)")
+        except Exception as e:
+            logger.error(f"❌ [PreloadHandler] 保存数据库列表缓存失败: {e}")
     
     def on_preload_connection_loaded(self, connection_id: str, database: str, tables: List[str]):
         """预加载完成一个数据库的回调"""

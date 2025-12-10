@@ -100,7 +100,7 @@ class DatabaseManager:
                 self.connection_order.append(connection_id)
             self.connections[connection_id] = connection
             
-            logger.info(f"成功添加数据库连接: {connection.name} (测试连接: {test_connection})")
+            logger.debug(f"成功添加数据库连接: {connection.name} (测试连接: {test_connection})")
             return True
             
         except SQLAlchemyError as e:
@@ -206,7 +206,8 @@ class DatabaseManager:
                 self.engines[connection_id] = engine
                 return engine
             except Exception as e:
-                logger.error(f"创建数据库引擎失败: {str(e)}")
+                logger.error(f"创建数据库引擎失败: {str(e)}", exc_info=True)
+                logger.error(f"连接信息: connection_id={connection_id}, db_type={connection.db_type.value}")
                 return None
         
         return None

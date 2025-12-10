@@ -109,6 +109,8 @@ class TreeDataHandler:
     
     def load_databases_for_connection(self, connection_item: QTreeWidgetItem, connection_id: str, force_reload: bool = False):
         """为连接加载数据库列表"""
+        logger.info(f"🔵 load_databases_for_connection 被调用: connection_id={connection_id}, force_reload={force_reload}")
+        
         # 检查是否已经有正在加载的worker，如果有，先停止它
         if connection_id in self.main_window.database_list_workers:
             worker = self.main_window.database_list_workers[connection_id]
@@ -163,7 +165,10 @@ class TreeDataHandler:
         
         # 如果已经加载过且不强制重新加载，直接返回
         if has_databases and not force_reload:
+            logger.info(f"⏭️  连接已有数据库项，跳过加载: {connection_id}")
             return
+        
+        logger.info(f"🚀 开始加载数据库列表: {connection_id}")
         
         # 显示加载状态
         loading_item = QTreeWidgetItem(connection_item)
@@ -290,8 +295,13 @@ class TreeDataHandler:
         
         # 保存到缓存
         if connection_id:
-            self.tree_cache.set_databases(connection_id, databases)
-            logger.debug(f"已缓存连接 {connection_id} 的 {len(databases)} 个数据库")
+            try:
+                self.tree_cache.set_databases(connection_id, databases)
+                logger.info(f"✅ 已成功缓存连接 {connection_id} 的 {len(databases)} 个数据库")
+            except Exception as e:
+                logger.error(f"❌ 保存数据库缓存失败: connection_id={connection_id}, error={e}")
+        else:
+            logger.warning(f"⚠️ connection_id 为空，无法保存数据库缓存")
         
         # 清理worker（加载完成后）
         if connection_id and connection_id in self.main_window.database_list_workers:
@@ -742,7 +752,7 @@ class TreeDataHandler:
         if not cached_databases:
             return
         
-        logger.info(f"从缓存加载连接 {connection_id} 的 {len(cached_databases)} 个数据库")
+        logger.debug(f"从缓存加载连接 {connection_id} 的 {len(cached_databases)} 个数据库")
         
         # 获取连接信息
         connection = self.main_window.db_manager.get_connection(connection_id)
@@ -783,7 +793,7 @@ class TreeDataHandler:
             logger.debug(f"数据库 {database} 缓存为空表列表")
             return
         
-        logger.info(f"从缓存加载数据库 {database} 的 {len(cached_tables)} 个表")
+        logger.debug(f"从缓存加载数据库 {database} 的 {len(cached_tables)} 个表")
         
         # 创建"表"分类项
         tables_category = QTreeWidgetItem(db_item)

@@ -70,15 +70,26 @@ class DatabaseConnection(BaseModel):
         encoded_username = quote_plus(self.username)
         encoded_password = quote_plus(password)
         
-        connection_string = (
-            f"{driver}://{encoded_username}:{encoded_password}@"
-            f"{self.host}:{self.port}/{self.database}"
-        )
+        # Hive 特殊处理：如果没有密码，不包含密码部分
+        if self.db_type == DatabaseType.HIVE and not password:
+            connection_string = (
+                f"{driver}://{encoded_username}@"
+                f"{self.host}:{self.port}/{self.database}"
+            )
+        else:
+            connection_string = (
+                f"{driver}://{encoded_username}:{encoded_password}@"
+                f"{self.host}:{self.port}/{self.database}"
+            )
         
         # 添加URL参数（只添加URL支持的参数）
         params = []
         if self.charset and self.db_type in [DatabaseType.MYSQL, DatabaseType.MARIADB]:
             params.append(f"charset={self.charset}")
+        
+        # Hive 有密码时需要指定认证模式
+        if self.db_type == DatabaseType.HIVE and password:
+            params.append("auth=LDAP")
         
         if params:
             connection_string += "?" + "&".join(params)
@@ -117,11 +128,9 @@ class DatabaseConnection(BaseModel):
             connect_args['timeout'] = self.timeout
         elif self.db_type == DatabaseType.HIVE:
             # Hive (pyhive) 连接参数
-            # Hive 使用 auth_mechanism 参数，默认为 'PLAIN'
-            # 如果需要 Kerberos 认证，可以设置 auth_mechanism='KERBEROS'
-            connect_args['auth_mechanism'] = 'PLAIN'
-            # 超时设置
-            connect_args['timeout'] = self.timeout
+            # pyhive.hive.Connection 不接受额外的连接参数
+            # 使用默认配置即可
+            pass
         
         return connect_args
     

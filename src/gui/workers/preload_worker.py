@@ -14,6 +14,7 @@ class PreloadWorker(QThread):
     """预加载工作线程 - 加载所有连接的所有数据库的所有表"""
     
     # 定义信号
+    databases_loaded = pyqtSignal(str, list)  # connection_id, databases (新增)
     connection_loaded = pyqtSignal(str, str, list)  # connection_id, database, tables
     progress = pyqtSignal(str)  # 进度消息
     finished_all = pyqtSignal()  # 所有加载完成
@@ -56,6 +57,10 @@ class PreloadWorker(QThread):
                         logger.debug(f"连接 {connection.name} 没有数据库")
                         continue
                     
+                    # 发送数据库列表信号（用于缓存）
+                    self.databases_loaded.emit(connection_id, databases)
+                    logger.debug(f"预加载获取到 {connection.name} 的 {len(databases)} 个数据库")
+                    
                     # 遍历每个数据库
                     for database in databases:
                         if self.isInterruptionRequested() or self._should_stop:
@@ -71,11 +76,12 @@ class PreloadWorker(QThread):
                                 logger.debug(f"预加载完成: {connection.name} -> {database} ({len(tables)} 个表)")
                         
                         except Exception as e:
-                            logger.warning(f"预加载数据库 {database} 失败: {str(e)}")
+                            logger.warning(f"预加载数据库 {database} 失败: {str(e)}", exc_info=True)
                             continue
                 
                 except Exception as e:
-                    logger.warning(f"预加载连接 {connection.name} 失败: {str(e)}")
+                    logger.error(f"预加载连接 {connection.name} 失败: {str(e)}", exc_info=True)
+                    logger.error(f"连接类型: {connection.db_type.value}, 详细错误信息请查看上方堆栈跟踪")
                     continue
             
             self.progress.emit("预加载完成")
