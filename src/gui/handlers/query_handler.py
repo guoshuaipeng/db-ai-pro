@@ -140,17 +140,28 @@ class QueryHandler:
             else:
                 sql = "查询结果"
             
+            # 获取 auto_limit_added 标志
+            auto_limit_added = getattr(self.main_window.query_worker, '_auto_limit_added', False) if self.main_window.query_worker else False
+            
             if success:
                 if data is not None:
                     # 查询结果
-                    self.main_window.result_table.add_result(sql, data, None, None, columns, connection_id=self.main_window.current_connection_id)
+                    self.main_window.result_table.add_result(
+                        sql, data, None, None, columns, 
+                        connection_id=self.main_window.current_connection_id,
+                        auto_limit_added=auto_limit_added
+                    )
                     if data:
                         self.main_window.sql_editor.set_status(f"查询完成: {len(data)} 行")
                     else:
                         self.main_window.sql_editor.set_status(f"查询完成: 0 行")
                 elif affected_rows is not None:
                     # 非查询语句
-                    self.main_window.result_table.add_result(sql, None, None, affected_rows, None, connection_id=self.main_window.current_connection_id)
+                    self.main_window.result_table.add_result(
+                        sql, None, None, affected_rows, None, 
+                        connection_id=self.main_window.current_connection_id,
+                        auto_limit_added=False
+                    )
                     self.main_window.sql_editor.set_status(f"执行成功: 影响 {affected_rows} 行")
                     
                     # 如果是 ALTER TABLE 语句，自动刷新编辑表tab的表结构
@@ -158,7 +169,11 @@ class QueryHandler:
                         self.main_window.table_structure_handler._refresh_edit_table_tabs(sql)
             else:
                 # 错误
-                self.main_window.result_table.add_result(sql, None, error, None, None, connection_id=self.main_window.current_connection_id)
+                self.main_window.result_table.add_result(
+                    sql, None, error, None, None, 
+                    connection_id=self.main_window.current_connection_id,
+                    auto_limit_added=False
+                )
                 self.main_window.sql_editor.set_status(f"执行失败: {error}", is_error=True)
             
             # 恢复执行按钮状态
@@ -309,12 +324,27 @@ class QueryHandler:
                 
                 # 根据数据库类型生成查询SQL（不添加LIMIT，由分页系统自动处理）
                 connection = self.main_window.db_manager.get_connection(connection_id)
+                
+                # 根据数据库类型选择引用符号
+                def quote_identifier(name: str, db_type: DatabaseType) -> str:
+                    if db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+                        return f'`{name}`'
+                    elif db_type in (DatabaseType.POSTGRESQL, DatabaseType.SQLITE):
+                        return f'"{name}"'
+                    elif db_type == DatabaseType.SQLSERVER:
+                        return f'[{name}]'
+                    else:
+                        return name
+                
                 if database and connection and connection.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
                     # MySQL/MariaDB 支持跨库访问，使用 database.table 格式
-                    sql = f"SELECT * FROM `{database}`.`{table_name}`"
+                    db_quoted = quote_identifier(database, connection.db_type)
+                    table_quoted = quote_identifier(table_name, connection.db_type)
+                    sql = f"SELECT * FROM {db_quoted}.{table_quoted}"
                 else:
-                    # 其他数据库类型（如 PostgreSQL）切换数据库后，直接使用表名
-                    sql = f"SELECT * FROM `{table_name}`"
+                    # 其他数据库类型（如 PostgreSQL、SQLite）切换数据库后，直接使用表名
+                    table_quoted = quote_identifier(table_name, connection.db_type) if connection else f'"{table_name}"'
+                    sql = f"SELECT * FROM {table_quoted}"
                 
                 # 在SQL编辑器中显示
                 self.main_window.sql_editor.set_sql(sql)

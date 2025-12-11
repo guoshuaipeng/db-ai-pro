@@ -238,6 +238,12 @@ class DatabaseManager:
             logger.error(f"切换数据库失败，连接不存在: {connection_id}")
             return False
         
+        # SQLite 特殊处理：不切换数据库（因为 database 字段存储的是文件路径）
+        # 对于 SQLite，"main" 只是虚拟的数据库名称，用于树视图显示
+        if connection.db_type == DatabaseType.SQLITE:
+            logger.debug(f"SQLite 连接不需要切换数据库，保持文件路径: {connection.database}")
+            return True
+        
         # 如果数据库未变化，直接返回
         if connection.database == database:
             return True
@@ -376,6 +382,9 @@ class DatabaseManager:
                     result = conn.execute(text("SHOW DATABASES"))
                     databases = [row[0] for row in result]
                     return databases
+            elif connection.db_type == DatabaseType.SQLITE:
+                # SQLite: 单文件数据库，返回 "main" 作为数据库名
+                return ["main"]
             else:
                 # 其他数据库类型，返回当前数据库
                 return [connection.database] if connection.database else []

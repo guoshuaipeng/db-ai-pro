@@ -86,6 +86,7 @@ class SingleResultTable(QWidget):
         self.original_sql = sql  # 原始SQL查询（不带LIMIT）
         self.original_data: List[Dict] = []  # 原始数据（用于生成WHERE条件）
         self.execute_query_func = None  # 自定义的执行查询函数（用于新标签）
+        self.auto_limit_added = False  # 标记是否自动添加了LIMIT
         
         # 分页相关
         self.all_data = []  # 存储当前页数据
@@ -1085,25 +1086,56 @@ class SingleResultTable(QWidget):
     
     def _generate_update_sql(self, table_name: str, col_name: str, new_value, original_row_data: Dict, columns: List[str]) -> Optional[str]:
         """生成UPDATE SQL语句"""
-        # 转义表名和列名（处理反引号）
+        # 获取数据库类型
+        from src.core.database_connection import DatabaseType
+        db_type = None
+        if self.main_window and hasattr(self.main_window, 'current_connection_id'):
+            connection = self.main_window.db_manager.get_connection(self.main_window.current_connection_id)
+            if connection:
+                db_type = connection.db_type
+        
+        # 转义表名和列名（根据数据库类型使用不同的引用符号）
         def escape_identifier(name: str) -> str:
-            # 先移除所有反引号，然后重新添加
-            name = name.strip().strip('`')
-            # 如果包含点号，需要找到最后一个点号，前面是数据库名（可能包含点号），后面是表名
+            # 先移除所有可能的引用符号
+            name = name.strip().strip('`').strip('"').strip('[').strip(']')
+            
+            # 根据数据库类型选择引用符号
+            if db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+                quote_char = '`'
+            elif db_type in (DatabaseType.POSTGRESQL, DatabaseType.SQLITE):
+                quote_char = '"'
+            elif db_type == DatabaseType.SQLSERVER:
+                # SQL Server 使用方括号
+                quote_start = '['
+                quote_end = ']'
+            else:
+                # 其他数据库类型不使用引用符号
+                return name
+            
+            # 处理 SQL Server 的特殊情况
+            if db_type == DatabaseType.SQLSERVER:
+                if '.' in name:
+                    last_dot_index = name.rfind('.')
+                    db_part = name[:last_dot_index].strip()
+                    table_part = name[last_dot_index + 1:].strip()
+                    if db_part and table_part:
+                        return f"{quote_start}{db_part}{quote_end}.{quote_start}{table_part}{quote_end}"
+                    elif table_part:
+                        return f"{quote_start}{table_part}{quote_end}"
+                return f"{quote_start}{name}{quote_end}" if name else name
+            
+            # 处理带点号的标识符（database.table）
             if '.' in name:
-                # 找到最后一个点号的位置
                 last_dot_index = name.rfind('.')
                 db_part = name[:last_dot_index].strip()
                 table_part = name[last_dot_index + 1:].strip()
-                # 数据库名和表名分别转义
-                db_escaped = f"`{db_part}`" if db_part else ""
-                table_escaped = f"`{table_part}`" if table_part else ""
-                if db_escaped and table_escaped:
-                    return f"{db_escaped}.{table_escaped}"
-                elif table_escaped:
-                    return table_escaped
+                if db_part and table_part:
+                    return f"{quote_char}{db_part}{quote_char}.{quote_char}{table_part}{quote_char}"
+                elif table_part:
+                    return f"{quote_char}{table_part}{quote_char}"
+            
             # 单个标识符
-            return f"`{name}`" if name else name
+            return f"{quote_char}{name}{quote_char}" if name else name
         
         # 转义值（处理SQL注入和JSON字段）
         def escape_value(value) -> str:
@@ -1300,25 +1332,56 @@ class SingleResultTable(QWidget):
     
     def _generate_delete_sql(self, table_name: str, original_row_data: Dict, columns: List[str]) -> Optional[str]:
         """生成DELETE SQL语句"""
-        # 转义表名（处理反引号）
+        # 获取数据库类型
+        from src.core.database_connection import DatabaseType
+        db_type = None
+        if self.main_window and hasattr(self.main_window, 'current_connection_id'):
+            connection = self.main_window.db_manager.get_connection(self.main_window.current_connection_id)
+            if connection:
+                db_type = connection.db_type
+        
+        # 转义表名（根据数据库类型使用不同的引用符号）
         def escape_identifier(name: str) -> str:
-            # 先移除所有反引号，然后重新添加
-            name = name.strip().strip('`')
-            # 如果包含点号，需要找到最后一个点号，前面是数据库名（可能包含点号），后面是表名
+            # 先移除所有可能的引用符号
+            name = name.strip().strip('`').strip('"').strip('[').strip(']')
+            
+            # 根据数据库类型选择引用符号
+            if db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+                quote_char = '`'
+            elif db_type in (DatabaseType.POSTGRESQL, DatabaseType.SQLITE):
+                quote_char = '"'
+            elif db_type == DatabaseType.SQLSERVER:
+                # SQL Server 使用方括号
+                quote_start = '['
+                quote_end = ']'
+            else:
+                # 其他数据库类型不使用引用符号
+                return name
+            
+            # 处理 SQL Server 的特殊情况
+            if db_type == DatabaseType.SQLSERVER:
+                if '.' in name:
+                    last_dot_index = name.rfind('.')
+                    db_part = name[:last_dot_index].strip()
+                    table_part = name[last_dot_index + 1:].strip()
+                    if db_part and table_part:
+                        return f"{quote_start}{db_part}{quote_end}.{quote_start}{table_part}{quote_end}"
+                    elif table_part:
+                        return f"{quote_start}{table_part}{quote_end}"
+                return f"{quote_start}{name}{quote_end}" if name else name
+            
+            # 处理带点号的标识符（database.table）
             if '.' in name:
-                # 找到最后一个点号的位置
                 last_dot_index = name.rfind('.')
                 db_part = name[:last_dot_index].strip()
                 table_part = name[last_dot_index + 1:].strip()
-                # 数据库名和表名分别转义
-                db_escaped = f"`{db_part}`" if db_part else ""
-                table_escaped = f"`{table_part}`" if table_part else ""
-                if db_escaped and table_escaped:
-                    return f"{db_escaped}.{table_escaped}"
-                elif table_escaped:
-                    return table_escaped
+                if db_part and table_part:
+                    return f"{quote_char}{db_part}{quote_char}.{quote_char}{table_part}{quote_char}"
+                elif table_part:
+                    return f"{quote_char}{table_part}{quote_char}"
+            
             # 单个标识符
-            return f"`{name}`" if name else name
+            return f"{quote_char}{name}{quote_char}" if name else name
         
         # 转义值（处理SQL注入和JSON字段）
         def escape_value(value) -> str:
@@ -1534,6 +1597,26 @@ class SingleResultTable(QWidget):
             QMessageBox.warning(self, "警告", "没有数据可导出")
             return
         
+        # 检查是否只显示了部分数据
+        should_fetch_all = False
+        
+        # 如果自动添加了LIMIT，提示用户是否导出全部数据
+        if self.auto_limit_added or self.server_side_paging:
+            reply = QMessageBox.question(
+                self,
+                "导出选项",
+                f"当前显示 {len(self.raw_data)} 行数据（已自动限制显示）。\n\n"
+                "是否要重新查询并导出全部数据？\n\n"
+                "• 是：执行完整查询，导出所有数据（后台流式处理）\n"
+                "• 否：仅导出当前显示的 {len(self.raw_data)} 行\n\n"
+                "⚠️ 提示：导出全部数据会在后台进行，不会卡住界面",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Yes
+            )
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+            should_fetch_all = (reply == QMessageBox.StandardButton.Yes)
+        
         # 选择保存文件
         file_path, _ = QFileDialog.getSaveFileName(
             self,
@@ -1545,21 +1628,24 @@ class SingleResultTable(QWidget):
         if not file_path:
             return
         
+        # 如果只导出当前数据，使用快速方法
+        if not should_fetch_all:
+            self._export_current_data_to_csv(file_path)
+            return
+        
+        # 使用后台Worker导出全部数据
+        self._start_background_export(file_path, 'csv')
+    
+    def _export_current_data_to_csv(self, file_path: str):
+        """导出当前显示的数据到CSV（同步方法）"""
         try:
-            # 获取列名
-            if not self.raw_data:
-                return
-            
             columns = list(self.raw_data[0].keys())
             
-            # 写入CSV文件
             with open(file_path, 'w', newline='', encoding='utf-8-sig') as f:
                 writer = csv.DictWriter(f, fieldnames=columns)
                 writer.writeheader()
                 
-                # 写入数据
                 for row in self.raw_data:
-                    # 处理特殊类型（datetime, date, time, Decimal）
                     processed_row = {}
                     for key, value in row.items():
                         if isinstance(value, (datetime, date, time)):
@@ -1572,9 +1658,141 @@ class SingleResultTable(QWidget):
                             processed_row[key] = value
                     writer.writerow(processed_row)
             
-            QMessageBox.information(self, "成功", f"数据已导出到: {file_path}")
+            QMessageBox.information(self, "成功", f"已成功导出 {len(self.raw_data)} 行数据到:\n{file_path}")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导出失败: {str(e)}")
+    
+    def _start_background_export(self, file_path: str, export_type: str):
+        """启动后台导出（流式处理）"""
+        if not self.original_sql or not self.main_window:
+            QMessageBox.warning(self, "错误", "无法获取查询信息")
+            return
+        
+        # 获取连接信息
+        connection_id = getattr(self.main_window, 'current_connection_id', None)
+        if not connection_id:
+            QMessageBox.warning(self, "错误", "无法获取连接信息")
+            return
+        
+        connection = self.main_window.db_manager.get_connection(connection_id)
+        if not connection:
+            QMessageBox.warning(self, "错误", "连接不存在")
+            return
+        
+        # 移除 LIMIT 子句
+        import re
+        sql_no_limit = re.sub(r'\s+LIMIT\s+\d+(\s+OFFSET\s+\d+)?', '', self.original_sql, flags=re.IGNORECASE).strip().rstrip(';')
+        
+        # 创建进度对话框
+        from PyQt6.QtWidgets import QProgressDialog
+        self.export_progress = QProgressDialog(
+            f"正在导出数据到 {export_type.upper()} 文件...\n已导出: 0 行",
+            "取消",
+            0, 0,
+            self
+        )
+        self.export_progress.setWindowModality(Qt.WindowModality.WindowModal)
+        self.export_progress.setMinimumDuration(0)
+        self.export_progress.canceled.connect(self._on_export_canceled)
+        self.export_progress.show()
+        
+        # 创建并启动导出Worker
+        from src.gui.workers.export_worker import ExportWorker
+        self.export_worker = ExportWorker(
+            connection.get_connection_string(),
+            connection.get_connect_args(),
+            sql_no_limit,
+            file_path,
+            export_type,
+            batch_size=1000  # 每批1000行
+        )
+        
+        # 连接信号
+        self.export_worker.progress_updated.connect(self._on_export_progress)
+        self.export_worker.export_finished.connect(self._on_export_finished)
+        
+        # 启动线程
+        self.export_worker.start()
+    
+    def _on_export_progress(self, current: int, total: int):
+        """导出进度更新"""
+        if hasattr(self, 'export_progress') and self.export_progress:
+            if total > 0:
+                self.export_progress.setMaximum(total)
+                self.export_progress.setValue(current)
+            self.export_progress.setLabelText(f"正在导出数据...\n已导出: {current} 行")
+    
+    def _on_export_finished(self, success: bool, message: str):
+        """导出完成"""
+        # 关闭进度对话框
+        if hasattr(self, 'export_progress') and self.export_progress:
+            self.export_progress.close()
+            self.export_progress = None
+        
+        # 清理Worker
+        if hasattr(self, 'export_worker') and self.export_worker:
+            try:
+                self.export_worker.progress_updated.disconnect()
+                self.export_worker.export_finished.disconnect()
+            except:
+                pass
+            self.export_worker.deleteLater()
+            self.export_worker = None
+        
+        # 显示结果
+        if success:
+            QMessageBox.information(self, "导出成功", message)
+        else:
+            QMessageBox.critical(self, "导出失败", message)
+    
+    def _on_export_canceled(self):
+        """用户取消导出"""
+        if hasattr(self, 'export_worker') and self.export_worker:
+            self.export_worker.stop()
+    
+    def _fetch_all_data(self) -> List[Dict]:
+        """重新执行查询获取全部数据（不带LIMIT）"""
+        if not self.original_sql or not self.main_window:
+            logger.warning(f"无法获取全部数据: original_sql={bool(self.original_sql)}, main_window={bool(self.main_window)}")
+            return []
+        
+        try:
+            from sqlalchemy import create_engine, text
+            
+            # 获取连接信息
+            connection_id = getattr(self.main_window, 'current_connection_id', None)
+            if not connection_id:
+                logger.warning("无法获取 connection_id")
+                return []
+            
+            connection = self.main_window.db_manager.get_connection(connection_id)
+            if not connection:
+                logger.warning(f"无法获取连接: {connection_id}")
+                return []
+            
+            # 创建引擎并执行查询
+            engine = self.main_window.db_manager.get_engine(connection_id)
+            if not engine:
+                logger.warning(f"无法获取引擎: {connection_id}")
+                return []
+            
+            # 移除 LIMIT 子句（使用正则表达式，处理各种情况）
+            import re
+            sql_no_limit = re.sub(r'\s+LIMIT\s+\d+(\s+OFFSET\s+\d+)?', '', self.original_sql, flags=re.IGNORECASE).strip().rstrip(';')
+            
+            logger.info(f"开始获取全部数据，原始SQL: {self.original_sql[:100]}")
+            logger.info(f"移除LIMIT后的SQL: {sql_no_limit[:100]}")
+            
+            with engine.connect() as conn:
+                result = conn.execute(text(sql_no_limit))
+                # 转换为字典列表
+                columns = result.keys()
+                data = [dict(zip(columns, row)) for row in result.fetchall()]
+                logger.info(f"成功获取 {len(data)} 行数据")
+                return data
+        except Exception as e:
+            logger.error(f"获取全部数据失败: {str(e)}", exc_info=True)
+            return []
     
     def export_to_excel(self):
         """导出为Excel"""
@@ -1593,6 +1811,26 @@ class SingleResultTable(QWidget):
             )
             return
         
+        # 检查是否只显示了部分数据
+        should_fetch_all = False
+        
+        # 如果自动添加了LIMIT，提示用户是否导出全部数据
+        if self.auto_limit_added or self.server_side_paging:
+            reply = QMessageBox.question(
+                self,
+                "导出选项",
+                f"当前显示 {len(self.raw_data)} 行数据（已自动限制显示）。\n\n"
+                "是否要重新查询并导出全部数据？\n\n"
+                "• 是：执行完整查询，导出所有数据（后台流式处理）\n"
+                "• 否：仅导出当前显示的 {len(self.raw_data)} 行\n\n"
+                "⚠️ 提示：导出全部数据会在后台进行，不会卡住界面",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Yes
+            )
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+            should_fetch_all = (reply == QMessageBox.StandardButton.Yes)
+        
         # 选择保存文件
         file_path, _ = QFileDialog.getSaveFileName(
             self,
@@ -1604,18 +1842,24 @@ class SingleResultTable(QWidget):
         if not file_path:
             return
         
+        # 如果只导出当前数据，使用快速方法
+        if not should_fetch_all:
+            self._export_current_data_to_excel(file_path)
+            return
+        
+        # 使用后台Worker导出全部数据
+        self._start_background_export(file_path, 'excel')
+    
+    def _export_current_data_to_excel(self, file_path: str):
+        """导出当前显示的数据到Excel（同步方法）"""
         try:
             from openpyxl import Workbook
             from openpyxl.styles import Font, Alignment
+            from openpyxl.utils import get_column_letter
             
-            # 创建工作簿
             wb = Workbook()
             ws = wb.active
             ws.title = "查询结果"
-            
-            # 获取列名
-            if not self.raw_data:
-                return
             
             columns = list(self.raw_data[0].keys())
             
@@ -1630,7 +1874,6 @@ class SingleResultTable(QWidget):
                 for col_idx, col_name in enumerate(columns, start=1):
                     value = row_data.get(col_name)
                     
-                    # 处理特殊类型
                     if isinstance(value, (datetime, date, time)):
                         value = value.isoformat()
                     elif isinstance(value, Decimal):
@@ -1641,19 +1884,12 @@ class SingleResultTable(QWidget):
                     ws.cell(row=row_idx, column=col_idx, value=value)
             
             # 自动调整列宽
-            for col_idx, col_name in enumerate(columns, start=1):
-                max_length = len(str(col_name))
-                for row_idx in range(2, len(self.raw_data) + 2):
-                    cell_value = ws.cell(row=row_idx, column=col_idx).value
-                    if cell_value:
-                        max_length = max(max_length, len(str(cell_value)))
-                # 设置列宽（稍微宽一点）
-                ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = min(max_length + 2, 50)
+            for col_idx in range(1, len(columns) + 1):
+                ws.column_dimensions[get_column_letter(col_idx)].width = 15
             
-            # 保存文件
             wb.save(file_path)
             
-            QMessageBox.information(self, "成功", f"数据已导出到: {file_path}")
+            QMessageBox.information(self, "成功", f"已成功导出 {len(self.raw_data)} 行数据到:\n{file_path}")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导出失败: {str(e)}")
     
@@ -1817,7 +2053,8 @@ class MultiResultTable(QWidget):
     
     def add_result(self, sql: str, data: Optional[List[Dict]] = None, 
                    error: Optional[str] = None, affected_rows: Optional[int] = None,
-                   columns: Optional[List[str]] = None, connection_id: Optional[str] = None):
+                   columns: Optional[List[str]] = None, connection_id: Optional[str] = None,
+                   auto_limit_added: bool = False):
         """
         添加查询结果
         
@@ -1850,6 +2087,7 @@ class MultiResultTable(QWidget):
                 # 更新SQL和主窗口引用
                 result_table.original_sql = sql
                 result_table.main_window = getattr(self, '_main_window', None)
+                result_table.auto_limit_added = auto_limit_added  # 传递自动添加LIMIT标志
                 
                 # 如果父级MultiResultTable有自定义的执行查询函数，传递给SingleResultTable
                 if hasattr(self, '_execute_query_func'):
@@ -1879,6 +2117,9 @@ class MultiResultTable(QWidget):
             main_window=getattr(self, '_main_window', None),
             sql=sql
         )
+        
+        # 设置自动添加LIMIT标志
+        result_table.auto_limit_added = auto_limit_added
         
         # 如果父级MultiResultTable有自定义的执行查询函数，传递给SingleResultTable
         if hasattr(self, '_execute_query_func'):

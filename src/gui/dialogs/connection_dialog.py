@@ -159,11 +159,27 @@ class ConnectionDialog(QDialog):
         port_validator = QIntValidator(1, 65535, self.port_edit)
         self.port_edit.setValidator(port_validator)
         host_port_layout.addWidget(self.port_edit, 0)
-        form_layout.addRow("主机地址", host_port_layout)
         
-        # 数据库名
+        # 保存标签以便后续隐藏/显示
+        self.host_label = QLabel("主机地址")
+        form_layout.addRow(self.host_label, host_port_layout)
+        
+        # 数据库名（SQLite时需要文件选择按钮）
+        database_layout = QHBoxLayout()
+        database_layout.setSpacing(10)
         self.database_edit = QLineEdit()
-        form_layout.addRow("数据库名", self.database_edit)
+        database_layout.addWidget(self.database_edit, 1)
+        
+        # 文件浏览按钮（仅SQLite使用）
+        self.browse_btn = QPushButton("浏览...")
+        self.browse_btn.setMaximumWidth(80)
+        self.browse_btn.clicked.connect(self.on_browse_database_file)
+        self.browse_btn.setVisible(False)  # 默认隐藏
+        database_layout.addWidget(self.browse_btn, 0)
+        
+        # 保存标签以便后续修改文本
+        self.database_label = QLabel("数据库名")
+        form_layout.addRow(self.database_label, database_layout)
         
         # 用户名和密码放在一行
         auth_layout = QHBoxLayout()
@@ -176,7 +192,11 @@ class ConnectionDialog(QDialog):
         self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_edit.setPlaceholderText("密码")
         auth_layout.addWidget(self.password_edit, 1)
-        form_layout.addRow("用户名", auth_layout)
+        
+        # 保存标签和布局以便后续隐藏/显示
+        self.auth_label = QLabel("用户名")
+        self.auth_layout_widget = auth_layout
+        form_layout.addRow(self.auth_label, auth_layout)
         
         # 字符集和SSL放在一行
         advanced_layout = QHBoxLayout()
@@ -187,7 +207,11 @@ class ConnectionDialog(QDialog):
         advanced_layout.addWidget(self.charset_edit, 1)
         self.ssl_check = QCheckBox("使用SSL")
         advanced_layout.addWidget(self.ssl_check, 0)
-        form_layout.addRow("高级选项", advanced_layout)
+        
+        # 保存标签和布局以便后续隐藏/显示
+        self.advanced_label = QLabel("高级选项")
+        self.advanced_layout_widget = advanced_layout
+        form_layout.addRow(self.advanced_label, advanced_layout)
         
         # 设置标签样式，确保对齐
         label_style = """
@@ -328,19 +352,111 @@ class ConnectionDialog(QDialog):
         if db_type in default_ports:
             self.port_edit.setText(str(default_ports[db_type]))
         
-        # SQLite特殊处理
+        # SQLite特殊处理 - 隐藏不需要的字段
         if db_type == DatabaseType.SQLITE.value:
-            self.host_edit.setEnabled(False)
-            self.port_edit.setEnabled(False)
-            self.username_edit.setEnabled(False)
-            self.password_edit.setEnabled(False)
-            self.database_edit.setPlaceholderText("数据库文件路径")
+            # 隐藏主机地址和端口
+            self.host_label.setVisible(False)
+            self.host_edit.setVisible(False)
+            self.port_edit.setVisible(False)
+            
+            # 隐藏用户名和密码
+            self.auth_label.setVisible(False)
+            self.username_edit.setVisible(False)
+            self.password_edit.setVisible(False)
+            
+            # 隐藏高级选项（字符集和SSL）
+            self.advanced_label.setVisible(False)
+            self.charset_edit.setVisible(False)
+            self.ssl_check.setVisible(False)
+            
+            # 修改数据库名标签和占位符
+            self.database_label.setText("数据库文件")
+            self.database_edit.setPlaceholderText("选择SQLite数据库文件（.db、.sqlite、.sqlite3等）")
+            self.browse_btn.setVisible(True)  # 显示浏览按钮
+            
+            # 设置默认值（SQLite不需要这些，但为了通过验证）
+            if not self.database_edit.text():
+                self.host_edit.setText("localhost")
+                self.username_edit.setText("sqlite")
+                self.password_edit.setText("sqlite")
         else:
-            self.host_edit.setEnabled(True)
-            self.port_edit.setEnabled(True)
-            self.username_edit.setEnabled(True)
-            self.password_edit.setEnabled(True)
+            # 显示所有字段
+            self.host_label.setVisible(True)
+            self.host_edit.setVisible(True)
+            self.port_edit.setVisible(True)
+            
+            self.auth_label.setVisible(True)
+            self.username_edit.setVisible(True)
+            self.password_edit.setVisible(True)
+            
+            self.advanced_label.setVisible(True)
+            self.charset_edit.setVisible(True)
+            self.ssl_check.setVisible(True)
+            
+            # 恢复数据库名标签和占位符
+            self.database_label.setText("数据库名")
             self.database_edit.setPlaceholderText("")
+            self.browse_btn.setVisible(False)  # 隐藏浏览按钮
+    
+    def on_browse_database_file(self):
+        """浏览或新建SQLite数据库文件"""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        import os
+        
+        # 获取当前路径
+        current_path = self.database_edit.text().strip()
+        if not current_path:
+            # 默认使用用户文档目录
+            from pathlib import Path
+            current_path = str(Path.home() / "Documents")
+        
+        # 使用保存对话框，允许用户新建或选择现有文件
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "选择或新建 SQLite 数据库文件",
+            current_path,
+            "SQLite 数据库文件 (*.db);;SQLite3 数据库 (*.sqlite3);;SQLite 数据库 (*.sqlite);;所有文件 (*.*)"
+        )
+        
+        # 如果用户选择了文件
+        if file_path:
+            # 自动添加扩展名（如果没有）
+            if not any(file_path.lower().endswith(ext) for ext in ['.db', '.sqlite', '.sqlite3', '.db3']):
+                file_path += '.db'
+            
+            # 如果文件不存在，提示将创建新数据库
+            if not os.path.exists(file_path):
+                reply = QMessageBox.question(
+                    self,
+                    "创建新数据库",
+                    f"文件不存在，将创建新的 SQLite 数据库：\n\n{file_path}\n\n是否继续？",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes
+                )
+                if reply == QMessageBox.StandardButton.No:
+                    return
+                
+                # 创建空的 SQLite 数据库文件
+                try:
+                    import sqlite3
+                    conn = sqlite3.connect(file_path)
+                    conn.close()
+                    QMessageBox.information(
+                        self,
+                        "创建成功",
+                        f"SQLite 数据库创建成功！\n\n{file_path}"
+                    )
+                except Exception as e:
+                    QMessageBox.critical(
+                        self,
+                        "创建失败",
+                        f"创建数据库失败：{str(e)}"
+                    )
+                    return
+            
+            # 更新输入框（使用正斜杠，避免 Windows 反斜杠问题）
+            file_path = file_path.replace('\\', '/')
+            self.database_edit.setText(file_path)
     
     def load_connection(self):
         """加载连接信息"""

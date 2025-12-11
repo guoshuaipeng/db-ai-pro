@@ -109,6 +109,9 @@ class DatabaseListWorker(QThread):
                         return
                     result = conn.execute(text("SHOW DATABASES"))
                     databases = [row[0] for row in result]
+            elif self.db_type == DatabaseType.SQLITE:
+                # SQLite: 单文件数据库，返回 "main" 作为数据库名
+                databases = ["main"]
             else:
                 # 其他数据库类型，返回空列表（由调用者处理）
                 databases = []
