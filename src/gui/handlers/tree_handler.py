@@ -190,9 +190,11 @@ class TreeHandler:
         # 根据节点类型执行不同的操作
         if item_type == TreeItemType.CONNECTION:
             # 点击连接项，切换到该连接（使用延迟执行）
-            # 点击连接时，数据库设置为 None（显示"全部数据库"）
+            # 点击连接时，使用连接配置中的默认数据库
             def switch_connection():
-                self.main_window.set_current_connection(connection_id, database=None, from_combo=True)
+                connection = self.main_window.db_manager.get_connection(connection_id)
+                default_db = connection.database if connection else None
+                self.main_window.set_current_connection(connection_id, database=default_db, from_combo=True)
             QTimer.singleShot(1, switch_connection)
         elif item_type == TreeItemType.DATABASE:
             # 点击数据库项，切换到该连接和数据库（使用延迟执行）

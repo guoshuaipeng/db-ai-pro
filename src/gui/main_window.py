@@ -567,9 +567,9 @@ class MainWindow(QMainWindow):
     
     def on_database_combo_changed(self, text: str):
         """数据库下拉框改变"""
-        database = self.database_combo.currentData()  # None 表示"全部数据库"
-        if self.current_connection_id:
-            # 明确传递 database（包括 None），不使用默认数据库
+        database = self.database_combo.currentData()
+        if self.current_connection_id and database:
+            # 明确传递 database，不使用默认数据库
             self.set_current_connection(self.current_connection_id, database=database, from_combo=True)
     
     def load_databases_for_combo(self, connection_id: str):
@@ -591,9 +591,8 @@ class MainWindow(QMainWindow):
         except:
             pass
         
-        # 清空并添加默认选项
+        # 清空下拉框
         self.database_combo.clear()
-        self.database_combo.addItem(self.tr("(全部数据库)"), None)
         
         # 获取数据库列表
         try:
@@ -608,6 +607,10 @@ class MainWindow(QMainWindow):
                 if index >= 0:
                     self.database_combo.setCurrentIndex(index)
                     logger.info(f"已设置当前数据库: {self.current_database}")
+            elif databases:
+                # 如果没有指定当前数据库，默认选择第一个
+                self.database_combo.setCurrentIndex(0)
+                logger.info(f"默认选择第一个数据库: {databases[0]}")
         except Exception as e:
             logger.warning(f"获取数据库列表失败: {e}", exc_info=True)
         
@@ -680,9 +683,6 @@ class MainWindow(QMainWindow):
                 if database:
                     self.statusBar().showMessage(f"切换完成: {connection.name} - {database}")
                     self.sql_editor.set_status(f"切换完成: {connection.name} - {database}")
-                else:
-                    self.statusBar().showMessage(f"切换完成: {connection.name} - (全部数据库)")
-                    self.sql_editor.set_status(f"切换完成: {connection.name} - (全部数据库)")
             
             # 更新SQL编辑器的数据库信息（用于AI生成SQL时获取表结构）
             # 这确保直接查询时也能获取到表列表
@@ -703,10 +703,10 @@ class MainWindow(QMainWindow):
                 if index >= 0:
                     self.database_combo.setCurrentIndex(index)
                 else:
-                    # 如果找不到，默认选择"全部数据库"
+                    # 如果找不到，默认选择第一个数据库
                     self.database_combo.setCurrentIndex(0)
             else:
-                # 如果没有指定数据库，选择"全部数据库"（第一项）
+                # 如果没有指定数据库，默认选择第一个数据库
                 self.database_combo.setCurrentIndex(0)
             
             try:

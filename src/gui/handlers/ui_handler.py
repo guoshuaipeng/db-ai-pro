@@ -140,7 +140,6 @@ class UIHandler:
         
         self.main_window.database_combo = QComboBox()
         self.main_window.database_combo.setMinimumWidth(200)
-        self.main_window.database_combo.addItem(self.main_window.tr("(全部数据库)"), None)
         self.main_window.database_combo.currentTextChanged.connect(self.main_window.on_database_combo_changed)
         connection_group_layout.addWidget(self.main_window.database_combo)
         

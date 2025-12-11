@@ -441,8 +441,8 @@ class SQLEditor(QWidget):
         # 显示查询范围
         if hasattr(self, '_main_window') and self._main_window:
             conn_name = self._main_window.connection_combo.currentText()
-            db_name = self._main_window.database_combo.currentText() if self.current_database else "全部数据库"
-            self.status_label.setText(f"步骤1/4: 正在获取表名列表... (连接: {conn_name}, 范围: {db_name})")
+            db_name = self._main_window.database_combo.currentText() if self.current_database else ""
+            self.status_label.setText(f"步骤1/4: 正在获取表名列表... (连接: {conn_name}, 数据库: {db_name})")
         else:
             self.status_label.setText("步骤1/4: 正在获取表名列表...")
         
