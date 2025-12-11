@@ -85,23 +85,17 @@ class TreeDataHandler:
             # 从缓存加载数据库列表（如果有缓存）
             self._load_databases_from_cache(item, conn.id)
             
-            # 添加到下拉框
-            display_name = conn.get_display_name()
-            # 如果这是当前连接且有当前数据库，显示"连接名 - 数据库名"
-            if self.main_window.current_connection_id == conn.id and self.main_window.current_database:
-                display_name = f"{conn.name} - {self.main_window.current_database}"
+            # 添加到下拉框（只显示连接名，不包含数据库）
+            display_name = f"{conn.name} ({conn.db_type.value})"
             self.main_window.connection_combo.addItem(display_name, conn.id)
         
-        # 如果当前连接存在，设置下拉框选中项
+        # 如果当前连接存在，设置下拉框选中项并加载数据库列表
         if self.main_window.current_connection_id:
             for i in range(self.main_window.connection_combo.count()):
                 if self.main_window.connection_combo.itemData(i) == self.main_window.current_connection_id:
                     self.main_window.connection_combo.setCurrentIndex(i)
-                    # 如果有当前数据库，更新显示文本
-                    if self.main_window.current_database:
-                        connection = self.main_window.db_manager.get_connection(self.main_window.current_connection_id)
-                        if connection:
-                            self.main_window.connection_combo.setItemText(i, f"{connection.name} - {self.main_window.current_database}")
+                    # 加载当前连接的数据库列表
+                    self.main_window.load_databases_for_combo(self.main_window.current_connection_id)
                     break
         
         # 调整列宽

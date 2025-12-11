@@ -3,7 +3,8 @@ UI 初始化处理器
 """
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, 
-    QTreeWidgetItem, QToolBar, QPushButton, QComboBox, QLabel, QTabWidget
+    QTreeWidgetItem, QToolBar, QPushButton, QComboBox, QLabel, QTabWidget,
+    QGroupBox
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QIcon
@@ -116,25 +117,36 @@ class UIHandler:
         query_layout.setSpacing(5)
         query_tab.setLayout(query_layout)
         
-        # 在查询tab顶部添加连接选择
-        connection_bar = QWidget()
-        connection_bar_layout = QHBoxLayout()
-        connection_bar_layout.setContentsMargins(5, 5, 5, 5)
-        connection_bar_layout.setSpacing(10)
-        connection_bar.setLayout(connection_bar_layout)
+        # 在查询tab顶部添加连接选择（用GroupBox包裹）
+        connection_group = QGroupBox(self.main_window.tr("查询范围"))
+        connection_group.setStyleSheet("QGroupBox { font-weight: bold; padding-top: 10px; }")
+        connection_group_layout = QHBoxLayout()
+        connection_group_layout.setSpacing(10)
+        connection_group_layout.setContentsMargins(10, 15, 10, 10)
+        connection_group.setLayout(connection_group_layout)
         
+        # 当前连接
         connection_label = QLabel(self.main_window.tr("当前连接:"))
-        connection_bar_layout.addWidget(connection_label)
-        self.main_window.connection_label = connection_label
+        connection_group_layout.addWidget(connection_label)
         
         self.main_window.connection_combo = QComboBox()
-        self.main_window.connection_combo.setMinimumWidth(300)
+        self.main_window.connection_combo.setMinimumWidth(250)
         self.main_window.connection_combo.currentTextChanged.connect(self.main_window.on_connection_combo_changed)
-        connection_bar_layout.addWidget(self.main_window.connection_combo)
+        connection_group_layout.addWidget(self.main_window.connection_combo)
         
-        connection_bar_layout.addStretch()  # 添加弹性空间，让下拉框靠左
+        # 当前数据库
+        database_label = QLabel(self.main_window.tr("当前数据库:"))
+        connection_group_layout.addWidget(database_label)
         
-        query_layout.addWidget(connection_bar)
+        self.main_window.database_combo = QComboBox()
+        self.main_window.database_combo.setMinimumWidth(200)
+        self.main_window.database_combo.addItem(self.main_window.tr("(全部数据库)"), None)
+        self.main_window.database_combo.currentTextChanged.connect(self.main_window.on_database_combo_changed)
+        connection_group_layout.addWidget(self.main_window.database_combo)
+        
+        connection_group_layout.addStretch()  # 添加弹性空间
+        
+        query_layout.addWidget(connection_group)
         
         query_splitter = QSplitter(Qt.Orientation.Vertical)
         query_splitter.setChildrenCollapsible(False)

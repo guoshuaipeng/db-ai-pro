@@ -11,6 +11,9 @@ from PyQt6.QtWidgets import (
     QCompleter,
     QSplitter,
     QTextEdit,
+    QComboBox,
+    QFormLayout,
+    QGroupBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QStringListModel, QModelIndex
 from PyQt6.QtGui import QFont, QTextCursor, QKeyEvent
@@ -108,6 +111,7 @@ class SQLEditor(QWidget):
         self.db_manager = None  # 数据库管理器引用
         self.current_connection_id = None  # 当前连接ID
         self.current_database = None  # 当前数据库
+        self._loading_databases = False  # 标记是否正在加载数据库列表（避免递归）
         self.init_ui()
     
     def set_database_info(self, db_manager, connection_id: str, database: Optional[str] = None):
@@ -118,6 +122,7 @@ class SQLEditor(QWidget):
         # 初始化schema_worker为None
         if not hasattr(self, 'schema_worker'):
             self.schema_worker = None
+        
     
     def init_ui(self):
         """初始化UI"""
@@ -141,8 +146,9 @@ class SQLEditor(QWidget):
         ai_layout.addWidget(ai_label)
         
         self.ai_input = QTextEdit()
-        self.ai_input.setPlaceholderText("在此输入中文描述，AI将自动生成SQL并执行查询...\n\n例如：\n- 查询所有用户信息\n- 统计每个部门的员工数量\n- 查找最近一周的订单")
+        self.ai_input.setPlaceholderText("在此输入中文描述，AI将自动生成SQL并执行查询...\n\n💡 提示：\n- 按 Enter 键直接查询\n- 按 Shift+Enter 换行\n\n例如：\n- 查询所有用户信息\n- 统计每个部门的员工数量\n- 查找最近一周的订单")
         self.ai_input.setFont(QFont("Microsoft YaHei", 10))
+        self.ai_input.installEventFilter(self)  # 安装事件过滤器，用于处理回车键
         ai_layout.addWidget(self.ai_input)
         
         # 按钮放在输入框下面
@@ -423,10 +429,22 @@ class SQLEditor(QWidget):
             self.set_status("错误: 请输入中文描述", is_error=True)
             return
         
+        # 检查是否选择了连接
+        if not self.current_connection_id:
+            self.set_status("错误: 请先选择数据库连接", is_error=True)
+            return
+        
         # 更新按钮为"取消"状态
         self.generate_btn.setText("取消")
         self.generate_btn.setEnabled(True)
-        self.status_label.setText("步骤1/4: 正在获取表名列表...")
+        
+        # 显示查询范围
+        if hasattr(self, '_main_window') and self._main_window:
+            conn_name = self._main_window.connection_combo.currentText()
+            db_name = self._main_window.database_combo.currentText() if self.current_database else "全部数据库"
+            self.status_label.setText(f"步骤1/4: 正在获取表名列表... (连接: {conn_name}, 范围: {db_name})")
+        else:
+            self.status_label.setText("步骤1/4: 正在获取表名列表...")
         
         # 停止所有正在运行的工作线程
         self._stop_all_workers()
@@ -891,7 +909,21 @@ class SQLEditor(QWidget):
     
     def eventFilter(self, obj, event):
         """事件过滤器，用于处理按键事件"""
-        if obj == self.sql_edit and event.type() == event.Type.KeyPress:
+        # 处理 AI 输入框的回车键
+        if hasattr(self, 'ai_input') and obj == self.ai_input and event.type() == event.Type.KeyPress:
+            key_event = event
+            
+            # Enter 键触发查询（Shift+Enter 换行）
+            if key_event.key() in [Qt.Key.Key_Enter, Qt.Key.Key_Return]:
+                # 如果按住了 Shift，允许换行
+                if key_event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    return False  # 让 QTextEdit 处理换行
+                else:
+                    # 否则触发查询
+                    self.generate_sql_from_ai()
+                    return True  # 阻止默认行为
+        
+        if hasattr(self, 'sql_edit') and obj == self.sql_edit and event.type() == event.Type.KeyPress:
             key_event = event
             
             # F5 执行

@@ -556,29 +556,81 @@ class MainWindow(QMainWindow):
         """连接下拉框改变"""
         connection_id = self.connection_combo.currentData()
         if connection_id:
-            # 从下拉框文本中提取数据库名（如果有的话）
-            # 格式可能是 "连接名 - 数据库名" 或 "连接名 (mysql://...)"
-            database = None
-            if " - " in text:
-                # 提取数据库名（格式：连接名 - 数据库名）
-                parts = text.split(" - ", 1)
-                if len(parts) == 2:
-                    database = parts[1].strip()
-            else:
-                # 如果文本格式是 "连接名 (mysql://.../数据库名)"，使用连接配置中的数据库
-                connection = self.db_manager.get_connection(connection_id)
-                if connection:
-                    database = connection.database
+            # 加载该连接的数据库列表
+            self.load_databases_for_combo(connection_id)
             
-            self.set_current_connection(connection_id, database=database)
+            # 使用连接配置中的默认数据库
+            connection = self.db_manager.get_connection(connection_id)
+            database = connection.database if connection else None
+            
+            self.set_current_connection(connection_id, database=database, from_combo=True)
     
-    def set_current_connection(self, connection_id: str, update_completion: bool = True, database: Optional[str] = None):
-        """设置当前连接（确保所有操作都是非阻塞的）"""
+    def on_database_combo_changed(self, text: str):
+        """数据库下拉框改变"""
+        database = self.database_combo.currentData()  # None 表示"全部数据库"
+        if self.current_connection_id:
+            # 明确传递 database（包括 None），不使用默认数据库
+            self.set_current_connection(self.current_connection_id, database=database, from_combo=True)
+    
+    def load_databases_for_combo(self, connection_id: str):
+        """加载连接的数据库列表到下拉框"""
+        if not connection_id:
+            logger.debug("load_databases_for_combo: connection_id 为空")
+            return
+        
+        connection = self.db_manager.get_connection(connection_id)
+        if not connection:
+            logger.warning(f"load_databases_for_combo: 找不到连接 {connection_id}")
+            return
+        
+        logger.info(f"正在加载连接 {connection.name} 的数据库列表...")
+        
+        # 断开信号避免触发
+        try:
+            self.database_combo.currentTextChanged.disconnect()
+        except:
+            pass
+        
+        # 清空并添加默认选项
+        self.database_combo.clear()
+        self.database_combo.addItem(self.tr("(全部数据库)"), None)
+        
+        # 获取数据库列表
+        try:
+            databases = self.db_manager.get_databases(connection_id)
+            logger.info(f"获取到 {len(databases)} 个数据库: {databases[:5] if len(databases) > 5 else databases}")
+            for db in databases:
+                self.database_combo.addItem(db, db)
+            
+            # 设置当前数据库
+            if self.current_database:
+                index = self.database_combo.findData(self.current_database)
+                if index >= 0:
+                    self.database_combo.setCurrentIndex(index)
+                    logger.info(f"已设置当前数据库: {self.current_database}")
+        except Exception as e:
+            logger.warning(f"获取数据库列表失败: {e}", exc_info=True)
+        
+        # 重新连接信号
+        try:
+            self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
+        except:
+            pass
+    
+    def set_current_connection(self, connection_id: str, update_completion: bool = True, database: Optional[str] = None, from_combo: bool = False):
+        """设置当前连接（确保所有操作都是非阻塞的）
+        
+        Args:
+            connection_id: 连接ID
+            update_completion: 是否更新自动完成（默认True）
+            database: 数据库名（None表示全部数据库）
+            from_combo: 是否来自下拉框选择（如果是，不自动填充默认数据库）
+        """
         self.current_connection_id = connection_id
         connection = self.db_manager.get_connection(connection_id)
         if connection:
-            # 如果未指定数据库，使用连接配置中的数据库
-            if database is None:
+            # 如果不是来自下拉框选择，且未指定数据库，使用连接配置中的数据库
+            if not from_combo and database is None:
                 database = connection.database if connection else None
             
             # 检查是否需要切换数据库
@@ -594,13 +646,6 @@ class MainWindow(QMainWindow):
             for i in range(self.connection_combo.count()):
                 if self.connection_combo.itemData(i) == connection_id:
                     self.connection_combo.setCurrentIndex(i)
-                    # 如果有数据库参数，更新显示文本为"连接名 - 数据库名"
-                    if database:
-                        display_text = f"{connection.name} - {database}"
-                    else:
-                        # 使用简单的显示名称，避免调用可能耗时的 get_display_name()
-                        display_text = f"{connection.name} ({connection.db_type.value})"
-                    self.connection_combo.setItemText(i, display_text)
                     break
             # 重新连接信号
             try:
@@ -632,12 +677,42 @@ class MainWindow(QMainWindow):
                 # 不需要切换数据库，直接设置当前数据库
                 self.current_database = database
                 # 更新状态栏（使用简单的消息，避免调用可能耗时的 get_display_name()）
-                self.statusBar().showMessage(f"切换完成: {connection.name}")
-                self.sql_editor.set_status(f"切换完成: {connection.name}")
+                if database:
+                    self.statusBar().showMessage(f"切换完成: {connection.name} - {database}")
+                    self.sql_editor.set_status(f"切换完成: {connection.name} - {database}")
+                else:
+                    self.statusBar().showMessage(f"切换完成: {connection.name} - (全部数据库)")
+                    self.sql_editor.set_status(f"切换完成: {connection.name} - (全部数据库)")
             
             # 更新SQL编辑器的数据库信息（用于AI生成SQL时获取表结构）
             # 这确保直接查询时也能获取到表列表
             self.sql_editor.set_database_info(self.db_manager, connection_id, database)
+            
+            # 加载并同步数据库下拉框
+            self.load_databases_for_combo(connection_id)
+            
+            # 设置数据库下拉框的选中项
+            try:
+                self.database_combo.currentTextChanged.disconnect()
+            except:
+                pass
+            
+            if database:
+                # 如果指定了数据库，选择该数据库
+                index = self.database_combo.findData(database)
+                if index >= 0:
+                    self.database_combo.setCurrentIndex(index)
+                else:
+                    # 如果找不到，默认选择"全部数据库"
+                    self.database_combo.setCurrentIndex(0)
+            else:
+                # 如果没有指定数据库，选择"全部数据库"（第一项）
+                self.database_combo.setCurrentIndex(0)
+            
+            try:
+                self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
+            except:
+                pass
     
     
     def load_databases_for_connection(self, connection_item: QTreeWidgetItem, connection_id: str, force_reload: bool = False):

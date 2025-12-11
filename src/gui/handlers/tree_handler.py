@@ -144,7 +144,7 @@ class TreeHandler:
             if database and isinstance(database, str):
                 # 切换到该连接和数据库（使用延迟执行，避免阻塞）
                 def switch_and_expand():
-                    self.main_window.set_current_connection(connection_id, database=database)
+                    self.main_window.set_current_connection(connection_id, database=database, from_combo=True)
                     # 如果表已经加载，自动展开"表"分类
                     for i in range(item.childCount()):
                         child = item.child(i)
@@ -166,6 +166,9 @@ class TreeHandler:
                 database, table_name = table_info
                 # 查询表数据（使用延迟执行，避免阻塞）
                 def query_data():
+                    # 先切换到该连接和数据库
+                    self.main_window.set_current_connection(connection_id, database=database, from_combo=True)
+                    # 然后查询表数据
                     self.main_window.query_handler.query_table_data(connection_id, table_name, database)
                 QTimer.singleShot(1, query_data)
     
@@ -187,15 +190,16 @@ class TreeHandler:
         # 根据节点类型执行不同的操作
         if item_type == TreeItemType.CONNECTION:
             # 点击连接项，切换到该连接（使用延迟执行）
+            # 点击连接时，数据库设置为 None（显示"全部数据库"）
             def switch_connection():
-                self.main_window.set_current_connection(connection_id)
+                self.main_window.set_current_connection(connection_id, database=None, from_combo=True)
             QTimer.singleShot(1, switch_connection)
         elif item_type == TreeItemType.DATABASE:
             # 点击数据库项，切换到该连接和数据库（使用延迟执行）
             database = TreeItemData.get_item_data(item)
             if database and isinstance(database, str):
                 def switch_database():
-                    self.main_window.set_current_connection(connection_id, database=database)
+                    self.main_window.set_current_connection(connection_id, database=database, from_combo=True)
                 QTimer.singleShot(1, switch_database)
             
             # 单击时不自动展开，让用户通过双击或点击展开按钮来控制展开/折叠
@@ -215,15 +219,7 @@ class TreeHandler:
                             child.setExpanded(True)
                         break
         elif item_type == TreeItemType.TABLE:
-            # 点击表项，切换到该连接和数据库，并查询表数据
-            table_info = TreeItemData.get_table_info(item)
-            if table_info:
-                table_database, table_name = table_info
-                # 切换到该连接和数据库（使用延迟执行）
-                def switch_and_query():
-                    # 切换到该连接和数据库
-                    self.main_window.set_current_connection(connection_id, database=table_database)
-                    # 查询表数据（已经在query_table_data中使用延迟执行）
-                    self.main_window.query_handler.query_table_data(connection_id, table_name, table_database)
-                QTimer.singleShot(1, switch_and_query)
+            # 单击表项，什么都不做
+            # 只有双击才切换连接/数据库并查询数据
+            pass
 
