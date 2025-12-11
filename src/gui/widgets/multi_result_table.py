@@ -1606,10 +1606,10 @@ class SingleResultTable(QWidget):
                 self,
                 "导出选项",
                 f"当前显示 {len(self.raw_data)} 行数据（已自动限制显示）。\n\n"
-                "是否要重新查询并导出全部数据？\n\n"
-                "• 是：执行完整查询，导出所有数据（后台流式处理）\n"
-                "• 否：仅导出当前显示的 {len(self.raw_data)} 行\n\n"
-                "⚠️ 提示：导出全部数据会在后台进行，不会卡住界面",
+                f"是否要重新查询并导出全部数据？\n\n"
+                f"• 是：执行完整查询，导出所有数据（后台流式处理）\n"
+                f"• 否：仅导出当前显示的 {len(self.raw_data)} 行\n\n"
+                f"⚠️ 提示：导出全部数据会在后台进行，不会卡住界面",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.Yes
             )
@@ -1820,10 +1820,10 @@ class SingleResultTable(QWidget):
                 self,
                 "导出选项",
                 f"当前显示 {len(self.raw_data)} 行数据（已自动限制显示）。\n\n"
-                "是否要重新查询并导出全部数据？\n\n"
-                "• 是：执行完整查询，导出所有数据（后台流式处理）\n"
-                "• 否：仅导出当前显示的 {len(self.raw_data)} 行\n\n"
-                "⚠️ 提示：导出全部数据会在后台进行，不会卡住界面",
+                f"是否要重新查询并导出全部数据？\n\n"
+                f"• 是：执行完整查询，导出所有数据（后台流式处理）\n"
+                f"• 否：仅导出当前显示的 {len(self.raw_data)} 行\n\n"
+                f"⚠️ 提示：导出全部数据会在后台进行，不会卡住界面",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.Yes
             )
