@@ -13,7 +13,13 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QSplitter,
     QTextEdit,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QWidget,
 )
+from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtCore import QUrl
 from PyQt6.QtCore import Qt
 from src.core.ai_model_config import AIModelConfig
 from src.core.ai_model_storage import AIModelStorage
@@ -48,17 +54,155 @@ class AIModelManagerDialog(QDialog):
         info_layout.setSpacing(8)
         info_layout.setContentsMargins(0, 0, 0, 0)
         
-        # 左侧：说明文字
-        info_text = QLabel("💡 管理AI模型配置：可以添加多个模型配置，并设置默认使用的模型。右侧可查看Token使用统计。")
-        info_text.setWordWrap(True)
-        info_text.setStyleSheet("color: #666; padding: 4px 8px;")
-        info_layout.addWidget(info_text, 1)
+        # 创建可折叠的模型对比表格
+        info_container = QWidget()
+        info_container_layout = QVBoxLayout()
+        info_container_layout.setContentsMargins(0, 0, 0, 0)
+        info_container_layout.setSpacing(5)
+        info_container.setLayout(info_container_layout)
+        
+        # 标题和折叠按钮布局
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.toggle_info_btn = QPushButton("▼ AI 模型对比与免费政策")
+        self.toggle_info_btn.setFlat(True)
+        self.toggle_info_btn.setStyleSheet("""
+            QPushButton {
+                text-align: left;
+                padding: 4px 8px;
+                color: #0066CC;
+                font-weight: bold;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #F0F0F0;
+            }
+        """)
+        self.toggle_info_btn.clicked.connect(self.toggle_model_info)
+        header_layout.addWidget(self.toggle_info_btn)
         
         # 右侧：模型数量显示（动态更新）
         self.model_count_label = QLabel("")
         self.model_count_label.setStyleSheet("color: #2196F3; font-weight: bold; padding: 4px 8px;")
         self.model_count_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        info_layout.addWidget(self.model_count_label)
+        header_layout.addWidget(self.model_count_label)
+        
+        info_container_layout.addLayout(header_layout)
+        
+        # 创建模型对比表格
+        self.model_info_table = QTableWidget()
+        self.model_info_table.setColumnCount(4)
+        self.model_info_table.setHorizontalHeaderLabels(["模型名称", "获取Key", "政策", "特点评价"])
+        self.model_info_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.model_info_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self.model_info_table.verticalHeader().setVisible(False)
+        self.model_info_table.setAlternatingRowColors(True)
+        self.model_info_table.setStyleSheet("""
+            QTableWidget {
+                border: 1px solid #DDD;
+                background-color: #FAFAFA;
+                gridline-color: #E0E0E0;
+            }
+            QTableWidget::item {
+                padding: 8px;
+            }
+            QHeaderView::section {
+                background-color: #E8F4F8;
+                padding: 8px;
+                border: none;
+                border-bottom: 2px solid #0066CC;
+                font-weight: bold;
+            }
+        """)
+        
+        # 添加模型数据（名称、API Key URL、政策、特点评价）
+        models_data = [
+            ["阿里云通义千问", "https://dashscope.console.aliyun.com/apiKey", "💰 有免费额度", "✅ 响应快、中文优秀、国内稳定 | ⚠️ 英文能力相对较弱"],
+            ["DeepSeek", "https://platform.deepseek.com/api_keys", "💰 $0.14/百万token / 极低价格", "✅ 价格超低、代码强、能力好 | ⚠️ 响应较慢、偶尔不稳定"],
+            ["智谱GLM", "https://open.bigmodel.cn/usercenter/apikeys", "💰 20元/月套餐", "✅ 中文好、响应快、稳定 | ⚠️ 需付费使用"],
+            ["百度文心一言", "https://console.bce.baidu.com/qianfan/ais/console/applicationConsole/application", "💰 有免费额度", "✅ 中文优秀、响应快、百度集成 | ⚠️ 文档复杂、额度有限"],
+            ["Moonshot (Kimi)", "https://platform.moonshot.cn/console/api-keys", "💰 新用户体验金", "✅ 长文本强、中文好、理解佳 | ⚠️ 体验金有限"],
+            ["讯飞星火", "https://console.xfyun.cn/services/bm35", "💰 新用户赠送", "✅ 中文自然、语音集成好 | ⚠️ 额度有限、API复杂"],
+            ["腾讯混元", "https://cloud.tencent.com/product/hunyuan", "💰 新用户赠送", "✅ 腾讯集成、稳定 | ⚠️ 额度有限"],
+            ["OpenAI", "https://platform.openai.com/api-keys", "💵 API按量付费 / 约$0.002/1K token", "✅ 能力顶尖、生态完善、英文最佳 | ⚠️ 需付费、国内困难"],
+            ["Claude", "https://console.anthropic.com/settings/keys", "💵 网页版100条/天 / API按量付费", "✅ 长文本强、安全性好、代码强 | ⚠️ 需付费、国内受限"],
+            ["Google Gemini", "https://makersuite.google.com/app/apikey", "💰 有免费额度", "✅ 多模态强、响应快 | ⚠️ 国内访问困难"],
+        ]
+        
+        self.model_info_table.setRowCount(len(models_data))
+        for row, (name, api_url, policy, features) in enumerate(models_data):
+            # 模型名称
+            name_item = QTableWidgetItem(name)
+            name_item.setToolTip(name)
+            self.model_info_table.setItem(row, 0, name_item)
+            
+            # 获取Key按钮
+            key_btn = QPushButton("🔑 获取")
+            key_btn.setMaximumWidth(70)
+            key_btn.setMaximumHeight(25)
+            key_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #4CAF50;
+                    color: white;
+                    border: none;
+                    border-radius: 3px;
+                    font-size: 11px;
+                    padding: 2px 6px;
+                }
+                QPushButton:hover {
+                    background-color: #45a049;
+                }
+                QPushButton:pressed {
+                    background-color: #3d8b40;
+                }
+            """)
+            key_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            key_btn.setToolTip(f"点击打开：{api_url}")
+            # 使用 lambda 捕获 api_url
+            key_btn.clicked.connect(lambda checked, url=api_url: QDesktopServices.openUrl(QUrl(url)))
+            
+            # 创建容器widget来居中按钮
+            btn_widget = QWidget()
+            btn_layout = QHBoxLayout(btn_widget)
+            btn_layout.addWidget(key_btn)
+            btn_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            btn_layout.setContentsMargins(0, 0, 0, 0)
+            self.model_info_table.setCellWidget(row, 1, btn_widget)
+            
+            # 政策
+            policy_item = QTableWidgetItem(policy)
+            policy_item.setToolTip(policy)
+            # 根据政策设置颜色
+            if "$0.14" in policy:
+                policy_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif "按量付费" in policy or "💵" in policy:
+                policy_item.setForeground(Qt.GlobalColor.darkRed)
+            else:
+                policy_item.setForeground(Qt.GlobalColor.darkYellow)
+            self.model_info_table.setItem(row, 2, policy_item)
+            
+            # 特点评价（优缺点合并）
+            features_item = QTableWidgetItem(features)
+            features_item.setToolTip(features)
+            self.model_info_table.setItem(row, 3, features_item)
+        
+        # 设置列宽
+        self.model_info_table.setColumnWidth(0, 140)
+        self.model_info_table.setColumnWidth(1, 80)  # 获取Key按钮列
+        self.model_info_table.setColumnWidth(2, 200)  # 政策列
+        self.model_info_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # 特点评价自适应
+        
+        # 设置固定行高（单行显示）
+        self.model_info_table.verticalHeader().setDefaultSectionSize(35)
+        self.model_info_table.setWordWrap(False)
+        
+        # 设置表格最大高度
+        self.model_info_table.setMaximumHeight(300)
+        
+        info_container_layout.addWidget(self.model_info_table)
+        
+        info_layout.addWidget(info_container)
         
         layout.addLayout(info_layout)
         
@@ -303,6 +447,16 @@ class AIModelManagerDialog(QDialog):
                 # 保存失败，撤销添加
                 self.models.pop()
                 QMessageBox.warning(self, "错误", "保存模型配置失败")
+    
+    def toggle_model_info(self):
+        """切换模型信息表格的显示/隐藏"""
+        is_visible = self.model_info_table.isVisible()
+        self.model_info_table.setVisible(not is_visible)
+        # 更新按钮文本
+        if is_visible:
+            self.toggle_info_btn.setText("▶ AI 模型对比与免费政策")
+        else:
+            self.toggle_info_btn.setText("▼ AI 模型对比与免费政策")
     
     def edit_selected_model(self):
         """编辑选中的模型"""
