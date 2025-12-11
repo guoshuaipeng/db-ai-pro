@@ -40,78 +40,119 @@ class ConnectionDialog(QDialog):
     
     def init_ui(self):
         """初始化UI"""
-        layout = QVBoxLayout()
-        layout.setSpacing(16)
-        layout.setContentsMargins(20, 20, 20, 20)
-        self.setLayout(layout)
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(24, 24, 24, 24)
+        self.setLayout(main_layout)
         
-        # AI识别配置区域（仅在新建连接时显示）
+        # 设置对话框整体样式
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f5f7fa;
+            }
+            QLabel {
+                color: #2c3e50;
+                font-size: 13px;
+            }
+            QGroupBox {
+                font-weight: 600;
+                border: none;
+                border-radius: 12px;
+                margin-top: 16px;
+                padding-top: 20px;
+                padding-bottom: 16px;
+                background-color: white;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 16px;
+                top: 0px;
+                padding: 0 8px;
+                color: #1976d2;
+                font-size: 14px;
+            }
+        """)
+        
+        # 创建水平布局（仅在新建连接时使用左右分割）
         if not self.connection:
-            ai_group = QGroupBox("✨ AI智能识别")
-            ai_group.setStyleSheet("""
-                QGroupBox {
-                    font-weight: 500;
-                    border: 1px solid #e0e0e0;
-                    border-radius: 8px;
-                    margin-top: 12px;
-                    padding-top: 12px;
-                    background-color: #fafafa;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 12px;
-                    padding: 0 8px;
-                    color: #1976d2;
+            content_layout = QHBoxLayout()
+            content_layout.setSpacing(16)
+            
+            # 左侧：AI识别配置区域
+            ai_group = QGroupBox("✨ AI 智能识别")
+            ai_group.setMinimumWidth(320)
+            ai_group.setMaximumWidth(380)
+            ai_layout = QVBoxLayout()
+            ai_layout.setSpacing(12)
+            ai_layout.setContentsMargins(20, 16, 20, 16)
+            
+            ai_info_label = QLabel("💡 粘贴连接配置\nAI 自动解析")
+            ai_info_label.setWordWrap(True)
+            ai_info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            ai_info_label.setStyleSheet("""
+                QLabel {
+                    color: #5a6c7d;
+                    font-size: 12px;
+                    padding: 12px;
+                    background-color: #e3f2fd;
+                    border-radius: 6px;
+                    border-left: 3px solid #1976d2;
+                    line-height: 1.6;
                 }
             """)
-            ai_layout = QVBoxLayout()
-            ai_layout.setSpacing(10)
-            ai_layout.setContentsMargins(12, 12, 12, 12)
-            
-            ai_info_label = QLabel("粘贴连接配置（支持YAML、Properties、JDBC URL等格式）")
-            ai_info_label.setWordWrap(True)
-            ai_info_label.setStyleSheet("color: #666; font-size: 12px;")
             ai_layout.addWidget(ai_info_label)
             
             self.ai_config_edit = QTextEdit()
-            self.ai_config_edit.setPlaceholderText("例如：\nspring.datasource.url=jdbc:mysql://localhost:3306/test\nspring.datasource.username=root\nspring.datasource.password=123456")
-            self.ai_config_edit.setMaximumHeight(80)
+            self.ai_config_edit.setPlaceholderText("支持多种格式：\n\n• JDBC URL\n  jdbc:mysql://localhost:3306/test\n  ?user=root&password=123456\n\n• Spring 配置\n  spring.datasource.url=...\n  spring.datasource.username=...\n\n• YAML 配置\n• 键值对配置")
+            self.ai_config_edit.setMinimumHeight(280)
             self.ai_config_edit.setStyleSheet("""
                 QTextEdit {
-                    border: 1px solid #ddd;
-                    border-radius: 4px;
-                    padding: 6px;
-                    font-size: 12px;
-                    background-color: white;
+                    border: 2px solid #e1e8ed;
+                    border-radius: 8px;
+                    padding: 12px;
+                    font-size: 13px;
+                    font-family: 'Consolas', 'Monaco', monospace;
+                    background-color: #fafbfc;
+                    line-height: 1.6;
                 }
                 QTextEdit:focus {
                     border-color: #1976d2;
+                    background-color: white;
+                }
+                QTextEdit:hover {
+                    border-color: #90caf9;
                 }
             """)
             ai_layout.addWidget(self.ai_config_edit)
             
             ai_button_layout = QHBoxLayout()
             ai_button_layout.addStretch()
-            self.ai_parse_btn = QPushButton("🔍 AI识别并填充")
+            self.ai_parse_btn = QPushButton("✨ AI 智能识别并填充")
+            self.ai_parse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             self.ai_parse_btn.setStyleSheet("""
                 QPushButton {
-                    background-color: #1976d2;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #2196f3, stop:1 #1976d2);
                     color: white;
                     border: none;
-                    border-radius: 4px;
-                    padding: 8px 16px;
-                    font-weight: 500;
-                    min-width: 120px;
+                    border-radius: 8px;
+                    padding: 10px 24px;
+                    font-weight: 600;
+                    font-size: 13px;
+                    min-width: 160px;
                 }
                 QPushButton:hover {
-                    background-color: #1565c0;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #1e88e5, stop:1 #1565c0);
                 }
                 QPushButton:pressed {
-                    background-color: #0d47a1;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #1565c0, stop:1 #0d47a1);
                 }
                 QPushButton:disabled {
-                    background-color: #ccc;
-                    color: #999;
+                    background: #bdbdbd;
+                    color: #757575;
                 }
             """)
             self.ai_parse_btn.clicked.connect(self.on_ai_parse_clicked)
@@ -119,156 +160,218 @@ class ConnectionDialog(QDialog):
             ai_layout.addLayout(ai_button_layout)
             
             ai_group.setLayout(ai_layout)
-            layout.addWidget(ai_group)
+            content_layout.addWidget(ai_group)
+            
+            # 右侧：连接信息分组
+            connection_group = QGroupBox("🔌 连接信息")
+            connection_group.setMinimumWidth(420)
+        else:
+            # 编辑模式：不使用左右分割
+            content_layout = QVBoxLayout()
+            connection_group = QGroupBox("🔌 连接信息")
+        
+        connection_layout = QVBoxLayout()
+        connection_layout.setSpacing(12)
+        connection_layout.setContentsMargins(20, 12, 20, 16)
         
         # 表单布局
         form_layout = QFormLayout()
         form_layout.setSpacing(12)
-        form_layout.setVerticalSpacing(14)
+        form_layout.setVerticalSpacing(12)
         form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         form_layout.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        # 设置行高，确保标签和输入框对齐
         form_layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        form_layout.setHorizontalSpacing(16)
         
         # 连接名称
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("例如: 生产数据库")
-        form_layout.addRow("连接名称", self.name_edit)
+        self.name_edit.setPlaceholderText("例如: 生产数据库、测试环境")
+        name_label = QLabel("连接名称 *")
+        name_label.setStyleSheet("font-weight: 500;")
+        form_layout.addRow(name_label, self.name_edit)
         
         # 数据库类型
         self.db_type_combo = QComboBox()
         self.db_type_combo.addItems([db.value for db in DatabaseType])
         self.db_type_combo.currentTextChanged.connect(self.on_db_type_changed)
-        form_layout.addRow("数据库类型", self.db_type_combo)
+        db_type_label = QLabel("数据库类型 *")
+        db_type_label.setStyleSheet("font-weight: 500;")
+        form_layout.addRow(db_type_label, self.db_type_combo)
         
         # 主机地址和端口放在一行
         host_port_layout = QHBoxLayout()
-        host_port_layout.setSpacing(10)
+        host_port_layout.setSpacing(12)
         self.host_edit = QLineEdit()
-        self.host_edit.setPlaceholderText("localhost")
-        host_port_layout.addWidget(self.host_edit, 2)
+        self.host_edit.setPlaceholderText("localhost 或 IP 地址")
+        host_port_layout.addWidget(self.host_edit, 3)
         
-        port_label = QLabel("端口")
-        port_label.setStyleSheet("min-width: 40px;")
+        port_label = QLabel(":")
+        port_label.setStyleSheet("font-weight: bold; font-size: 16px; color: #95a5a6;")
         host_port_layout.addWidget(port_label)
         self.port_edit = QLineEdit()
         self.port_edit.setText("3306")
-        self.port_edit.setPlaceholderText("3306")
-        self.port_edit.setMaximumWidth(80)
+        self.port_edit.setPlaceholderText("端口")
+        self.port_edit.setMaximumWidth(100)
         # 只允许输入1-65535之间的数字
         port_validator = QIntValidator(1, 65535, self.port_edit)
         self.port_edit.setValidator(port_validator)
-        host_port_layout.addWidget(self.port_edit, 0)
+        host_port_layout.addWidget(self.port_edit, 1)
         
         # 保存标签以便后续隐藏/显示
-        self.host_label = QLabel("主机地址")
+        self.host_label = QLabel("主机地址 *")
+        self.host_label.setStyleSheet("font-weight: 500;")
         form_layout.addRow(self.host_label, host_port_layout)
         
         # 数据库名（SQLite时需要文件选择按钮）
         database_layout = QHBoxLayout()
-        database_layout.setSpacing(10)
+        database_layout.setSpacing(8)
         self.database_edit = QLineEdit()
+        self.database_edit.setPlaceholderText("数据库名称")
         database_layout.addWidget(self.database_edit, 1)
         
         # 文件浏览按钮（仅SQLite使用）
-        self.browse_btn = QPushButton("浏览...")
-        self.browse_btn.setMaximumWidth(80)
+        self.browse_btn = QPushButton("📁 浏览")
+        self.browse_btn.setMaximumWidth(100)
+        self.browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.browse_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f5f5f5;
+                color: #424242;
+                border: 1px solid #e0e0e0;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #eeeeee;
+                border-color: #bdbdbd;
+            }
+            QPushButton:pressed {
+                background-color: #e0e0e0;
+            }
+        """)
         self.browse_btn.clicked.connect(self.on_browse_database_file)
         self.browse_btn.setVisible(False)  # 默认隐藏
         database_layout.addWidget(self.browse_btn, 0)
         
         # 保存标签以便后续修改文本
-        self.database_label = QLabel("数据库名")
+        self.database_label = QLabel("数据库名 *")
+        self.database_label.setStyleSheet("font-weight: 500;")
         form_layout.addRow(self.database_label, database_layout)
         
-        # 用户名和密码放在一行
-        auth_layout = QHBoxLayout()
-        auth_layout.setSpacing(10)
-        auth_layout.setContentsMargins(0, 0, 0, 0)
+        # 用户名
         self.username_edit = QLineEdit()
-        self.username_edit.setPlaceholderText("用户名")
-        auth_layout.addWidget(self.username_edit, 1)
+        self.username_edit.setPlaceholderText("数据库用户名")
+        username_label = QLabel("用户名 *")
+        username_label.setStyleSheet("font-weight: 500;")
+        form_layout.addRow(username_label, self.username_edit)
+        
+        # 密码
         self.password_edit = QLineEdit()
         self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password_edit.setPlaceholderText("密码")
-        auth_layout.addWidget(self.password_edit, 1)
+        self.password_edit.setPlaceholderText("数据库密码")
+        password_label = QLabel("密码")
+        password_label.setStyleSheet("font-weight: 500;")
+        form_layout.addRow(password_label, self.password_edit)
         
-        # 保存标签和布局以便后续隐藏/显示
-        self.auth_label = QLabel("用户名")
-        self.auth_layout_widget = auth_layout
-        form_layout.addRow(self.auth_label, auth_layout)
+        # 保存标签以便后续隐藏/显示
+        self.auth_label = username_label
+        self.password_label = password_label
         
-        # 字符集和SSL放在一行
-        advanced_layout = QHBoxLayout()
-        advanced_layout.setSpacing(10)
+        # 字符集
+        charset_layout = QHBoxLayout()
+        charset_layout.setSpacing(12)
         self.charset_edit = QLineEdit()
         self.charset_edit.setText("utf8mb4")
-        self.charset_edit.setPlaceholderText("字符集")
-        advanced_layout.addWidget(self.charset_edit, 1)
-        self.ssl_check = QCheckBox("使用SSL")
-        advanced_layout.addWidget(self.ssl_check, 0)
-        
-        # 保存标签和布局以便后续隐藏/显示
-        self.advanced_label = QLabel("高级选项")
-        self.advanced_layout_widget = advanced_layout
-        form_layout.addRow(self.advanced_label, advanced_layout)
-        
-        # 设置标签样式，确保对齐
-        label_style = """
-            QLabel {
-                padding: 0px;
-                margin: 0px;
-            }
-        """
-        # 为表单标签应用样式
-        for i in range(form_layout.rowCount()):
-            label_item = form_layout.itemAt(i, QFormLayout.ItemRole.LabelRole)
-            if label_item:
-                label = label_item.widget()
-                if label and isinstance(label, QLabel):
-                    label.setStyleSheet(label_style)
-                    label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        
-        # 应用样式到输入控件
-        input_style = """
-            QLineEdit, QComboBox {
-                border: 1px solid #ddd;
-                border-radius: 4px;
-                padding: 8px 12px;
-                font-size: 13px;
-                background-color: white;
-                min-height: 20px;
-            }
-            QLineEdit:focus, QComboBox:focus {
-                border-color: #1976d2;
-                outline: none;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 20px;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 5px solid #666;
-                width: 0;
-                height: 0;
-            }
+        self.charset_edit.setPlaceholderText("utf8mb4（推荐）")
+        charset_layout.addWidget(self.charset_edit, 1)
+        self.ssl_check = QCheckBox("🔒 启用 SSL")
+        self.ssl_check.setStyleSheet("""
             QCheckBox {
                 font-size: 13px;
-                spacing: 6px;
+                spacing: 8px;
+                color: #2c3e50;
             }
             QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 1px solid #ddd;
-                border-radius: 3px;
+                width: 20px;
+                height: 20px;
+                border: 2px solid #bdc3c7;
+                border-radius: 4px;
                 background-color: white;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #1976d2;
             }
             QCheckBox::indicator:checked {
                 background-color: #1976d2;
                 border-color: #1976d2;
+                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOSIgdmlld0JveD0iMCAwIDEyIDkiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xIDQuNUw0LjUgOEwxMSAxIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4=);
+            }
+        """)
+        charset_layout.addWidget(self.ssl_check, 0)
+        
+        # 保存标签以便后续隐藏/显示
+        self.advanced_label = QLabel("字符集")
+        self.advanced_label.setStyleSheet("font-weight: 500;")
+        form_layout.addRow(self.advanced_label, charset_layout)
+        
+        # 将表单添加到连接组
+        connection_layout.addLayout(form_layout)
+        connection_group.setLayout(connection_layout)
+        
+        # 根据是否有AI识别区域决定布局方式
+        if not self.connection:
+            content_layout.addWidget(connection_group)
+            main_layout.addLayout(content_layout)
+        else:
+            content_layout.addWidget(connection_group)
+            main_layout.addLayout(content_layout)
+        
+        # 应用现代化样式到输入控件
+        input_style = """
+            QLineEdit, QComboBox {
+                border: 2px solid #e1e8ed;
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-size: 13px;
+                background-color: #fafbfc;
+                min-height: 18px;
+                selection-background-color: #1976d2;
+            }
+            QLineEdit:focus, QComboBox:focus {
+                border-color: #1976d2;
+                background-color: white;
+            }
+            QLineEdit:hover, QComboBox:hover {
+                border-color: #90caf9;
+            }
+            QComboBox {
+                padding-right: 30px;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 30px;
+                background: transparent;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 6px solid #607d8b;
+                width: 0;
+                height: 0;
+                margin-right: 8px;
+            }
+            QComboBox::down-arrow:hover {
+                border-top-color: #1976d2;
+            }
+            QComboBox QAbstractItemView {
+                border: 2px solid #e1e8ed;
+                border-radius: 8px;
+                background-color: white;
+                selection-background-color: #e3f2fd;
+                selection-color: #1976d2;
+                padding: 4px;
             }
         """
         self.name_edit.setStyleSheet(input_style)
@@ -280,56 +383,71 @@ class ConnectionDialog(QDialog):
         self.password_edit.setStyleSheet(input_style)
         self.charset_edit.setStyleSheet(input_style)
         
-        layout.addLayout(form_layout)
-        layout.addStretch()
+        main_layout.addStretch()
         
-        # 按钮
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        button_box.setStyleSheet("""
+        # 按钮区域
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(12)
+        button_layout.setContentsMargins(0, 12, 0, 0)
+        button_layout.addStretch()
+        
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setMinimumWidth(100)
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.setStyleSheet("""
             QPushButton {
-                min-width: 80px;
-                padding: 8px 20px;
-                border-radius: 4px;
-                font-weight: 500;
+                background-color: white;
+                color: #546e7a;
+                border: 2px solid #e1e8ed;
+                border-radius: 8px;
+                padding: 10px 24px;
+                font-weight: 600;
                 font-size: 13px;
             }
-            QPushButton[text="OK"], QPushButton[text="确定"] {
-                background-color: #1976d2;
+            QPushButton:hover {
+                background-color: #f5f7fa;
+                border-color: #90a4ae;
+            }
+            QPushButton:pressed {
+                background-color: #eceff1;
+            }
+        """)
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+        
+        ok_btn = QPushButton("✓ 保存连接")
+        ok_btn.setMinimumWidth(120)
+        ok_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        ok_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #4caf50, stop:1 #388e3c);
                 color: white;
                 border: none;
-            }
-            QPushButton[text="OK"]:hover, QPushButton[text="确定"]:hover {
-                background-color: #1565c0;
-            }
-            QPushButton[text="Cancel"], QPushButton[text="取消"] {
-                background-color: white;
-                color: #333;
-                border: 1px solid #ddd;
-            }
-            QPushButton[text="Cancel"]:hover, QPushButton[text="取消"]:hover {
-                background-color: #f5f5f5;
-                border-color: #bbb;
-            }
-        """)
-        layout.addWidget(button_box)
-        
-        # 设置对话框样式
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #ffffff;
-            }
-            QLabel {
-                color: #333;
+                border-radius: 8px;
+                padding: 10px 24px;
+                font-weight: 600;
                 font-size: 13px;
             }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #66bb6a, stop:1 #43a047);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #388e3c, stop:1 #2e7d32);
+            }
         """)
+        ok_btn.clicked.connect(self.accept)
+        button_layout.addWidget(ok_btn)
+        
+        main_layout.addLayout(button_layout)
         
         # 设置对话框大小
-        self.resize(480, 0)
+        if not self.connection:
+            self.resize(850, 550)  # 新建连接：左右布局，更宽
+        else:
+            self.resize(550, 0)    # 编辑连接：垂直布局
         
         # 设置默认端口
         self.on_db_type_changed()
@@ -362,6 +480,7 @@ class ConnectionDialog(QDialog):
             # 隐藏用户名和密码
             self.auth_label.setVisible(False)
             self.username_edit.setVisible(False)
+            self.password_label.setVisible(False)
             self.password_edit.setVisible(False)
             
             # 隐藏高级选项（字符集和SSL）
@@ -370,8 +489,8 @@ class ConnectionDialog(QDialog):
             self.ssl_check.setVisible(False)
             
             # 修改数据库名标签和占位符
-            self.database_label.setText("数据库文件")
-            self.database_edit.setPlaceholderText("选择SQLite数据库文件（.db、.sqlite、.sqlite3等）")
+            self.database_label.setText("数据库文件 *")
+            self.database_edit.setPlaceholderText("选择或创建 SQLite 数据库文件")
             self.browse_btn.setVisible(True)  # 显示浏览按钮
             
             # 设置默认值（SQLite不需要这些，但为了通过验证）
@@ -387,6 +506,7 @@ class ConnectionDialog(QDialog):
             
             self.auth_label.setVisible(True)
             self.username_edit.setVisible(True)
+            self.password_label.setVisible(True)
             self.password_edit.setVisible(True)
             
             self.advanced_label.setVisible(True)
@@ -394,8 +514,8 @@ class ConnectionDialog(QDialog):
             self.ssl_check.setVisible(True)
             
             # 恢复数据库名标签和占位符
-            self.database_label.setText("数据库名")
-            self.database_edit.setPlaceholderText("")
+            self.database_label.setText("数据库名 *")
+            self.database_edit.setPlaceholderText("数据库名称")
             self.browse_btn.setVisible(False)  # 隐藏浏览按钮
     
     def on_browse_database_file(self):
