@@ -265,11 +265,21 @@ class CreateTableTab(QWidget):
         self.table_list_worker.tables_ready.connect(self.on_table_list_loaded)
         self.table_list_worker.start()
     
-    def on_table_list_loaded(self, tables: list):
-        """表列表加载完成"""
-        self.all_table_names = tables
-        if tables:
-            logger.info(f"已加载 {len(tables)} 个表名，等待用户输入后选择参考表")
+    def on_table_list_loaded(self, table_info_list: list):
+        """表列表加载完成
+        
+        Args:
+            table_info_list: 表信息列表，格式为 [{"name": "table1", "comment": "注释1"}, ...]
+        """
+        # 提取表名列表（向后兼容）
+        if table_info_list and isinstance(table_info_list[0], dict):
+            self.all_table_names = [table_info["name"] for table_info in table_info_list]
+        else:
+            # 旧格式（字符串列表）
+            self.all_table_names = table_info_list
+            
+        if self.all_table_names:
+            logger.info(f"已加载 {len(self.all_table_names)} 个表名，等待用户输入后选择参考表")
         else:
             logger.info("未找到表，将无法选择参考表")
         

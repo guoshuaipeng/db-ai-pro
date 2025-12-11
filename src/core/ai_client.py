@@ -314,18 +314,18 @@ class AIClient:
             self.logger.error(f"生成SQL失败: {str(e)}")
             raise Exception(f"AI生成SQL失败: {str(e)}")
     
-    def select_tables(self, user_query: str, table_names: list, current_sql: str = None) -> list:
+    def select_tables(self, user_query: str, table_info_list: list, current_sql: str = None) -> list:
         """
         根据用户查询从表名列表中选择相关的表
         
         :param user_query: 用户的中文查询
-        :param table_names: 所有可用的表名列表
+        :param table_info_list: 所有可用的表信息列表，格式为 [{"name": "table1", "comment": "注释1"}, ...] 或简单的表名字符串列表（向后兼容）
         :param current_sql: 当前SQL编辑器中的SQL（可选，用于理解用户可能已经在查看某个表）
         :return: 选中的表名列表
         """
         try:
-            if not table_names:
-                self.logger.warning("表名列表为空，无法选择表")
+            if not table_info_list:
+                self.logger.warning("表信息列表为空，无法选择表")
                 return []
             
             client = self._get_client()
@@ -334,9 +334,28 @@ class AIClient:
             # 使用配置的提示词
             system_prompt = prompt_config.select_tables_system
             
+            # 处理表信息列表（支持新格式和旧格式）
+            table_list_items = []
+            table_names_only = []
+            
+            for item in table_info_list[:500]:  # 限制前500个表
+                if isinstance(item, dict):
+                    # 新格式：包含表名和注释
+                    table_name = item.get("name", "")
+                    table_comment = item.get("comment", "")
+                    table_names_only.append(table_name)
+                    if table_comment:
+                        table_list_items.append(f'  - {table_name}  # {table_comment}')
+                    else:
+                        table_list_items.append(f'  - {table_name}')
+                else:
+                    # 旧格式：只有表名字符串（向后兼容）
+                    table_names_only.append(item)
+                    table_list_items.append(f'  - {item}')
+            
             # 格式化表名列表
-            table_list_formatted = '\n'.join([f'  - {name}' for name in table_names[:500]])  # 限制前500个表
-            table_list_single = ', '.join(table_names[:500])
+            table_list_formatted = '\n'.join(table_list_items)
+            table_list_single = ', '.join(table_names_only)
             
             # 如果有当前SQL，添加到提示词中
             current_sql_section = ""
@@ -351,7 +370,7 @@ class AIClient:
 {user_query}{current_sql_section}
 
 【可用表名列表】
-以下是数据库中所有可用的表名（共 {len(table_names)} 个）：
+以下是数据库中所有可用的表名（共 {len(table_info_list)} 个）：
 {table_list_formatted}
 
 【你的任务】
@@ -397,15 +416,18 @@ class AIClient:
                     continue
                 # 移除可能的列表标记（如 "- ", "• ", "1. " 等）
                 line = line.lstrip('- •*1234567890. ').strip()
+                # 移除可能的注释部分（如果AI返回了带注释的表名）
+                if '#' in line:
+                    line = line.split('#')[0].strip()
                 # 如果是逗号分隔的，也处理
                 if ',' in line:
                     for part in line.split(','):
                         part = part.strip()
-                        if part and part in table_names:
+                        if part and part in table_names_only:
                             selected_tables.append(part)
                 else:
                     # 检查是否是有效的表名
-                    if line in table_names:
+                    if line in table_names_only:
                         selected_tables.append(line)
             
             # 去重

@@ -178,7 +178,7 @@ class AIModelDialog(QDialog):
                 "default_model": "hunyuan-large",
                 "turbo_model": "hunyuan-lite",
                 "base_url": "https://api.hunyuan.cloud.tencent.com/v1",
-                "api_key_url": "https://cloud.tencent.com/product/hunyuan"
+                "api_key_url": "https://console.cloud.tencent.com/hunyuan/api-key"
             },
             AIModelProvider.ANTHROPIC_CLAUDE: {
                 "default_model": "claude-3-5-sonnet-20241022",

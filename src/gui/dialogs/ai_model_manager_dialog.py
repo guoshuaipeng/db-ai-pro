@@ -124,7 +124,7 @@ class AIModelManagerDialog(QDialog):
             ["百度文心一言", "https://console.bce.baidu.com/qianfan/ais/console/applicationConsole/application", "💰 有免费额度", "✅ 中文优秀、响应快、百度集成 | ⚠️ 文档复杂、额度有限"],
             ["Moonshot (Kimi)", "https://platform.moonshot.cn/console/api-keys", "💰 新用户体验金", "✅ 长文本强、中文好、理解佳 | ⚠️ 体验金有限"],
             ["讯飞星火", "https://console.xfyun.cn/services/bm35", "💰 新用户赠送", "✅ 中文自然、语音集成好 | ⚠️ 额度有限、API复杂"],
-            ["腾讯混元", "https://cloud.tencent.com/product/hunyuan", "💰 新用户赠送", "✅ 腾讯集成、稳定 | ⚠️ 额度有限"],
+            ["腾讯混元", "https://console.cloud.tencent.com/hunyuan/api-key", "💰 新用户赠送", "✅ 腾讯集成、稳定 | ⚠️ 额度有限"],
             ["OpenAI", "https://platform.openai.com/api-keys", "💵 API按量付费 / 约$0.002/1K token", "✅ 能力顶尖、生态完善、英文最佳 | ⚠️ 需付费、国内困难"],
             ["Claude", "https://console.anthropic.com/settings/keys", "💵 网页版100条/天 / API按量付费", "✅ 长文本强、安全性好、代码强 | ⚠️ 需付费、国内受限"],
             ["Google Gemini", "https://makersuite.google.com/app/apikey", "💰 有免费额度", "✅ 多模态强、响应快 | ⚠️ 国内访问困难"],

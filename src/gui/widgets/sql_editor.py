@@ -567,13 +567,17 @@ class SQLEditor(QWidget):
                 worker.deleteLater()
                 setattr(self, name, None)
     
-    def on_tables_ready(self, table_names: list):
-        """表名列表获取完成回调（第二步：AI选择表）"""
+    def on_tables_ready(self, table_info_list: list):
+        """表名列表获取完成回调（第二步：AI选择表）
+        
+        Args:
+            table_info_list: 表信息列表，格式为 [{"name": "table1", "comment": "注释1"}, ...]
+        """
         import logging
         logger = logging.getLogger(__name__)
-        logger.info(f"表名列表获取完成，共 {len(table_names)} 个表")
+        logger.info(f"表名列表获取完成，共 {len(table_info_list)} 个表")
         
-        if not table_names:
+        if not table_info_list:
             logger.warning("表名列表为空，无法继续")
             self.generate_btn.setEnabled(True)
             self.generate_btn.setText("直接查询")
@@ -581,18 +585,18 @@ class SQLEditor(QWidget):
             return
         
         user_query = self.ai_input.toPlainText().strip()
-        self.set_status(f"步骤2/4: AI正在选择相关表（从 {len(table_names)} 个表中）...", timeout=0)
+        self.set_status(f"步骤2/4: AI正在选择相关表（从 {len(table_info_list)} 个表中）...", timeout=0)
         
         # 获取当前SQL编辑器中的SQL（如果用户已经在查看某个表，AI可以优先选择该表）
         current_sql = self.sql_edit.toPlainText().strip() if hasattr(self, 'sql_edit') else ""
         
-        # 使用AI选择相关表
+        # 使用AI选择相关表（传递包含注释的表信息列表）
         from src.gui.workers.ai_table_selector_worker import AITableSelectorWorker
         
         self.ai_table_selector_worker = AITableSelectorWorker(
             self.ai_client,
             user_query,
-            table_names,
+            table_info_list,  # 传递包含表名和注释的列表
             current_sql  # 传递当前SQL，让AI知道用户可能已经在查看某个表
         )
         self.ai_table_selector_worker.tables_selected.connect(self.on_tables_selected)
