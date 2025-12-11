@@ -34,6 +34,9 @@ class QueryHandler:
             QMessageBox.warning(self.main_window, "警告", "请输入SQL语句")
             return
         
+        # 保存原始SQL（用于显示，不含自动添加的LIMIT）
+        original_sql = sql
+        
         # 如果已有查询正在执行，先安全停止
         if self.main_window.query_worker:
             if self.main_window.query_worker.isRunning():
@@ -58,18 +61,21 @@ class QueryHandler:
         is_query = sql_upper.startswith(("SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"))
         
         # 自动添加 LIMIT（如果是 SELECT 查询且没有 LIMIT）
+        sql_for_execution = sql
+        auto_limit_added = False
         if is_query and sql_upper.startswith("SELECT"):
             # 检查是否已经有 LIMIT 子句
             import re
             # 匹配 LIMIT 关键字（忽略大小写，且不在字符串中）
             if not re.search(r'\bLIMIT\b', sql, re.IGNORECASE):
                 # 默认添加 LIMIT 100
-                sql = sql.strip()
-                if not sql.endswith(';'):
-                    sql += ' LIMIT 100'
+                sql_for_execution = sql.strip()
+                if not sql_for_execution.endswith(';'):
+                    sql_for_execution += ' LIMIT 100'
                 else:
-                    sql = sql[:-1].strip() + ' LIMIT 100;'
-                logger.info(f"自动添加 LIMIT: {sql}")
+                    sql_for_execution = sql_for_execution[:-1].strip() + ' LIMIT 100;'
+                auto_limit_added = True
+                logger.info(f"自动添加 LIMIT: {sql_for_execution}")
         
         # 获取连接信息
         connection = self.main_window.db_manager.get_connection(self.main_window.current_connection_id)
@@ -102,9 +108,13 @@ class QueryHandler:
         self.main_window.query_worker = QueryWorker(
             connection.get_connection_string(),
             connection.get_connect_args(),
-            sql,
+            sql_for_execution,  # 使用添加了LIMIT的SQL执行
             is_query=is_query
         )
+        
+        # 保存原始SQL和是否自动添加了LIMIT的标志（用于回调中显示）
+        self.main_window.query_worker._original_sql = original_sql
+        self.main_window.query_worker._auto_limit_added = auto_limit_added
         
         # 连接信号
         self.main_window.query_worker.query_finished.connect(self.on_query_finished)
@@ -122,8 +132,13 @@ class QueryHandler:
         """查询完成回调（单条SQL）"""
         # 确保在主线程中更新UI
         try:
-            # 获取SQL（从worker中获取）
-            sql = self.main_window.query_worker.sql if self.main_window.query_worker else "查询结果"
+            # 获取SQL（优先使用原始SQL，用于显示）
+            if self.main_window.query_worker and hasattr(self.main_window.query_worker, '_original_sql'):
+                sql = self.main_window.query_worker._original_sql
+            elif self.main_window.query_worker:
+                sql = self.main_window.query_worker.sql
+            else:
+                sql = "查询结果"
             
             if success:
                 if data is not None:

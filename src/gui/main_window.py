@@ -1293,6 +1293,27 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "警告", "请输入SQL语句")
                 return
             
+            # 保存原始SQL（用于显示，不含自动添加的LIMIT）
+            original_sql = sql
+            
+            # 判断SQL类型并自动添加LIMIT
+            sql_upper = sql.strip().upper()
+            is_query = sql_upper.startswith(("SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"))
+            sql_for_execution = sql
+            auto_limit_added = False
+            
+            if is_query and sql_upper.startswith("SELECT"):
+                # 检查是否已经有 LIMIT 子句
+                import re
+                if not re.search(r'\bLIMIT\b', sql, re.IGNORECASE):
+                    # 默认添加 LIMIT 100
+                    sql_for_execution = sql.strip()
+                    if not sql_for_execution.endswith(';'):
+                        sql_for_execution += ' LIMIT 100'
+                    else:
+                        sql_for_execution = sql_for_execution[:-1].strip() + ' LIMIT 100;'
+                    auto_limit_added = True
+            
             # 使用查询处理器，但传入新tab的result_table和sql_editor
             from src.gui.workers.query_worker import QueryWorker
             
@@ -1312,12 +1333,16 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "错误", "无法获取数据库连接")
                 return
             
-            # 创建新的查询worker
+            # 创建新的查询worker（使用添加了LIMIT的SQL）
             query_tab._query_worker = QueryWorker(
                 connection.get_connection_string(),
                 connection.get_connect_args(),
-                sql
+                sql_for_execution
             )
+            
+            # 保存原始SQL和是否自动添加了LIMIT的标志
+            query_tab._query_worker._original_sql = original_sql
+            query_tab._query_worker._auto_limit_added = auto_limit_added
             
             # 定义回调函数（使用闭包捕获result_table和sql_editor）
             def on_query_progress(message: str):
@@ -1325,7 +1350,13 @@ class MainWindow(QMainWindow):
             
             def on_query_finished(success: bool, data, error, affected_rows, columns=None):
                 try:
-                    query_sql = query_tab._query_worker.sql if hasattr(query_tab, '_query_worker') else sql
+                    # 优先使用原始SQL（用于显示在tab标题中）
+                    if hasattr(query_tab, '_query_worker') and hasattr(query_tab._query_worker, '_original_sql'):
+                        query_sql = query_tab._query_worker._original_sql
+                    elif hasattr(query_tab, '_query_worker'):
+                        query_sql = query_tab._query_worker.sql
+                    else:
+                        query_sql = original_sql
                     
                     if success:
                         if data is not None:
@@ -1352,6 +1383,7 @@ class MainWindow(QMainWindow):
                     total_success = 0
                     total_failed = 0
                     
+                    # 对于多查询，使用原始SQL（因为results中的query_sql可能带自动添加的LIMIT）
                     for query_sql, success, data, error, affected_rows, columns in results:
                         if success:
                             total_success += 1
