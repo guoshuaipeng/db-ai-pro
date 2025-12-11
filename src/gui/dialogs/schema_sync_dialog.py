@@ -239,6 +239,58 @@ class SchemaSyncWorker(QThread):
                 if set(source_pk_cols) != set(target_pk_cols):
                     col_diffs.append(f"主键不同: {source_pk_cols} -> {target_pk_cols}")
                 
+                # 比较索引
+                if self.source_db and self.source_conn.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+                    source_indexes = source_inspector.get_indexes(table, schema=self.source_db)
+                else:
+                    source_indexes = source_inspector.get_indexes(table)
+                
+                if self.target_db and self.target_conn.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+                    target_indexes = target_inspector.get_indexes(table, schema=self.target_db)
+                else:
+                    target_indexes = target_inspector.get_indexes(table)
+                
+                # 构建索引字典，使用索引名作为键
+                source_indexes_dict = {idx['name']: idx for idx in source_indexes if idx.get('name')}
+                target_indexes_dict = {idx['name']: idx for idx in target_indexes if idx.get('name')}
+                
+                # 找出新增的索引
+                for idx_name in source_indexes_dict:
+                    if idx_name not in target_indexes_dict:
+                        source_idx = source_indexes_dict[idx_name]
+                        idx_cols = ', '.join(source_idx.get('column_names', []))
+                        unique_str = "唯一索引" if source_idx.get('unique', False) else "普通索引"
+                        col_diffs.append(f"新增索引: {idx_name} ({unique_str}, 列: {idx_cols})")
+                
+                # 找出删除的索引
+                for idx_name in target_indexes_dict:
+                    if idx_name not in source_indexes_dict:
+                        col_diffs.append(f"删除索引: {idx_name}")
+                
+                # 找出修改的索引（比较列和唯一性）
+                for idx_name in source_indexes_dict:
+                    if idx_name in target_indexes_dict:
+                        source_idx = source_indexes_dict[idx_name]
+                        target_idx = target_indexes_dict[idx_name]
+                        
+                        # 比较列
+                        source_cols = source_idx.get('column_names', [])
+                        target_cols = target_idx.get('column_names', [])
+                        if source_cols != target_cols:
+                            col_diffs.append(
+                                f"索引 {idx_name} 列不同: {target_cols} -> {source_cols}"
+                            )
+                        
+                        # 比较唯一性
+                        source_unique = source_idx.get('unique', False)
+                        target_unique = target_idx.get('unique', False)
+                        if source_unique != target_unique:
+                            col_diffs.append(
+                                f"索引 {idx_name} 唯一性不同: "
+                                f"{'唯一' if target_unique else '非唯一'} -> "
+                                f"{'唯一' if source_unique else '非唯一'}"
+                            )
+                
                 if col_diffs:
                     differences.append({
                         'table_name': table,
@@ -792,6 +844,119 @@ class Step3PreviewAndExecutePage(QWizardPage):
         
         return f"DROP TABLE {table_name_escaped};"
     
+    def _generate_index_sql(self, table_name_escaped: str, source_indexes: Dict, 
+                           target_indexes: Dict, db_type: DatabaseType) -> List[str]:
+        """生成索引相关的SQL语句"""
+        from src.core.database_connection import DatabaseType
+        
+        def escape_identifier(name: str, db_type: DatabaseType) -> str:
+            if db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+                return f"`{name}`"
+            elif db_type == DatabaseType.POSTGRESQL:
+                return f'"{name}"'
+            elif db_type == DatabaseType.SQLSERVER:
+                return f"[{name}]"
+            else:
+                return name
+        
+        index_sqls = []
+        
+        # 找出需要删除的索引
+        for idx_name in target_indexes:
+            if idx_name not in source_indexes:
+                # 生成DROP INDEX语句
+                if db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+                    index_sqls.append(
+                        f"DROP INDEX {escape_identifier(idx_name, db_type)} ON {table_name_escaped};"
+                    )
+                elif db_type == DatabaseType.POSTGRESQL:
+                    index_sqls.append(
+                        f"DROP INDEX {escape_identifier(idx_name, db_type)};"
+                    )
+                elif db_type == DatabaseType.SQLSERVER:
+                    index_sqls.append(
+                        f"DROP INDEX {escape_identifier(idx_name, db_type)} ON {table_name_escaped};"
+                    )
+                elif db_type == DatabaseType.SQLITE:
+                    index_sqls.append(
+                        f"DROP INDEX {escape_identifier(idx_name, db_type)};"
+                    )
+        
+        # 找出需要修改的索引（先删除再创建）
+        for idx_name in source_indexes:
+            if idx_name in target_indexes:
+                source_idx = source_indexes[idx_name]
+                target_idx = target_indexes[idx_name]
+                
+                # 检查索引是否有差异
+                source_cols = source_idx.get('column_names', [])
+                target_cols = target_idx.get('column_names', [])
+                source_unique = source_idx.get('unique', False)
+                target_unique = target_idx.get('unique', False)
+                
+                if source_cols != target_cols or source_unique != target_unique:
+                    # 删除旧索引
+                    if db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+                        index_sqls.append(
+                            f"DROP INDEX {escape_identifier(idx_name, db_type)} ON {table_name_escaped};"
+                        )
+                    elif db_type == DatabaseType.POSTGRESQL:
+                        index_sqls.append(
+                            f"DROP INDEX {escape_identifier(idx_name, db_type)};"
+                        )
+                    elif db_type == DatabaseType.SQLSERVER:
+                        index_sqls.append(
+                            f"DROP INDEX {escape_identifier(idx_name, db_type)} ON {table_name_escaped};"
+                        )
+                    elif db_type == DatabaseType.SQLITE:
+                        index_sqls.append(
+                            f"DROP INDEX {escape_identifier(idx_name, db_type)};"
+                        )
+                    
+                    # 创建新索引
+                    index_sqls.append(
+                        self._create_index_sql(idx_name, source_idx, table_name_escaped, db_type)
+                    )
+        
+        # 找出需要新增的索引
+        for idx_name in source_indexes:
+            if idx_name not in target_indexes:
+                source_idx = source_indexes[idx_name]
+                index_sqls.append(
+                    self._create_index_sql(idx_name, source_idx, table_name_escaped, db_type)
+                )
+        
+        return index_sqls
+    
+    def _create_index_sql(self, idx_name: str, idx_info: Dict, 
+                         table_name_escaped: str, db_type: DatabaseType) -> str:
+        """生成CREATE INDEX语句"""
+        from src.core.database_connection import DatabaseType
+        
+        def escape_identifier(name: str, db_type: DatabaseType) -> str:
+            if db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+                return f"`{name}`"
+            elif db_type == DatabaseType.POSTGRESQL:
+                return f'"{name}"'
+            elif db_type == DatabaseType.SQLSERVER:
+                return f"[{name}]"
+            else:
+                return name
+        
+        is_unique = idx_info.get('unique', False)
+        columns = idx_info.get('column_names', [])
+        
+        if not columns:
+            return f"-- 警告：索引 {idx_name} 没有列信息"
+        
+        unique_str = "UNIQUE " if is_unique else ""
+        cols_str = ', '.join([escape_identifier(col, db_type) for col in columns])
+        
+        return (
+            f"CREATE {unique_str}INDEX {escape_identifier(idx_name, db_type)} "
+            f"ON {table_name_escaped} ({cols_str});"
+        )
+    
     def _generate_alter_table_sql(self, source_conn, source_db, table_name, target_conn, target_db, details):
         """生成ALTER TABLE语句"""
         from sqlalchemy import create_engine, inspect
@@ -910,6 +1075,31 @@ class Step3PreviewAndExecutePage(QWizardPage):
                         f"ALTER TABLE {table_name_escaped} "
                         f"ADD PRIMARY KEY ({pk_cols_str});"
                     )
+            
+            # 获取索引信息
+            if source_db and source_conn.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+                source_indexes = source_inspector.get_indexes(table_name, schema=source_db)
+            else:
+                source_indexes = source_inspector.get_indexes(table_name)
+            
+            if target_db and target_conn.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+                target_indexes = target_inspector.get_indexes(table_name, schema=target_db)
+            else:
+                target_indexes = target_inspector.get_indexes(table_name)
+            
+            # 构建索引字典
+            source_indexes_dict = {idx['name']: idx for idx in source_indexes if idx.get('name')}
+            target_indexes_dict = {idx['name']: idx for idx in target_indexes if idx.get('name')}
+            
+            # 生成索引SQL
+            index_sqls = self._generate_index_sql(
+                table_name_escaped, 
+                source_indexes_dict, 
+                target_indexes_dict, 
+                target_conn.db_type
+            )
+            if index_sqls:
+                alter_statements.extend(index_sqls)
             
             source_engine.dispose()
             target_engine.dispose()

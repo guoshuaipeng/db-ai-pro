@@ -186,71 +186,85 @@ class UIHandler:
     
     def create_menu_bar(self):
         """创建菜单栏"""
+        from PyQt6.QtGui import QAction
+        
         menubar = self.main_window.menuBar()
         
         # 文件菜单
         file_menu = menubar.addMenu(self.main_window.tr("文件(&F)"))
         
-        add_connection_action = file_menu.addAction(self.main_window.tr("添加数据库连接(&N)"))
+        add_connection_action = QAction(self._get_icon('add'), self.main_window.tr("添加数据库连接(&N)"), self.main_window)
         add_connection_action.setShortcut("Ctrl+N")
         add_connection_action.triggered.connect(self.main_window.add_connection)
+        file_menu.addAction(add_connection_action)
         
-        import_action = file_menu.addAction(self.main_window.tr("从 Navicat 导入(&I)"))
+        import_action = QAction(self._get_icon('import'), self.main_window.tr("从 Navicat 导入(&I)"), self.main_window)
         import_action.triggered.connect(self.main_window.import_from_navicat)
+        file_menu.addAction(import_action)
         
         file_menu.addSeparator()
         
-        exit_action = file_menu.addAction(self.main_window.tr("退出(&X)"))
+        exit_action = QAction(self._get_icon('exit'), self.main_window.tr("退出(&X)"), self.main_window)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.main_window.close)
+        file_menu.addAction(exit_action)
         
         # 数据库菜单
         db_menu = menubar.addMenu(self.main_window.tr("数据库(&D)"))
         
-        test_connection_action = db_menu.addAction(self.main_window.tr("测试连接(&T)"))
+        test_connection_action = QAction(self._get_icon('test'), self.main_window.tr("测试连接(&T)"), self.main_window)
         test_connection_action.triggered.connect(self.main_window.test_connection)
+        db_menu.addAction(test_connection_action)
         
-        refresh_action = db_menu.addAction(self.main_window.tr("刷新(&R)"))
+        refresh_action = QAction(self._get_icon('refresh'), self.main_window.tr("刷新(&R)"), self.main_window)
         refresh_action.setShortcut("Ctrl+R")
         refresh_action.triggered.connect(self.main_window.refresh_connections)
+        db_menu.addAction(refresh_action)
         
         db_menu.addSeparator()
         
         # 结构同步
-        sync_schema_action = db_menu.addAction(self.main_window.tr("结构同步(&S)"))
+        sync_schema_action = QAction(self._get_icon('sync'), self.main_window.tr("结构同步(&S)"), self.main_window)
         sync_schema_action.triggered.connect(self.main_window.show_schema_sync)
+        db_menu.addAction(sync_schema_action)
         
         # 查询菜单
         query_menu = menubar.addMenu(self.main_window.tr("查询(&Q)"))
         
-        execute_action = query_menu.addAction(self.main_window.tr("执行查询(&E)"))
+        execute_action = QAction(self._get_icon('execute'), self.main_window.tr("执行查询(&E)"), self.main_window)
         execute_action.setShortcut("F5")
         execute_action.triggered.connect(self.main_window.execute_query)
+        query_menu.addAction(execute_action)
         
-        clear_action = query_menu.addAction(self.main_window.tr("清空查询(&C)"))
+        clear_action = QAction(self._get_icon('clear'), self.main_window.tr("清空查询(&C)"), self.main_window)
         clear_action.triggered.connect(self.main_window.clear_query)
+        query_menu.addAction(clear_action)
         
         # 设置菜单
         settings_menu = menubar.addMenu(self.main_window.tr("设置(&S)"))
         
-        settings_action = settings_menu.addAction(self.main_window.tr("设置(&S)"))
+        settings_action = QAction(self._get_icon('settings'), self.main_window.tr("设置(&S)"), self.main_window)
         settings_action.triggered.connect(self.main_window.show_settings)
+        settings_menu.addAction(settings_action)
         
         settings_menu.addSeparator()
         
         # AI模型配置
-        ai_config_action = settings_menu.addAction(self.main_window.tr("AI模型配置(&A)"))
+        ai_config_action = QAction(self._get_icon('ai'), self.main_window.tr("AI模型配置(&A)"), self.main_window)
         ai_config_action.triggered.connect(self.main_window.configure_ai_models)
+        settings_menu.addAction(ai_config_action)
         
         # AI提示词配置
-        prompt_config_action = settings_menu.addAction(self.main_window.tr("AI提示词配置(&P)"))
+        prompt_config_action = QAction(self._get_icon('edit'), self.main_window.tr("AI提示词配置(&P)"), self.main_window)
         prompt_config_action.triggered.connect(self.main_window.configure_prompts)
+        settings_menu.addAction(prompt_config_action)
         
         # 帮助菜单
         help_menu = menubar.addMenu(self.main_window.tr("帮助(&H)"))
         
-        about_action = help_menu.addAction(self.main_window.tr("关于(&A)"))
+        about_action = QAction(self._get_icon('about'), self.main_window.tr("关于(&A)"), self.main_window)
         about_action.triggered.connect(self.main_window.show_about)
+        help_menu.addAction(about_action)
         
         # 保存菜单引用以便后续更新翻译
         self.main_window.menubar = menubar
@@ -262,29 +276,45 @@ class UIHandler:
     
     def create_toolbar(self):
         """创建工具栏"""
+        from PyQt6.QtGui import QAction
+        from PyQt6.QtCore import QSize
+        
         toolbar = QToolBar()
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        toolbar.setIconSize(QSize(24, 24))
         self.main_window.addToolBar(toolbar)
         
         # AI 配置按钮
-        ai_config_btn = QPushButton("⚙️ AI 配置")
-        ai_config_btn.clicked.connect(self.main_window.configure_ai_models)
-        ai_config_btn.setToolTip("配置 AI 模型和 API 密钥")
-        toolbar.addWidget(ai_config_btn)
-        self.main_window.ai_config_btn = ai_config_btn
+        ai_config_action = QAction(self._get_icon('settings'), self.main_window.tr("AI 配置"), self.main_window)
+        ai_config_action.setToolTip("配置 AI 模型和 API 密钥")
+        ai_config_action.triggered.connect(self.main_window.configure_ai_models)
+        toolbar.addAction(ai_config_action)
+        self.main_window.ai_config_action = ai_config_action
         
         toolbar.addSeparator()
         
         # 添加连接按钮
-        add_btn = QPushButton(self.main_window.tr("添加连接"))
-        add_btn.clicked.connect(self.main_window.add_connection)
-        toolbar.addWidget(add_btn)
-        self.main_window.add_connection_btn = add_btn
+        add_action = QAction(self._get_icon('add'), self.main_window.tr("添加连接"), self.main_window)
+        add_action.setToolTip("添加新的数据库连接")
+        add_action.setShortcut("Ctrl+N")
+        add_action.triggered.connect(self.main_window.add_connection)
+        toolbar.addAction(add_action)
+        self.main_window.add_connection_action = add_action
         
         # 导入按钮
-        import_btn = QPushButton(self.main_window.tr("导入 Navicat"))
-        import_btn.clicked.connect(self.main_window.import_from_navicat)
-        toolbar.addWidget(import_btn)
-        self.main_window.import_navicat_btn = import_btn
+        import_action = QAction(self._get_icon('import'), self.main_window.tr("导入 Navicat"), self.main_window)
+        import_action.setToolTip("从 Navicat 导入数据库连接")
+        import_action.triggered.connect(self.main_window.import_from_navicat)
+        toolbar.addAction(import_action)
+        self.main_window.import_navicat_action = import_action
+        
+        # 刷新按钮
+        refresh_action = QAction(self._get_icon('refresh'), self.main_window.tr("刷新"), self.main_window)
+        refresh_action.setToolTip("刷新数据库连接列表")
+        refresh_action.setShortcut("Ctrl+R")
+        refresh_action.triggered.connect(self.main_window.refresh_connections)
+        toolbar.addAction(refresh_action)
+        self.main_window.refresh_action = refresh_action
         
         toolbar.addSeparator()
         
@@ -303,10 +333,46 @@ class UIHandler:
         
         toolbar.addSeparator()
         
-        # 新建表按钮
-        create_table_btn = QPushButton("新建表")
-        create_table_btn.clicked.connect(self.main_window.show_create_table_dialog)
-        toolbar.addWidget(create_table_btn)
+        # 执行查询按钮
+        execute_action = QAction(self._get_icon('execute'), self.main_window.tr("执行"), self.main_window)
+        execute_action.setToolTip("执行 SQL 查询")
+        execute_action.setShortcut("F5")
+        execute_action.triggered.connect(self.main_window.execute_query)
+        toolbar.addAction(execute_action)
+        self.main_window.execute_action = execute_action
+    
+    def _get_icon(self, icon_type: str) -> QIcon:
+        """获取图标
+        
+        Args:
+            icon_type: 图标类型
+            
+        Returns:
+            QIcon: 图标对象
+        """
+        style = self.main_window.style()
+        
+        # 定义图标映射
+        icon_map = {
+            'settings': style.standardIcon(style.StandardPixmap.SP_FileDialogDetailedView),
+            'add': style.standardIcon(style.StandardPixmap.SP_FileDialogNewFolder),
+            'import': style.standardIcon(style.StandardPixmap.SP_DialogOpenButton),
+            'refresh': style.standardIcon(style.StandardPixmap.SP_BrowserReload),
+            'table': style.standardIcon(style.StandardPixmap.SP_FileDialogListView),
+            'execute': style.standardIcon(style.StandardPixmap.SP_MediaPlay),
+            'database': style.standardIcon(style.StandardPixmap.SP_DirIcon),
+            'connection': style.standardIcon(style.StandardPixmap.SP_DriveNetIcon),
+            'edit': style.standardIcon(style.StandardPixmap.SP_FileDialogContentsView),
+            'delete': style.standardIcon(style.StandardPixmap.SP_TrashIcon),
+            'test': style.standardIcon(style.StandardPixmap.SP_DialogApplyButton),
+            'exit': style.standardIcon(style.StandardPixmap.SP_DialogCloseButton),
+            'sync': style.standardIcon(style.StandardPixmap.SP_BrowserReload),
+            'clear': style.standardIcon(style.StandardPixmap.SP_DialogResetButton),
+            'ai': style.standardIcon(style.StandardPixmap.SP_ComputerIcon),
+            'about': style.standardIcon(style.StandardPixmap.SP_MessageBoxInformation),
+        }
+        
+        return icon_map.get(icon_type, QIcon())
     
     def retranslate_ui(self):
         """重新翻译UI界面"""
@@ -369,12 +435,18 @@ class UIHandler:
                     action.setText(self.main_window.tr("关于(&A)"))
         
         # 更新工具栏按钮和标签
-        if hasattr(self.main_window, 'ai_config_btn'):
-            self.main_window.ai_config_btn.setText(self.main_window.tr("⚙️ AI 配置"))
-        if hasattr(self.main_window, 'add_connection_btn'):
-            self.main_window.add_connection_btn.setText(self.main_window.tr("添加连接"))
-        if hasattr(self.main_window, 'import_navicat_btn'):
-            self.main_window.import_navicat_btn.setText(self.main_window.tr("导入 Navicat"))
+        if hasattr(self.main_window, 'ai_config_action'):
+            self.main_window.ai_config_action.setText(self.main_window.tr("AI 配置"))
+        if hasattr(self.main_window, 'add_connection_action'):
+            self.main_window.add_connection_action.setText(self.main_window.tr("添加连接"))
+        if hasattr(self.main_window, 'import_navicat_action'):
+            self.main_window.import_navicat_action.setText(self.main_window.tr("导入 Navicat"))
+        if hasattr(self.main_window, 'refresh_action'):
+            self.main_window.refresh_action.setText(self.main_window.tr("刷新"))
+        if hasattr(self.main_window, 'create_table_action'):
+            self.main_window.create_table_action.setText(self.main_window.tr("新建表"))
+        if hasattr(self.main_window, 'execute_action'):
+            self.main_window.execute_action.setText(self.main_window.tr("执行"))
         if hasattr(self.main_window, 'ai_model_label'):
             self.main_window.ai_model_label.setText(self.main_window.tr("AI模型:"))
         if hasattr(self.main_window, 'connection_label'):
