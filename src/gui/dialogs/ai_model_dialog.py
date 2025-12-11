@@ -68,10 +68,21 @@ class AIModelDialog(QDialog):
         form_layout.addRow("提供商:", self.provider_combo)
         
         # API密钥
+        api_key_layout = QVBoxLayout()
+        api_key_layout.setSpacing(5)
+        
         self.api_key_edit = QLineEdit()
         self.api_key_edit.setPlaceholderText("请输入API密钥")
         self.api_key_edit.setMinimumWidth(300)
-        form_layout.addRow("API密钥:", self.api_key_edit)
+        api_key_layout.addWidget(self.api_key_edit)
+        
+        # API密钥获取链接
+        self.api_key_link = QLabel()
+        self.api_key_link.setOpenExternalLinks(True)
+        self.api_key_link.setStyleSheet("QLabel { color: #0066CC; font-size: 11px; }")
+        api_key_layout.addWidget(self.api_key_link)
+        
+        form_layout.addRow("API密钥:", api_key_layout)
         
         # 基础URL（可选）
         self.base_url_edit = QLineEdit()
@@ -119,62 +130,73 @@ class AIModelDialog(QDialog):
         """提供商改变时的处理"""
         provider = self.provider_combo.currentData()
         
-        # 定义每个提供商的默认配置
+        # 定义每个提供商的默认配置和API密钥获取网址
         provider_configs = {
             AIModelProvider.ALIYUN_QIANWEN: {
                 "default_model": "qwen-plus",
                 "turbo_model": "qwen-turbo",
-                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "api_key_url": "https://dashscope.console.aliyun.com/apiKey"
             },
             AIModelProvider.OPENAI: {
                 "default_model": "gpt-4",
                 "turbo_model": "gpt-3.5-turbo",
-                "base_url": "https://api.openai.com/v1"
+                "base_url": "https://api.openai.com/v1",
+                "api_key_url": "https://platform.openai.com/api-keys"
             },
             AIModelProvider.DEEPSEEK: {
                 "default_model": "deepseek-chat",
                 "turbo_model": "deepseek-chat",
-                "base_url": "https://api.deepseek.com/v1"
+                "base_url": "https://api.deepseek.com/v1",
+                "api_key_url": "https://platform.deepseek.com/api_keys"
             },
             AIModelProvider.ZHIPU_GLM: {
                 "default_model": "glm-4",
                 "turbo_model": "glm-3-turbo",
-                "base_url": "https://open.bigmodel.cn/api/paas/v4"
+                "base_url": "https://open.bigmodel.cn/api/paas/v4",
+                "api_key_url": "https://open.bigmodel.cn/usercenter/apikeys"
             },
             AIModelProvider.BAIDU_WENXIN: {
                 "default_model": "ernie-4.0",
                 "turbo_model": "ernie-3.5",
-                "base_url": "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop"
+                "base_url": "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop",
+                "api_key_url": "https://console.bce.baidu.com/qianfan/ais/console/applicationConsole/application"
             },
             AIModelProvider.XUNFEI_XINGHUO: {
                 "default_model": "spark-4.0",
                 "turbo_model": "spark-lite",
-                "base_url": "https://spark-api-open.xf-yun.com/v1"
+                "base_url": "https://spark-api-open.xf-yun.com/v1",
+                "api_key_url": "https://console.xfyun.cn/services/bm35"
             },
             AIModelProvider.MOONSHOT: {
                 "default_model": "moonshot-v1-8k",
                 "turbo_model": "moonshot-v1-8k",
-                "base_url": "https://api.moonshot.cn/v1"
+                "base_url": "https://api.moonshot.cn/v1",
+                "api_key_url": "https://platform.moonshot.cn/console/api-keys"
             },
             AIModelProvider.TENCENT_HUNYUAN: {
                 "default_model": "hunyuan-large",
                 "turbo_model": "hunyuan-lite",
-                "base_url": "https://api.hunyuan.cloud.tencent.com/v1"
+                "base_url": "https://api.hunyuan.cloud.tencent.com/v1",
+                "api_key_url": "https://cloud.tencent.com/product/hunyuan"
             },
             AIModelProvider.ANTHROPIC_CLAUDE: {
                 "default_model": "claude-3-5-sonnet-20241022",
                 "turbo_model": "claude-3-haiku-20240307",
-                "base_url": "https://api.anthropic.com/v1"
+                "base_url": "https://api.anthropic.com/v1",
+                "api_key_url": "https://console.anthropic.com/settings/keys"
             },
             AIModelProvider.GOOGLE_GEMINI: {
                 "default_model": "gemini-pro",
                 "turbo_model": "gemini-pro",
-                "base_url": "https://generativelanguage.googleapis.com/v1"
+                "base_url": "https://generativelanguage.googleapis.com/v1",
+                "api_key_url": "https://makersuite.google.com/app/apikey"
             },
             AIModelProvider.CUSTOM: {
                 "default_model": "gpt-3.5-turbo",
                 "turbo_model": "gpt-3.5-turbo",
-                "base_url": "https://api.openai.com/v1"
+                "base_url": "https://api.openai.com/v1",
+                "api_key_url": ""
             }
         }
         
@@ -184,6 +206,13 @@ class AIModelDialog(QDialog):
             self.turbo_model_edit.setText(config["turbo_model"])
             if not self.base_url_edit.text():
                 self.base_url_edit.setPlaceholderText(f"默认: {config['base_url']}")
+            
+            # 更新API密钥获取链接
+            if config.get("api_key_url"):
+                self.api_key_link.setText(f'<a href="{config["api_key_url"]}">🔗 点击获取 API Key</a>')
+                self.api_key_link.setVisible(True)
+            else:
+                self.api_key_link.setVisible(False)
     
     def load_model(self):
         """加载模型配置"""
