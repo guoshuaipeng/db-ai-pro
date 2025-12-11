@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QLineEdit,
     QSpinBox,
+    QGraphicsOpacityEffect,
 )
 from src.utils.toast import show_toast
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -84,6 +85,7 @@ class SingleResultTable(QWidget):
         self.main_window = main_window  # 主窗口引用，用于执行SQL
         self.original_sql = sql  # 原始SQL查询（不带LIMIT）
         self.original_data: List[Dict] = []  # 原始数据（用于生成WHERE条件）
+        self.execute_query_func = None  # 自定义的执行查询函数（用于新标签）
         
         # 分页相关
         self.all_data = []  # 存储当前页数据
@@ -197,6 +199,14 @@ class SingleResultTable(QWidget):
         # 保存连接信息（用于分页查询）
         self.connection_string = None
         self.connect_args = None
+        
+        # 记录上次的列数（用于判断是否需要调整列宽）
+        self._last_column_count = 0
+    
+    def _restore_table_opacity(self):
+        """恢复表格透明度"""
+        # 移除透明效果，恢复到完全不透明
+        self.table.setGraphicsEffect(None)
     
     def _create_pagination_widget(self):
         """创建分页控件"""
@@ -494,6 +504,12 @@ class SingleResultTable(QWidget):
             connection_string: 数据库连接字符串（用于服务器端分页）
             connect_args: 连接参数（用于服务器端分页）
         """
+        # 设置表格透明，给视觉反馈（仍然占位置）
+        from PyQt6.QtWidgets import QGraphicsOpacityEffect
+        opacity_effect = QGraphicsOpacityEffect()
+        opacity_effect.setOpacity(0.3)  # 30% 不透明度
+        self.table.setGraphicsEffect(opacity_effect)
+        
         # 保存连接信息（用于服务器端分页）
         if connection_string:
             self.connection_string = connection_string
@@ -507,6 +523,8 @@ class SingleResultTable(QWidget):
             self.all_data = []
             self.export_btn.setEnabled(False)
             self.pagination_widget.setVisible(False)
+            # 恢复透明度
+            self.table.setGraphicsEffect(None)
             return
         
         if affected_rows is not None:
@@ -518,6 +536,8 @@ class SingleResultTable(QWidget):
             self.all_data = []
             self.export_btn.setEnabled(False)
             self.pagination_widget.setVisible(False)
+            # 恢复透明度
+            self.table.setGraphicsEffect(None)
             return
         
         if not data:
@@ -536,8 +556,10 @@ class SingleResultTable(QWidget):
                 self.all_data = []
                 self.export_btn.setEnabled(False)
                 self.pagination_widget.setVisible(False)
-                # 调整列宽（带最大宽度限制）
-                self._resize_columns_with_max_width()
+                # 只在第一次显示或列数变化时调整列宽
+                if not hasattr(self, '_last_column_count') or self._last_column_count != len(columns):
+                    self._resize_columns_with_max_width()
+                    self._last_column_count = len(columns)
             else:
                 self._show_status_to_main_window("查询完成: 0 行")
                 self.table.setRowCount(0)
@@ -546,6 +568,8 @@ class SingleResultTable(QWidget):
                 self.all_data = []
                 self.export_btn.setEnabled(False)
                 self.pagination_widget.setVisible(False)
+            # 恢复透明度
+            self.table.setGraphicsEffect(None)
             return
         
         # 标记正在更新数据，避免触发itemChanged事件
@@ -647,8 +671,10 @@ class SingleResultTable(QWidget):
                 
                 self.table.setItem(row_idx, col_idx, item)
         
-        # 调整列宽（带最大宽度限制）
-        self._resize_columns_with_max_width()
+        # 只在第一次显示或列数变化时调整列宽
+        if not hasattr(self, '_last_column_count') or self._last_column_count != len(columns):
+            self._resize_columns_with_max_width()
+            self._last_column_count = len(columns)
         
         # 更新分页控件
         if self.pagination_widget.isVisible():
@@ -663,6 +689,10 @@ class SingleResultTable(QWidget):
         
         # 数据更新完成
         self._updating_data = False
+        
+        # 延迟0.2秒后恢复表格透明度
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(200, self._restore_table_opacity)
     
     def _fill_table_with_pagination(self, page_data: List[Dict]):
         """填充表格数据（用于分页切换）"""
@@ -698,23 +728,34 @@ class SingleResultTable(QWidget):
                 
                 self.table.setItem(row_idx, col_idx, item)
         
-        # 调整列宽（带最大宽度限制）
-        self._resize_columns_with_max_width()
+        # 分页切换时不调整列宽，保持用户设置的列宽
+        # （列宽只在首次显示时调整）
         
         # 数据更新完成
         self._updating_data = False
+        
+        # 延迟0.2秒后恢复表格透明度
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(200, self._restore_table_opacity)
     
     def _resize_columns_with_max_width(self):
-        """调整列宽，但限制最大宽度"""
+        """调整列宽，限制最小和最大宽度"""
         # 先根据内容调整列宽
         self.table.resizeColumnsToContents()
         
-        # 然后限制每列的最大宽度
+        # 设置最小和最大宽度限制
+        min_column_width = 80   # 最小宽度：80像素
+        max_column_width = 400  # 最大宽度：400像素
+        
+        # 限制每列的宽度在最小和最大值之间
         header = self.table.horizontalHeader()
         for col_idx in range(self.table.columnCount()):
             current_width = header.sectionSize(col_idx)
-            if current_width > self.max_column_width:
-                header.resizeSection(col_idx, self.max_column_width)
+            
+            if current_width < min_column_width:
+                header.resizeSection(col_idx, min_column_width)
+            elif current_width > max_column_width:
+                header.resizeSection(col_idx, max_column_width)
     
     def on_header_clicked(self, logical_index: int):
         """表头点击事件：复制列名到剪贴板"""
@@ -772,17 +813,20 @@ class SingleResultTable(QWidget):
     
     def refresh_data(self):
         """刷新数据：重新执行原始SQL查询"""
-        if not self.original_sql or not self.main_window:
+        if not self.original_sql:
             return
         
         # 显示刷新状态
         self._show_status_to_main_window("正在刷新数据...", timeout=0)
         
-        # 通过主窗口重新执行查询
-        if hasattr(self.main_window, 'execute_query'):
+        # 优先使用自定义的执行查询函数（新标签）
+        if self.execute_query_func:
+            self.execute_query_func(self.original_sql)
+        # 否则使用主窗口的执行查询方法（第一个查询标签）
+        elif self.main_window and hasattr(self.main_window, 'execute_query'):
             self.main_window.execute_query(self.original_sql)
         else:
-            self._show_status_to_main_window("无法刷新：主窗口引用无效", timeout=3000)
+            self._show_status_to_main_window("无法刷新：缺少执行查询函数", timeout=3000)
 
     def fill_selected_cells_with_null(self):
         """将选中的单元格填充为 NULL（文本为 'NULL'，触发现有更新逻辑）"""
@@ -1807,6 +1851,10 @@ class MultiResultTable(QWidget):
                 result_table.original_sql = sql
                 result_table.main_window = getattr(self, '_main_window', None)
                 
+                # 如果父级MultiResultTable有自定义的执行查询函数，传递给SingleResultTable
+                if hasattr(self, '_execute_query_func'):
+                    result_table.execute_query_func = self._execute_query_func
+                
                 # 获取连接信息
                 connection_string, connect_args = self._get_connection_info(connection_id)
                 
@@ -1831,6 +1879,10 @@ class MultiResultTable(QWidget):
             main_window=getattr(self, '_main_window', None),
             sql=sql
         )
+        
+        # 如果父级MultiResultTable有自定义的执行查询函数，传递给SingleResultTable
+        if hasattr(self, '_execute_query_func'):
+            result_table.execute_query_func = self._execute_query_func
         
         # 获取连接信息
         connection_string, connect_args = self._get_connection_info(connection_id)

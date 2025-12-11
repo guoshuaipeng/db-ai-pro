@@ -78,6 +78,7 @@ class MainWindow(QMainWindow):
     
     def __init__(self, settings: Settings, translation_manager: TranslationManager = None):
         super().__init__()
+        self.connection_tree = None
         self.settings = settings
         self.translation_manager = translation_manager
         self.db_manager = DatabaseManager()
@@ -1266,6 +1267,9 @@ class MainWindow(QMainWindow):
         result_table._main_window = self
         query_splitter.addWidget(result_table)
         
+        # 存储result_table引用，以便后面设置execute_query_func
+        query_tab._result_table_widget = result_table
+        
         # 设置拉伸因子
         query_splitter.setStretchFactor(0, 2)
         query_splitter.setStretchFactor(1, 3)
@@ -1379,6 +1383,9 @@ class MainWindow(QMainWindow):
         
         # 连接信号
         sql_editor.execute_signal.connect(execute_query_in_this_tab)
+        
+        # 为result_table设置自定义的执行查询函数（用于刷新功能）
+        result_table._execute_query_func = execute_query_in_this_tab
         
         # 生成查询SQL（不添加LIMIT，由分页系统自动处理）
         connection = self.db_manager.get_connection(connection_id)
