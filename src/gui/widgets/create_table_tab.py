@@ -280,8 +280,19 @@ class CreateTableTab(QWidget):
             
         if self.all_table_names:
             logger.info(f"已加载 {len(self.all_table_names)} 个表名，等待用户输入后选择参考表")
+            # 在对话区域显示提示信息
+            self._add_system_message(
+                f"✓ 已加载当前数据库规范\n"
+                f"  • 数据库: {self.database}\n"
+                f"  • 表数量: {len(self.all_table_names)} 个\n"
+                f"  • AI将根据现有表结构生成符合规范的建表语句"
+            )
         else:
             logger.info("未找到表，将无法选择参考表")
+            self._add_system_message(
+                f"ℹ 当前数据库 '{self.database}' 中暂无表\n"
+                f"  • AI将根据标准规范生成建表语句"
+            )
         
         # 清理worker
         if self.table_list_worker:
@@ -337,6 +348,17 @@ class CreateTableTab(QWidget):
             color = "#4CAF50"
         
         formatted_message = f'<div style="margin-bottom: 10px;"><span style="color: {color}; font-weight: bold;">{prefix}</span><br/>{content.replace(chr(10), "<br/>")}</div>'
+        
+        current_text = self.conversation_display.toHtml()
+        self.conversation_display.setHtml(current_text + formatted_message)
+        
+        # 滚动到底部
+        scrollbar = self.conversation_display.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+    
+    def _add_system_message(self, content: str):
+        """添加系统消息到对话显示区域"""
+        formatted_message = f'<div style="margin-bottom: 10px; padding: 8px; background-color: #f5f5f5; border-left: 3px solid #9E9E9E; color: #666;"><span style="font-size: 11px;">{content.replace(chr(10), "<br/>")}</span></div>'
         
         current_text = self.conversation_display.toHtml()
         self.conversation_display.setHtml(current_text + formatted_message)

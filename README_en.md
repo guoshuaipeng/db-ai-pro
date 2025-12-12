@@ -29,9 +29,10 @@ download : https://gitee.com/CodeYG/db-ai-pro/releases/tag/v1.1.0
 
 - ✅ **AI-Powered SQL Generation** 🤖
   - Generate SQL queries from natural language descriptions
-  - AI-assisted table creation
-  - AI-assisted table structure editing
+  - AI-assisted table creation (smart recognition of existing table naming conventions and design patterns)
+  - AI-assisted table structure editing (maintains consistency with existing table styles)
   - Database-aware SQL generation (adapts to different database types)
+  - Intelligently references existing table structures to maintain overall design consistency
 
 - ✅ **User Interface**
   - Modern PyQt6 interface
@@ -77,8 +78,10 @@ Create database tables quickly through natural language conversation. AI automat
 **Smart Features**:
 - 🔹 Multi-turn conversational interaction (supports iterative requirement refinement)
 - 🔹 Automatic database type detection (MySQL/PostgreSQL/SQLite, etc.)
-- 🔹 Intelligent field type recommendations
-- 🔹 Auto-generates primary keys, indexes, and constraints
+- 🔹 **Smart Pattern Recognition**: AI automatically analyzes existing tables in the database to learn naming conventions, field type preferences, and primary key patterns
+- 🔹 **Reference Table Styles**: Selects most relevant existing tables as references when creating new tables, maintaining design consistency across the database
+- 🔹 Intelligent field type recommendations (based on field type choices in reference tables)
+- 🔹 Auto-generates primary keys, indexes, and constraints (following existing table patterns)
 - 🔹 Database-compliant table creation statements
 - 🔹 One-click table creation execution
 
@@ -92,7 +95,8 @@ Visual table structure editing with AI-assisted quick table creation and field m
 - 🔹 Field management (add/delete/modify)
 - 🔹 Data type selection (adapts to different databases)
 - 🔹 Index management
-- 🔹 AI-assisted table structure design
+- 🔹 **AI Smart Table Modification**: Intelligently generates ALTER TABLE statements based on current table structure and natural language descriptions
+- 🔹 **Style Consistency**: Maintains consistent naming conventions and type choices with existing table structures when modifying tables
 - 🔹 SQL preview and execution
 
 ### 5. Table Structure Synchronization
