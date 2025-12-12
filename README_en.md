@@ -2,6 +2,7 @@
 
 A database management tool similar to DataGrip, supporting multiple database connections and SQL queries.
 download : https://gitee.com/CodeYG/db-ai-pro/releases/tag/v1.1.0
+
 **Author**: codeyG (550187704@qq.com)
 
 ## Features
@@ -39,65 +40,6 @@ download : https://gitee.com/CodeYG/db-ai-pro/releases/tag/v1.1.0
   - Result table display
   - **Multi-language support** (English/Chinese) 🌐
 
-## Project Structure
-
-```
-gui-app/
-├── src/
-│   ├── main.py                    # Application entry point
-│   ├── core/                      # Core business logic
-│   │   ├── database_connection.py # Database connection model
-│   │   ├── database_manager.py   # Database manager
-│   │   ├── ai_client.py          # AI client for SQL generation
-│   │   └── i18n.py               # Internationalization
-│   ├── gui/                       # GUI components
-│   │   ├── main_window.py        # Main window
-│   │   ├── dialogs/              # Dialogs
-│   │   │   ├── connection_dialog.py  # Connection configuration dialog
-│   │   │   ├── import_dialog.py      # Import connection dialog 🆕
-│   │   │   └── settings_dialog.py   # Settings dialog
-│   │   └── widgets/              # Custom widgets
-│   │       ├── sql_editor.py     # SQL editor
-│   │       └── result_table.py   # Result table
-│   ├── config/                    # Configuration management
-│   │   └── settings.py
-│   └── utils/                     # Utility functions
-│       ├── helpers.py
-│       ├── navicat_importer.py   # Navicat importer 🆕
-│       └── registry_helper.py   # Windows registry helper
-├── tests/                         # Test code
-├── resources/                     # Resource files
-│   └── translations/             # Translation files
-└── requirements.txt              # Dependencies
-```
-
-## Installation
-
-1. Create a virtual environment (recommended):
-```bash
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or
-venv\Scripts\activate  # Windows
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-**Note**: Depending on the database type you use, you may need to install the corresponding driver:
-- MySQL: `pymysql` (included)
-- PostgreSQL: `psycopg2-binary` (included)
-- Oracle: `cx-Oracle` (optional)
-- SQL Server: `pyodbc` (included)
-
-## Running
-
-```bash
-python src/main.py
-```
-
 ## Feature Showcase
 
 ### 1. SQL Query & AI-Powered Generation
@@ -126,7 +68,21 @@ Support multiple AI model configurations, compatible with OpenAI API format (sup
 - 🔹 Multi-model switching
 - 🔹 Custom API endpoints (supports local models)
 
-### 3. Table Structure Editor
+### 3. AI Multi-Turn Dialogue for Table Creation
+
+Create database tables quickly through natural language conversation. AI automatically identifies the current database type and generates compliant table creation scripts.
+
+![AI Multi-Turn Dialogue Table Creation](docs/images/多轮对话新建表.png)
+
+**Smart Features**:
+- 🔹 Multi-turn conversational interaction (supports iterative requirement refinement)
+- 🔹 Automatic database type detection (MySQL/PostgreSQL/SQLite, etc.)
+- 🔹 Intelligent field type recommendations
+- 🔹 Auto-generates primary keys, indexes, and constraints
+- 🔹 Database-compliant table creation statements
+- 🔹 One-click table creation execution
+
+### 4. Table Structure Editor
 
 Visual table structure editing with AI-assisted quick table creation and field modification.
 
@@ -139,7 +95,7 @@ Visual table structure editing with AI-assisted quick table creation and field m
 - 🔹 AI-assisted table structure design
 - 🔹 SQL preview and execution
 
-### 4. Table Structure Synchronization
+### 5. Table Structure Synchronization
 
 Synchronize table structures between multiple databases with batch operations support.
 
@@ -231,6 +187,65 @@ Synchronize table structures between multiple databases with batch operations su
 - **Internationalization**: Custom i18n system (JSON/TS file support)
 - **Python Version**: >= 3.8
 
+## Project Structure
+
+```
+gui-app/
+├── src/
+│   ├── main.py                    # Application entry point
+│   ├── core/                      # Core business logic
+│   │   ├── database_connection.py # Database connection model
+│   │   ├── database_manager.py   # Database manager
+│   │   ├── ai_client.py          # AI client for SQL generation
+│   │   └── i18n.py               # Internationalization
+│   ├── gui/                       # GUI components
+│   │   ├── main_window.py        # Main window
+│   │   ├── dialogs/              # Dialogs
+│   │   │   ├── connection_dialog.py  # Connection configuration dialog
+│   │   │   ├── import_dialog.py      # Import connection dialog 🆕
+│   │   │   └── settings_dialog.py   # Settings dialog
+│   │   └── widgets/              # Custom widgets
+│   │       ├── sql_editor.py     # SQL editor
+│   │       └── result_table.py   # Result table
+│   ├── config/                    # Configuration management
+│   │   └── settings.py
+│   └── utils/                     # Utility functions
+│       ├── helpers.py
+│       ├── navicat_importer.py   # Navicat importer 🆕
+│       └── registry_helper.py   # Windows registry helper
+├── tests/                         # Test code
+├── resources/                     # Resource files
+│   └── translations/             # Translation files
+└── requirements.txt              # Dependencies
+```
+
+## Installation
+
+1. Create a virtual environment (recommended):
+```bash
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# or
+venv\Scripts\activate  # Windows
+```
+
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+**Note**: Depending on the database type you use, you may need to install the corresponding driver:
+- MySQL: `pymysql` (included)
+- PostgreSQL: `psycopg2-binary` (included)
+- Oracle: `cx-Oracle` (optional)
+- SQL Server: `pyodbc` (included)
+
+## Running
+
+```bash
+python src/main.py
+```
+
 ## Development
 
 ### Run Tests
@@ -250,6 +265,13 @@ flake8 src/
 
 ## Version Updates
 
+### Latest Updates
+
+- **AI-Powered SQL Generation**: Natural language to SQL conversion
+- **Database Type Awareness**: SQL generation adapts to different database types
+- **Multi-language Support**: English and Chinese interface
+- **Navicat Import**: Import database connections from Navicat
+
 ### v0.2.0
 
 - **Enhanced Query Result Table**
@@ -267,13 +289,6 @@ flake8 src/
 - **Packaging and Version**
   - Default use **MIT License** open source
   - Version number updated to `0.2.0`, preparing for future binary releases (such as `DataAI.exe`)
-
-### Latest Updates
-
-- **AI-Powered SQL Generation**: Natural language to SQL conversion
-- **Database Type Awareness**: SQL generation adapts to different database types
-- **Multi-language Support**: English and Chinese interface
-- **Navicat Import**: Import database connections from Navicat
 
 ## Feature Roadmap
 
@@ -297,4 +312,3 @@ MIT License
 ## Contributing
 
 Welcome to submit Issues and Pull Requests!
-
