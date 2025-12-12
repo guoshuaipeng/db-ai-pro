@@ -407,7 +407,12 @@ class SingleResultTable(QWidget):
         # 如果有正在运行的分页查询，先停止
         if self.pagination_worker and self.pagination_worker.isRunning():
             self.pagination_worker.stop()
-            self.pagination_worker.wait(1000)
+            try:
+                self.pagination_worker.wait(1000)
+            except KeyboardInterrupt:
+                # 用户可能按了 Ctrl+C 复制，不要中断整个程序
+                logger.warning("用户中断了分页查询等待，继续执行")
+                pass
         
         # 创建分页 worker（只获取 COUNT，不查询数据）
         self.pagination_worker = PaginationWorker(
@@ -446,7 +451,12 @@ class SingleResultTable(QWidget):
         # 如果有正在运行的分页查询，先停止
         if self.pagination_worker and self.pagination_worker.isRunning():
             self.pagination_worker.stop()
-            self.pagination_worker.wait(1000)
+            try:
+                self.pagination_worker.wait(1000)
+            except KeyboardInterrupt:
+                # 用户可能按了 Ctrl+C 复制，不要中断整个程序
+                logger.warning("用户中断了分页查询等待，继续执行")
+                pass
         
         # 创建分页 worker
         self.pagination_worker = PaginationWorker(
@@ -1271,10 +1281,15 @@ class SingleResultTable(QWidget):
             # 停止之前的UPDATE worker（如果存在）
             if self.update_worker and self.update_worker.isRunning():
                 self.update_worker.stop()
-                self.update_worker.wait(1000)
-                if self.update_worker.isRunning():
-                    self.update_worker.terminate()
-                    self.update_worker.wait(500)
+                try:
+                    self.update_worker.wait(1000)
+                    if self.update_worker.isRunning():
+                        self.update_worker.terminate()
+                        self.update_worker.wait(500)
+                except KeyboardInterrupt:
+                    # 用户可能按了 Ctrl+C 复制，不要中断整个程序
+                    logger.warning("用户中断了等待，继续执行")
+                    pass
                 try:
                     self.update_worker.query_finished.disconnect()
                 except:
@@ -1528,10 +1543,15 @@ class SingleResultTable(QWidget):
             # 停止之前的UPDATE worker（如果存在）
             if self.update_worker and self.update_worker.isRunning():
                 self.update_worker.stop()
-                self.update_worker.wait(1000)
-                if self.update_worker.isRunning():
-                    self.update_worker.terminate()
-                    self.update_worker.wait(500)
+                try:
+                    self.update_worker.wait(1000)
+                    if self.update_worker.isRunning():
+                        self.update_worker.terminate()
+                        self.update_worker.wait(500)
+                except KeyboardInterrupt:
+                    # 用户可能按了 Ctrl+C 复制，不要中断整个程序
+                    logger.warning("用户中断了等待，继续执行")
+                    pass
                 try:
                     self.update_worker.query_finished.disconnect()
                 except:
@@ -1964,6 +1984,7 @@ class MultiResultTable(QWidget):
         self.result_tables: List[SingleResultTable] = []
         self.table_to_tab_index: Dict[str, int] = {}  # "connection_id:table_name" 到tab索引的映射
         self.tab_sql_map: Dict[int, str] = {}  # tab索引到SQL语句的映射
+        self.floating_windows: List = []  # 浮动窗口列表
     
     def init_ui(self):
         """初始化UI"""
@@ -2035,15 +2056,21 @@ class MultiResultTable(QWidget):
         # 创建右键菜单
         menu = QMenu(self)
         
+        # 在新窗口中打开
+        if 0 <= index < len(self.result_tables):
+            open_new_window_action = menu.addAction("🪟 在新窗口中打开")
+            open_new_window_action.triggered.connect(lambda: self.open_in_new_window(index))
+            menu.addSeparator()
+        
         # 复制SQL（如果该tab有SQL）
         if index in self.tab_sql_map:
             sql = self.tab_sql_map[index]
-            copy_action = menu.addAction("复制SQL")
+            copy_action = menu.addAction("📋 复制SQL")
             copy_action.triggered.connect(lambda: self.copy_sql_to_clipboard(sql))
             menu.addSeparator()
         
         # 关闭相关菜单
-        close_action = menu.addAction("关闭")
+        close_action = menu.addAction("❌ 关闭")
         close_action.triggered.connect(lambda: self.close_tab(index))
         
         # 如果只有一个tab，禁用"关闭其他"
@@ -2058,6 +2085,44 @@ class MultiResultTable(QWidget):
             close_all_action.triggered.connect(self.close_all_tabs)
         
         menu.exec(tab_bar.mapToGlobal(position))
+    
+    def open_in_new_window(self, index: int):
+        """在新窗口中打开查询结果"""
+        if index < 0 or index >= len(self.result_tables):
+            return
+        
+        # 获取该tab的数据
+        result_table = self.result_tables[index]
+        sql = self.tab_sql_map.get(index, "查询结果")
+        
+        # 创建浮动窗口
+        from src.gui.widgets.floating_result_window import FloatingResultWindow
+        
+        floating_window = FloatingResultWindow(
+            sql=result_table.original_sql or sql,
+            data=result_table.raw_data,
+            columns=None,  # 列名会从 raw_data 中提取
+            main_window=getattr(self, '_main_window', None),
+            parent=None  # 独立窗口，不设置父窗口
+        )
+        
+        # 连接窗口关闭信号
+        floating_window.window_closed.connect(
+            lambda: self._on_floating_window_closed(floating_window)
+        )
+        
+        # 保存窗口引用
+        self.floating_windows.append(floating_window)
+        
+        # 显示窗口
+        floating_window.show()
+        
+        # 不需要提示，新窗口已经弹出了
+    
+    def _on_floating_window_closed(self, window):
+        """浮动窗口关闭时的回调"""
+        if window in self.floating_windows:
+            self.floating_windows.remove(window)
     
     def copy_sql_to_clipboard(self, sql: str):
         """复制SQL到剪贴板"""

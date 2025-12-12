@@ -120,11 +120,13 @@ def init_config_database():
         connections_file = os.path.join(config_dir, "connections.json")
         prompts_file = os.path.join(config_dir, "prompts.json")
         tree_cache_file = os.path.join(config_dir, "tree_cache.json")
+        ai_models_file = os.path.join(config_dir, "ai_models.json")
         
         needs_migration = (
             os.path.exists(connections_file) or 
             os.path.exists(prompts_file) or 
-            os.path.exists(tree_cache_file)
+            os.path.exists(tree_cache_file) or
+            os.path.exists(ai_models_file)
         )
         
         if needs_migration:
@@ -132,21 +134,12 @@ def init_config_database():
             migrated_count = config_db.migrate_from_json(
                 connections_file=connections_file,
                 prompts_file=prompts_file,
-                tree_cache_file=tree_cache_file
+                tree_cache_file=tree_cache_file,
+                ai_models_file=ai_models_file
             )
             
             if migrated_count > 0:
                 logger.info(f"配置文件迁移完成，共迁移 {migrated_count} 项")
-                
-                # 迁移成功后，备份并删除旧文件
-                for old_file in [connections_file, prompts_file, tree_cache_file]:
-                    if os.path.exists(old_file):
-                        try:
-                            backup_file = f"{old_file}.backup"
-                            os.rename(old_file, backup_file)
-                            logger.info(f"旧配置文件已备份: {backup_file}")
-                        except Exception as e:
-                            logger.warning(f"备份旧配置文件失败: {e}")
         else:
             logger.debug("无需迁移旧配置文件")
     

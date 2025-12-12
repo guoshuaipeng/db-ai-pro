@@ -381,8 +381,6 @@ class AIModelManagerDialog(QDialog):
     
     def refresh_list(self):
         """刷新列表显示"""
-        from src.core.default_ai_model import DEFAULT_MODEL_ID
-        
         current_id = None
         current_item = self.model_list.currentItem()
         if current_item:
@@ -392,8 +390,7 @@ class AIModelManagerDialog(QDialog):
         for model in self.models:
             item = QListWidgetItem()
             display_text = model.name
-            if model.is_default:
-                display_text += " [默认]"
+            # 不再显示任何标记，只显示模型名称
             if not model.is_active:
                 display_text += " [未激活]"
             item.setText(display_text)
@@ -407,7 +404,7 @@ class AIModelManagerDialog(QDialog):
         # 更新模型数量显示
         total_count = len(self.models)
         active_count = sum(1 for m in self.models if m.is_active)
-        default_count = sum(1 for m in self.models if m.is_default and m.is_active)
+        # 不再统计默认模型数量，改为显示当前使用的模型
         
         if total_count == 0:
             self.model_count_label.setText("暂无配置")
@@ -415,8 +412,7 @@ class AIModelManagerDialog(QDialog):
             count_text = f"共 {total_count} 个"
             if active_count != total_count:
                 count_text += f" | 激活 {active_count} 个"
-            if default_count > 0:
-                count_text += f" | 默认 {default_count} 个"
+            # 不再显示"默认 X 个"
             self.model_count_label.setText(count_text)
         
         # 如果没有选中项，选中第一个并显示统计
@@ -433,10 +429,7 @@ class AIModelManagerDialog(QDialog):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_model = dialog.get_model()
             
-            # 如果设置为默认，取消其他模型的默认标记
-            if new_model.is_default:
-                for m in self.models:
-                    m.is_default = False
+            # 不再处理默认模型逻辑
             self.models.append(new_model)
             
             # 立即保存到磁盘
@@ -470,18 +463,8 @@ class AIModelManagerDialog(QDialog):
         if not model:
             return
         
-        # 检查是否为默认模型（硬编码的默认模型不允许编辑）
-        from src.core.default_ai_model import DEFAULT_MODEL_ID
-        if model.id == DEFAULT_MODEL_ID or model.is_default:
-            QMessageBox.warning(
-                self,
-                "提示",
-                "默认模型不允许编辑。\n\n"
-                "默认模型是硬编码在程序中的，无法修改。\n"
-                "您可以添加新的模型配置。"
-            )
-            return
-        
+        # 检查是否为默认模型（默认模型可以编辑）
+        # 现在允许编辑任何模型，包括默认模型
         self.edit_model(current_item)
     
     def edit_model(self, item: QListWidgetItem):
@@ -502,11 +485,7 @@ class AIModelManagerDialog(QDialog):
             # 更新模型
             self.models[original_index] = updated_model
             
-            # 确保仅有一个默认模型
-            if updated_model.is_default:
-                for m in self.models:
-                    if m.id != updated_model.id:
-                        m.is_default = False
+            # 不再处理默认模型逻辑
             
             # 立即保存到磁盘
             if self.storage.save_models(self.models):
@@ -529,15 +508,7 @@ class AIModelManagerDialog(QDialog):
         if not model:
             return
         
-        # 默认模型不允许删除，防止无默认可用
-        if model.is_default:
-            QMessageBox.warning(
-                self,
-                "提示",
-                "默认模型不允许删除。\n\n"
-                "请先将其他模型设为默认，再删除当前模型。"
-            )
-            return
+        # 不再检查默认模型，所有模型都可以删除
         
         reply = QMessageBox.question(
             self,
@@ -548,19 +519,18 @@ class AIModelManagerDialog(QDialog):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            # 保存原始列表以便失败时恢复
-            original_models = self.models.copy()
-            
-            # 删除模型
-            self.models = [m for m in self.models if m.id != model_id]
-            
-            # 立即保存到磁盘
-            if self.storage.save_models(self.models):
+            # 先从数据库中删除模型
+            if self.storage.delete_model(model_id):
+                # 从内存列表中删除
+                self.models = [m for m in self.models if m.id != model_id]
+                
+                # 刷新对话框内的列表显示
                 self.refresh_list()
+                
+                logger.info(f"已从数据库删除模型: {model.name} (ID: {model_id})")
                 QMessageBox.information(self, "成功", "模型配置已删除")
             else:
-                # 保存失败，恢复原始列表
-                self.models = original_models
+                logger.error(f"从数据库删除模型失败: {model_id}")
                 QMessageBox.warning(self, "错误", "删除模型配置失败")
     
     def set_default_model(self):
@@ -572,25 +542,8 @@ class AIModelManagerDialog(QDialog):
         
         model_id = current_item.data(Qt.ItemDataRole.UserRole)
         model = next((m for m in self.models if m.id == model_id), None)
-        if not model:
-            return
-        
-        # 保存原始状态以便失败时恢复
-        original_defaults = {m.id: m.is_default for m in self.models}
-        
-        # 将选中的模型设为默认，其他取消默认
-        for m in self.models:
-            m.is_default = (m.id == model_id)
-        
-        # 立即保存到磁盘
-        if self.storage.save_models(self.models):
-            self.refresh_list()
-            QMessageBox.information(self, "成功", "默认模型已设置并保存")
-        else:
-            # 保存失败，恢复原始状态
-            for m in self.models:
-                m.is_default = original_defaults[m.id]
-            QMessageBox.warning(self, "错误", "设置默认模型失败")
+        # 不再使用默认模型概念，此方法已废弃
+        pass
     
     def edit_prompts(self):
         """编辑提示词"""

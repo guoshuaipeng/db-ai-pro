@@ -21,9 +21,10 @@ class AIModelHandler:
         """配置AI模型"""
         from src.gui.dialogs.ai_model_manager_dialog import AIModelManagerDialog
         dialog = AIModelManagerDialog(self.main_window)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            # 配置更新后，刷新模型列表
-            self.refresh_ai_models()
+        dialog.exec()
+        
+        # 无论对话框如何关闭，都刷新模型列表（因为可能已经添加/编辑/删除了模型）
+        self.refresh_ai_models()
     
     def configure_prompts(self):
         """配置AI提示词"""
@@ -52,29 +53,51 @@ class AIModelHandler:
         # 获取上次使用的模型ID
         last_used_id = self.main_window.ai_model_storage.get_last_used_model_id()
         
-        # 添加模型到下拉框
-        selected_index = 0
+        logger.info(f"刷新AI模型列表，上次使用的模型ID: {last_used_id}")
+        
+        # 添加模型到下拉框，并找到上次使用的模型索引
+        selected_index = 0  # 默认选择第一个
+        found_last_used = False
+        
         for i, model in enumerate(active_models):
-            display_name = model.name
-            from src.core.default_ai_model import DEFAULT_MODEL_ID
-            if model.id == DEFAULT_MODEL_ID or model.is_default:
-                display_name += " [系统默认]"
-            self.main_window.ai_model_combo.addItem(display_name, model.id)
+            # 只显示模型名称，不显示任何标记
+            self.main_window.ai_model_combo.addItem(model.name, model.id)
             
-            # 优先选择上次使用的模型
+            # 如果找到上次使用的模型，记录索引
             if last_used_id and model.id == last_used_id:
                 selected_index = i
-            # 如果没有上次使用的，选择第一个激活的模型
-            elif selected_index == 0:
-                selected_index = i
+                found_last_used = True
+                logger.info(f"找到上次使用的模型: {model.name} (索引: {i})")
+        
+        if not found_last_used and last_used_id:
+            logger.warning(f"上次使用的模型ID {last_used_id} 未找到或未激活，使用第一个模型")
         
         # 设置当前选择的模型（优先使用上次使用的模型）
         if active_models:
+            # 先临时断开信号，避免触发 on_ai_model_changed
+            self.main_window.ai_model_combo.blockSignals(True)
             self.main_window.ai_model_combo.setCurrentIndex(selected_index)
-            # 只有在确实需要切换时才调用（避免初始化时的重复调用）
+            self.main_window.ai_model_combo.blockSignals(False)
+            
+            # 更新当前模型ID（但不保存，保持数据库中的值）
             selected_model_id = active_models[selected_index].id
-            if not self.main_window.current_ai_model_id or self.main_window.current_ai_model_id != selected_model_id:
-                self.on_ai_model_changed(selected_index)
+            self.main_window.current_ai_model_id = selected_model_id
+            
+            # 更新SQL编辑器的AI客户端（如果模型确实改变了）
+            if hasattr(self.main_window, 'sql_editor'):
+                try:
+                    from src.core.ai_client import AIClient
+                    model_config = active_models[selected_index]
+                    self.main_window.sql_editor.ai_client = AIClient(
+                        api_key=model_config.api_key.get_secret_value(),
+                        base_url=model_config.get_base_url(),
+                        default_model=model_config.default_model,
+                        turbo_model=model_config.turbo_model
+                    )
+                    self.main_window.sql_editor.ai_client._current_model_id = model_config.id
+                    logger.info(f"已加载模型: {model_config.name}")
+                except Exception as e:
+                    logger.error(f"加载AI模型失败: {str(e)}")
     
     def on_ai_model_changed(self, index: int):
         """AI模型选择改变"""
@@ -84,8 +107,9 @@ class AIModelHandler:
         
         self.main_window.current_ai_model_id = model_id
         
-        # 保存为上次使用的模型
+        # 保存为当前使用的模型
         self.main_window.ai_model_storage.save_last_used_model_id(model_id)
+        logger.info(f"已保存当前使用的模型ID: {model_id}")
         
         # 更新SQL编辑器的AI客户端
         if hasattr(self.main_window, 'sql_editor'):

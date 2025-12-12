@@ -229,24 +229,7 @@ class AIModelDialog(QDialog):
         """)
         options_layout.addWidget(self.active_check)
         
-        self.default_check = QCheckBox("⭐ 设为默认")
-        self.default_check.setStyleSheet("""
-            QCheckBox {
-                font-size: 13px;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #bdc3c7;
-                border-radius: 4px;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #ff9800;
-                border-color: #ff9800;
-            }
-        """)
-        options_layout.addWidget(self.default_check)
+        # 移除"设为默认"选项，程序会自动记住当前使用的模型
         options_layout.addStretch()
         
         form_layout.addRow("", options_layout)
@@ -463,7 +446,6 @@ class AIModelDialog(QDialog):
         self.default_model_edit.setText(self.model.default_model)
         self.turbo_model_edit.setText(self.model.turbo_model)
         self.active_check.setChecked(self.model.is_active)
-        self.default_check.setChecked(self.model.is_default)
     
     def validate_and_accept(self):
         """验证并接受"""
@@ -498,6 +480,5 @@ class AIModelDialog(QDialog):
             default_model=self.default_model_edit.text().strip(),
             turbo_model=self.turbo_model_edit.text().strip(),
             is_active=self.active_check.isChecked(),
-            is_default=self.default_check.isChecked(),
         )
 

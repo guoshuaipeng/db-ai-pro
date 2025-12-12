@@ -134,17 +134,71 @@ class ConfigDB:
             # 6. AI 模型配置表
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS ai_models (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
                     provider TEXT NOT NULL,
-                    model_name TEXT NOT NULL,
                     api_key TEXT,
-                    api_base TEXT,
+                    base_url TEXT,
+                    default_model TEXT NOT NULL DEFAULT 'qwen-plus',
+                    turbo_model TEXT NOT NULL DEFAULT 'qwen-turbo',
+                    is_active INTEGER DEFAULT 1,
                     is_default INTEGER DEFAULT 0,
-                    extra_config TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
             """)
+            
+            # 检查是否需要迁移旧表结构
+            cursor.execute("PRAGMA table_info(ai_models)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            # 如果是旧表结构（有model_name字段），需要迁移
+            if 'model_name' in columns and 'name' not in columns:
+                logger.info("检测到旧的ai_models表结构，开始迁移...")
+                # 重命名旧表
+                cursor.execute("ALTER TABLE ai_models RENAME TO ai_models_old")
+                # 创建新表
+                cursor.execute("""
+                    CREATE TABLE ai_models (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        provider TEXT NOT NULL,
+                        api_key TEXT,
+                        base_url TEXT,
+                        default_model TEXT NOT NULL DEFAULT 'qwen-plus',
+                        turbo_model TEXT NOT NULL DEFAULT 'qwen-turbo',
+                        is_active INTEGER DEFAULT 1,
+                        is_default INTEGER DEFAULT 0,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                """)
+                # 迁移数据（尽力而为）
+                try:
+                    cursor.execute("""
+                        INSERT INTO ai_models (id, name, provider, api_key, base_url, default_model, is_default, created_at, updated_at)
+                        SELECT 
+                            'model_' || CAST(id AS TEXT),
+                            provider || ' - ' || model_name,
+                            provider,
+                            api_key,
+                            api_base,
+                            model_name,
+                            is_default,
+                            created_at,
+                            updated_at
+                        FROM ai_models_old
+                    """)
+                    # 删除旧表
+                    cursor.execute("DROP TABLE ai_models_old")
+                    logger.info("ai_models表结构迁移完成")
+                except Exception as e:
+                    logger.warning(f"迁移ai_models表数据失败，使用新表: {str(e)}")
+                    # 如果迁移失败，删除旧表
+                    try:
+                        cursor.execute("DROP TABLE IF EXISTS ai_models_old")
+                    except:
+                        pass
             
             # 创建索引
             cursor.execute("""
@@ -523,7 +577,7 @@ class ConfigDB:
     
     # ==================== AI 模型配置管理 ====================
     
-    def save_ai_model(self, model_data: Dict[str, Any]) -> int:
+    def save_ai_model(self, model_data: Dict[str, Any]) -> str:
         """
         保存 AI 模型配置
         
@@ -536,58 +590,86 @@ class ConfigDB:
             
             model_id = model_data.get('id')
             
+            # 注意：is_default 字段已废弃，不再使用
+            
             if model_id:
-                # 更新
-                cursor.execute("""
-                    UPDATE ai_models SET
-                        provider = ?, model_name = ?, api_key = ?, api_base = ?,
-                        is_default = ?, extra_config = ?, updated_at = ?
-                    WHERE id = ?
-                """, (
-                    model_data['provider'], model_data['model_name'],
-                    model_data.get('api_key'), model_data.get('api_base'),
-                    1 if model_data.get('is_default') else 0,
-                    json.dumps(model_data.get('extra_config', {})), now, model_id
-                ))
-                logger.debug(f"更新AI模型配置: {model_id}")
-                return model_id
-            else:
-                # 插入
-                cursor.execute("""
-                    INSERT INTO ai_models 
-                    (provider, model_name, api_key, api_base, is_default, extra_config, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    model_data['provider'], model_data['model_name'],
-                    model_data.get('api_key'), model_data.get('api_base'),
-                    1 if model_data.get('is_default') else 0,
-                    json.dumps(model_data.get('extra_config', {})), now, now
-                ))
-                logger.debug(f"保存新AI模型配置: {cursor.lastrowid}")
-                return cursor.lastrowid
+                # 检查模型是否存在
+                cursor.execute("SELECT id FROM ai_models WHERE id = ?", (model_id,))
+                exists = cursor.fetchone() is not None
+                
+                if exists:
+                    # 更新
+                    cursor.execute("""
+                        UPDATE ai_models SET
+                            name = ?, provider = ?, api_key = ?, base_url = ?,
+                            default_model = ?, turbo_model = ?, 
+                            is_active = ?, updated_at = ?
+                        WHERE id = ?
+                    """, (
+                        model_data['name'], model_data['provider'],
+                        model_data.get('api_key'), model_data.get('base_url'),
+                        model_data.get('default_model', 'qwen-plus'),
+                        model_data.get('turbo_model', 'qwen-turbo'),
+                        1 if model_data.get('is_active', True) else 0,
+                        now, model_id
+                    ))
+                    logger.debug(f"更新AI模型配置: {model_id}")
+                    return model_id
+            
+            # 插入新模型
+            import uuid
+            if not model_id:
+                model_id = str(uuid.uuid4())
+            
+            cursor.execute("""
+                INSERT INTO ai_models 
+                (id, name, provider, api_key, base_url, default_model, turbo_model, 
+                 is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                model_id, model_data['name'], model_data['provider'],
+                model_data.get('api_key'), model_data.get('base_url'),
+                model_data.get('default_model', 'qwen-plus'),
+                model_data.get('turbo_model', 'qwen-turbo'),
+                1 if model_data.get('is_active', True) else 0,
+                now, now
+            ))
+            logger.debug(f"保存新AI模型配置: {model_id}")
+            return model_id
     
-    def get_default_ai_model(self) -> Optional[Dict[str, Any]]:
+    def get_current_ai_model(self) -> Optional[Dict[str, Any]]:
         """
-        获取默认 AI 模型配置
+        获取当前使用的 AI 模型配置（基于 last_used_ai_model_id）
         
         :return: 模型配置字典，不存在返回 None
         """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM ai_models WHERE is_default = 1 LIMIT 1")
-            row = cursor.fetchone()
-            
-            if row:
-                return {
-                    'id': row['id'],
-                    'provider': row['provider'],
-                    'model_name': row['model_name'],
-                    'api_key': row['api_key'],
-                    'api_base': row['api_base'],
-                    'is_default': bool(row['is_default']),
-                    'extra_config': json.loads(row['extra_config']) if row['extra_config'] else {}
-                }
-            return None
+        # 从 settings 表获取上次使用的模型ID
+        last_used_id = self.get_setting('last_used_ai_model_id', None)
+        
+        if last_used_id:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM ai_models WHERE id = ? AND is_active = 1", (last_used_id,))
+                row = cursor.fetchone()
+                
+                if row:
+                    return {
+                        'id': row['id'],
+                        'name': row['name'],
+                        'provider': row['provider'],
+                        'api_key': row['api_key'],
+                        'base_url': row['base_url'],
+                        'default_model': row['default_model'],
+                        'turbo_model': row['turbo_model'],
+                        'is_active': bool(row['is_active']),
+                    }
+        
+        return None
+    
+    # 保持向后兼容的别名
+    def get_default_ai_model(self) -> Optional[Dict[str, Any]]:
+        """获取默认AI模型（向后兼容，实际返回当前使用的模型）"""
+        return self.get_current_ai_model()
     
     def get_all_ai_models(self) -> List[Dict[str, Any]]:
         """
@@ -597,27 +679,120 @@ class ConfigDB:
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM ai_models ORDER BY is_default DESC, id")
+            cursor.execute("SELECT * FROM ai_models ORDER BY created_at DESC")
             rows = cursor.fetchall()
             
             models = []
             for row in rows:
                 models.append({
                     'id': row['id'],
+                    'name': row['name'],
                     'provider': row['provider'],
-                    'model_name': row['model_name'],
                     'api_key': row['api_key'],
-                    'api_base': row['api_base'],
-                    'is_default': bool(row['is_default']),
-                    'extra_config': json.loads(row['extra_config']) if row['extra_config'] else {}
+                    'base_url': row['base_url'],
+                    'default_model': row['default_model'],
+                    'turbo_model': row['turbo_model'],
+                    'is_active': bool(row['is_active']),
                 })
             
             return models
     
+    def delete_ai_model(self, model_id: str) -> bool:
+        """
+        删除 AI 模型配置
+        
+        :param model_id: 模型ID
+        :return: 是否删除成功
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM ai_models WHERE id = ?", (model_id,))
+            return cursor.rowcount > 0
+    
+    def get_ai_model_by_id(self, model_id: str) -> Optional[Dict[str, Any]]:
+        """
+        根据ID获取AI模型配置
+        
+        :param model_id: 模型ID
+        :return: 模型配置字典，不存在返回 None
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM ai_models WHERE id = ?", (model_id,))
+            row = cursor.fetchone()
+            
+            if row:
+                return {
+                    'id': row['id'],
+                    'name': row['name'],
+                    'provider': row['provider'],
+                    'api_key': row['api_key'],
+                    'base_url': row['base_url'],
+                    'default_model': row['default_model'],
+                    'turbo_model': row['turbo_model'],
+                    'is_active': bool(row['is_active']),
+                }
+            return None
+    
     # ==================== 数据迁移工具 ====================
     
+    def migrate_ai_models_from_json(self, ai_models_file: str = None):
+        """
+        从 JSON 文件迁移AI模型配置到 SQLite
+        
+        :param ai_models_file: AI模型配置 JSON 文件路径
+        :return: 迁移的模型数量
+        """
+        if ai_models_file is None:
+            from src.config.settings import Settings
+            config_dir = Settings.get_config_dir()
+            ai_models_file = os.path.join(config_dir, "ai_models.json")
+        
+        if not os.path.exists(ai_models_file):
+            logger.info(f"AI模型配置文件不存在，无需迁移: {ai_models_file}")
+            return 0
+        
+        try:
+            import json
+            with open(ai_models_file, 'r', encoding='utf-8') as f:
+                models_data = json.load(f)
+            
+            migrated_count = 0
+            for model_dict in models_data:
+                try:
+                    # 保存到SQLite
+                    model_data = {
+                        'id': model_dict.get('id'),
+                        'name': model_dict.get('name', ''),
+                        'provider': model_dict.get('provider', 'aliyun_qianwen'),
+                        'api_key': model_dict.get('api_key'),
+                        'base_url': model_dict.get('base_url'),
+                        'default_model': model_dict.get('default_model', 'qwen-plus'),
+                        'turbo_model': model_dict.get('turbo_model', 'qwen-turbo'),
+                        'is_active': model_dict.get('is_active', True),
+                    }
+                    self.save_ai_model(model_data)
+                    migrated_count += 1
+                except Exception as e:
+                    logger.error(f"迁移AI模型配置失败: {str(e)}, 数据: {model_dict}")
+            
+            # 迁移成功后，重命名JSON文件为.backup
+            if migrated_count > 0:
+                try:
+                    backup_path = ai_models_file + '.backup'
+                    os.rename(ai_models_file, backup_path)
+                    logger.info(f"AI模型配置迁移完成: {migrated_count} 个模型，已将JSON文件重命名为 {os.path.basename(backup_path)}")
+                except Exception as e:
+                    logger.warning(f"重命名AI模型配置文件失败: {str(e)}")
+            
+            return migrated_count
+            
+        except Exception as e:
+            logger.error(f"迁移AI模型配置失败: {str(e)}")
+            return 0
+    
     def migrate_from_json(self, connections_file: str = None, prompts_file: str = None, 
-                         tree_cache_file: str = None):
+                         tree_cache_file: str = None, ai_models_file: str = None):
         """
         从 JSON 文件迁移数据到 SQLite
         迁移成功后自动将 JSON 文件重命名为 .backup
@@ -625,9 +800,14 @@ class ConfigDB:
         :param connections_file: 连接配置 JSON 文件路径
         :param prompts_file: 提示词配置 JSON 文件路径
         :param tree_cache_file: 树缓存 JSON 文件路径
+        :param ai_models_file: AI模型配置 JSON 文件路径
         """
         migrated_count = 0
         migrated_files = []
+        
+        # 迁移AI模型配置
+        models_count = self.migrate_ai_models_from_json(ai_models_file)
+        migrated_count += models_count
         
         # 迁移连接配置
         if connections_file and os.path.exists(connections_file):

@@ -32,7 +32,7 @@ class AIModelConfig(BaseModel):
     default_model: str = "qwen-plus"  # 默认模型名称
     turbo_model: str = "qwen-turbo"  # Turbo模型名称（用于快速操作）
     is_active: bool = True  # 是否激活
-    is_default: bool = False  # 是否为默认配置
+    # is_default 字段已废弃，不再使用
     
     def get_base_url(self) -> str:
         """获取API基础URL"""
