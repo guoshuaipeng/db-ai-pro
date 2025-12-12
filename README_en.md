@@ -163,9 +163,14 @@ Synchronize table structures between multiple databases with batch operations su
 3. The generated SQL will be automatically executed and results displayed
 
 **Features**:
+- **Smart Table Selection**: If there's already SQL in the editor and you don't specify a table name (e.g., "query name field", "add condition"), AI will prioritize using tables from the editor instead of selecting new ones
 - Database-aware: SQL syntax adapts to the database type (MySQL, PostgreSQL, etc.)
 - Table structure analysis: Automatically uses correct table and column names
 - Enum field detection: Identifies and uses correct enum values
+
+**Tips**:
+- 💡 After viewing a table's data, you can directly input short commands like "only show active", "sort by time", and AI will generate SQL based on the current table
+- 💡 If you need to query other tables, explicitly specify the table name, e.g., "query users table"
 
 ### 4. Manage Connections
 

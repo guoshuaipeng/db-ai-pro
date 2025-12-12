@@ -301,6 +301,101 @@ class AIClient:
             self.logger.error(f"生成SQL失败: {str(e)}")
             raise Exception(f"AI生成SQL失败: {str(e)}")
     
+    def _extract_table_names_from_sql(self, sql: str, available_tables: list) -> list:
+        """
+        从SQL语句中提取表名
+        
+        :param sql: SQL语句
+        :param available_tables: 可用的表名列表
+        :return: 提取到的表名列表
+        """
+        import re
+        
+        if not sql or not available_tables:
+            return []
+        
+        # 将SQL转换为大写以便匹配关键字
+        sql_upper = sql.upper()
+        
+        # 提取的表名集合
+        extracted_tables = []
+        
+        # 方法1：使用正则表达式匹配 FROM 和 JOIN 后的表名
+        # 匹配 FROM table_name 或 JOIN table_name
+        patterns = [
+            r'\bFROM\s+[`"\[]?(\w+)[`"\]]?',  # FROM table
+            r'\bJOIN\s+[`"\[]?(\w+)[`"\]]?',  # JOIN table
+            r'\bINTO\s+[`"\[]?(\w+)[`"\]]?',  # INTO table (INSERT)
+            r'\bUPDATE\s+[`"\[]?(\w+)[`"\]]?',  # UPDATE table
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, sql_upper)
+            for match in matches:
+                # 在可用表名列表中查找（不区分大小写）
+                for table in available_tables:
+                    if table.upper() == match:
+                        if table not in extracted_tables:
+                            extracted_tables.append(table)
+                        break
+        
+        # 方法2：直接在SQL中搜索可用的表名（作为补充）
+        if not extracted_tables:
+            for table in available_tables:
+                # 检查表名是否出现在SQL中（使用单词边界，避免部分匹配）
+                pattern = r'\b' + re.escape(table) + r'\b'
+                if re.search(pattern, sql, re.IGNORECASE):
+                    if table not in extracted_tables:
+                        extracted_tables.append(table)
+        
+        return extracted_tables
+    
+    def _user_query_specifies_table(self, user_query: str, available_tables: list) -> bool:
+        """
+        判断用户查询是否明确指定了表名
+        
+        :param user_query: 用户查询
+        :param available_tables: 可用的表名列表
+        :return: True表示用户明确指定了表名，False表示未指定
+        """
+        import re
+        
+        if not user_query or not available_tables:
+            return False
+        
+        user_query_lower = user_query.lower()
+        
+        # 检查是否包含表名相关的关键词
+        table_keywords = ['查询', '查看', '显示', '获取', '统计', '分析']
+        table_specifiers = ['表', 'table', '的', '中', '里']
+        
+        # 如果用户查询中明确提到了某个表名
+        for table in available_tables:
+            # 检查表名是否出现在用户查询中
+            if table.lower() in user_query_lower:
+                # 进一步检查是否是在描述表（而不是字段名恰好包含表名）
+                # 如果表名前后有"表"、"的"等字眼，更有可能是在指定表
+                pattern = r'(' + '|'.join(table_specifiers) + r')\s*' + re.escape(table.lower())
+                if re.search(pattern, user_query_lower):
+                    return True
+                # 或者表名后面跟着"表"
+                pattern = re.escape(table.lower()) + r'\s*(' + '|'.join(table_specifiers) + r')'
+                if re.search(pattern, user_query_lower):
+                    return True
+        
+        # 如果用户查询非常简短（少于10个字符），并且不包含任何表名，认为是未指定表
+        # 例如："查询name字段"、"添加条件"、"只看active的"
+        if len(user_query) < 20:
+            has_table_mention = False
+            for table in available_tables:
+                if table.lower() in user_query_lower:
+                    has_table_mention = True
+                    break
+            if not has_table_mention:
+                return False
+        
+        return False
+    
     def select_tables(self, user_query: str, table_info_list: list, current_sql: str = None) -> list:
         """
         根据用户查询从表名列表中选择相关的表
@@ -340,7 +435,30 @@ class AIClient:
                     table_names_only.append(item)
                     table_list_items.append(f'  - {item}')
             
-            # 格式化表名列表
+            # 从当前SQL中提取表名
+            tables_in_current_sql = []
+            if current_sql and current_sql.strip():
+                tables_in_current_sql = self._extract_table_names_from_sql(current_sql, table_names_only)
+                self.logger.info(f"从当前SQL中提取到的表名: {tables_in_current_sql}")
+                
+                # 如果用户查询中没有明确指定表名，并且当前SQL中有表，直接使用当前SQL中的表
+                if tables_in_current_sql and not self._user_query_specifies_table(user_query, table_names_only):
+                    self.logger.info(f"用户查询未明确指定表名，直接使用当前SQL中的表: {tables_in_current_sql}")
+                    return tables_in_current_sql
+            
+            # 格式化表名列表（将当前SQL中的表放在前面）
+            if tables_in_current_sql:
+                # 将当前SQL中的表放在列表最前面
+                priority_tables = []
+                other_tables = []
+                for item in table_list_items:
+                    table_name = item.split('#')[0].strip().lstrip('- ').strip()
+                    if table_name in tables_in_current_sql:
+                        priority_tables.append(f'  - {table_name} 【当前SQL中的表】' + (f'  # {item.split("#")[1]}' if '#' in item else ''))
+                    else:
+                        other_tables.append(item)
+                table_list_items = priority_tables + other_tables
+            
             table_list_formatted = '\n'.join(table_list_items)
             table_list_single = ', '.join(table_names_only)
             
@@ -351,7 +469,7 @@ class AIClient:
 【当前SQL编辑器中的SQL】
 {current_sql}
 
-**重要提示**：用户可能已经在查看某个表的数据，只是想添加一些查询条件。请优先考虑当前SQL中已经使用的表。"""
+**重要提示**：用户可能已经在查看某个表的数据，只是想添加一些查询条件或修改查询。请优先使用当前SQL中已经使用的表：{', '.join(tables_in_current_sql) if tables_in_current_sql else '(未检测到表名)'}"""
             
             user_prompt = f"""【用户需求】
 {user_query}{current_sql_section}
@@ -362,7 +480,7 @@ class AIClient:
 
 【你的任务】
 根据用户需求"{user_query}"，从上述表名列表中选择最相关的表（通常1-5个表）。
-{"如果当前SQL中已经使用了某些表，请优先选择这些表。" if current_sql and current_sql.strip() else ""}
+{"**必须优先选择标记为【当前SQL中的表】的表**，除非用户明确要求查询其他表。" if tables_in_current_sql else ""}
 
 【输出要求】
 只返回选中的表名，每行一个，不要包含任何解释或注释。"""
