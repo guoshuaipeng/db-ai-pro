@@ -877,13 +877,23 @@ class SQLEditor(QWidget):
         self.generate_btn.setEnabled(True)
         self.generate_btn.setText("直接查询")
         
-        # 显示错误信息
+        # 显示错误信息到状态栏
         self.set_status(f"AI生成失败: {error}", is_error=True)
+        
+        # 显示 Toast 提示（更明显）
+        try:
+            from src.utils.toast_manager import show_error
+            show_error(f"AI生成失败: {error}")
+        except Exception as e:
+            logger.warning(f"显示Toast失败: {str(e)}")
         
         # 清理工作线程
         if self.ai_worker:
             self.ai_worker.deleteLater()
             self.ai_worker = None
+        if hasattr(self, 'ai_table_selector_worker') and self.ai_table_selector_worker:
+            self.ai_table_selector_worker.deleteLater()
+            self.ai_table_selector_worker = None
     
     def execute_sql(self):
         """执行SQL"""

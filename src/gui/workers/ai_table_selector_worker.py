@@ -49,8 +49,8 @@ class AITableSelectorWorker(QThread):
             # 如果AI没有选择任何表，使用前10个表（降级处理）
             if not selected_tables:
                 logger.warning("AITableSelectorWorker: AI未选择任何表，使用前10个表作为降级处理")
-                # 从表信息列表中提取表名
-                fallback_tables = [table_info["name"] for table_info in self.table_info_list[:10]]
+                # 从表信息列表中提取表名（兼容字符串和字典格式）
+                fallback_tables = self._extract_table_names(self.table_info_list[:10])
                 selected_tables = fallback_tables
             
             # 发送选中的表
@@ -58,12 +58,48 @@ class AITableSelectorWorker(QThread):
             
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"AI选择表失败: {error_msg}")
+            logger.error(f"AI选择表失败: {error_msg}", exc_info=True)
+            
+            # 发送错误信号（让UI显示错误）
+            self.error_occurred.emit(f"AI选择表失败: {error_msg}")
+            
             # 如果失败，使用前10个表作为降级处理
-            fallback_tables = [table_info["name"] for table_info in self.table_info_list[:10]] if self.table_info_list else []
-            logger.warning(f"AITableSelectorWorker: 使用降级处理，选择前10个表: {fallback_tables}")
-            self.tables_selected.emit(fallback_tables)
+            try:
+                fallback_tables = self._extract_table_names(self.table_info_list[:10]) if self.table_info_list else []
+                logger.warning(f"AITableSelectorWorker: 使用降级处理，选择前10个表: {fallback_tables}")
+                self.tables_selected.emit(fallback_tables)
+            except Exception as fallback_error:
+                logger.error(f"降级处理也失败: {str(fallback_error)}", exc_info=True)
+                # 最后的降级：发送空列表
+                self.tables_selected.emit([])
         finally:
             # 确保线程正确结束
             self.quit()
+    
+    def _extract_table_names(self, table_info_list: list) -> list:
+        """从表信息列表中提取表名（兼容字符串和字典格式）
+        
+        Args:
+            table_info_list: 表信息列表，可能是字符串列表或字典列表
+            
+        Returns:
+            表名列表
+        """
+        table_names = []
+        for table_info in table_info_list:
+            try:
+                if isinstance(table_info, dict):
+                    # 如果是字典，提取 "name" 字段
+                    table_names.append(table_info.get("name", str(table_info)))
+                elif isinstance(table_info, str):
+                    # 如果是字符串，直接使用
+                    table_names.append(table_info)
+                else:
+                    # 其他类型，转换为字符串
+                    logger.warning(f"表信息格式不正确，期望字典或字符串，实际: {type(table_info)}, 值: {table_info}")
+                    table_names.append(str(table_info))
+            except Exception as e:
+                logger.error(f"提取表名失败: {str(e)}, table_info: {table_info}")
+                continue
+        return table_names
 

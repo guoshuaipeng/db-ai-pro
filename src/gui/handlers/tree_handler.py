@@ -62,7 +62,7 @@ class TreeHandler:
                             if has_tables:
                                 child.setExpanded(True)
                             break
-                QTimer.singleShot(1, load_tables)
+                QTimer.singleShot(0, load_tables)
     
     def on_item_collapsed(self, item: QTreeWidgetItem):
         """项目折叠时"""

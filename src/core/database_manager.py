@@ -240,8 +240,14 @@ class DatabaseManager:
         
         # SQLite 特殊处理：不切换数据库（因为 database 字段存储的是文件路径）
         # 对于 SQLite，"main" 只是虚拟的数据库名称，用于树视图显示
+        # 绝对不能让"main"覆盖掉实际的文件路径
         if connection.db_type == DatabaseType.SQLITE:
-            logger.debug(f"SQLite 连接不需要切换数据库，保持文件路径: {connection.database}")
+            if database == "main":
+                logger.debug(f"SQLite 连接忽略虚拟数据库名'main'，保持文件路径: {connection.database}")
+                return True
+            # 如果传入的不是"main"，可能是在设置新的文件路径，允许更新
+            logger.debug(f"SQLite 连接更新文件路径: {connection.database} -> {database}")
+            connection.database = database
             return True
         
         # 如果数据库未变化，直接返回

@@ -453,6 +453,43 @@ class TreeDataHandler:
         if has_tables and not force_reload:
             return
         
+        # 尝试从缓存加载表列表（立即显示）
+        from src.core.tree_cache import TreeCache
+        tree_cache = TreeCache()
+        cached_tables = tree_cache.get_tables(connection_id, database)
+        
+        if cached_tables and not force_reload:
+            # 有缓存，立即显示
+            if not tables_category:
+                tables_category = QTreeWidgetItem(db_item)
+                tables_category.setText(0, "表")
+                TreeItemData.set_item_type_and_data(tables_category, TreeItemType.TABLE_CATEGORY)
+                from src.utils.ui_helpers import get_category_icon
+                tables_category.setIcon(0, get_category_icon("表", 16))
+                tables_category.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            
+            # 立即显示缓存的表
+            from src.utils.ui_helpers import get_table_icon
+            for table_name in sorted(cached_tables):
+                table_item = QTreeWidgetItem(tables_category)
+                table_item.setText(0, table_name)
+                TreeItemData.set_item_type_and_data(table_item, TreeItemType.TABLE, (database, table_name))
+                table_item.setToolTip(0, f"表: {database}.{table_name}\n双击或单击查询前100条数据")
+                table_item.setIcon(0, get_table_icon(16))
+                table_item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                )
+            
+            # 自动展开"表"分类
+            if db_item.isExpanded():
+                tables_category.setExpanded(True)
+            
+            logger.debug(f"从缓存立即显示了 {len(cached_tables)} 个表")
+            # 缓存显示后，仍然在后台刷新（静默更新），但不再显示"加载中..."
+            # 这样用户体验更好，不会感觉卡顿
+            return
+        
         # 移除旧的表项、加载项、错误项
         for item in items_to_remove:
             db_item.removeChild(item)
@@ -539,8 +576,8 @@ class TreeDataHandler:
             )
             self.main_window.table_list_worker_for_tree.start()
         
-        # 延迟1ms执行，确保展开事件处理函数立即返回
-        QTimer.singleShot(1, start_table_loading)
+        # 立即在下一个事件循环执行，减少延迟感
+        QTimer.singleShot(0, start_table_loading)
     
     def on_tables_loaded_for_tree(self, db_item: QTreeWidgetItem, tables_category: QTreeWidgetItem, loading_item: QTreeWidgetItem, tables: List[str]):
         """表列表加载完成回调（用于树视图）"""

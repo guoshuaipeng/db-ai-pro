@@ -93,27 +93,7 @@ class SettingsHandler:
     
     def show_about(self):
         """显示关于对话框"""
-        QMessageBox.about(
-            self.main_window,
-            "关于 DataAI",
-            "DataAI - AI驱动的数据库管理工具\n\n"
-            "版本 0.2.0\n\n"
-            "作者: codeyG\n"
-            "邮箱: 550187704@qq.com\n\n"
-            "功能特性:\n"
-            "- AI智能SQL生成\n"
-            "- AI连接配置识别\n"
-            "- 多数据库支持\n"
-            "- 查询结果直接编辑\n"
-            "- 数据批量删除\n"
-            "- 数据库结构同步\n\n"
-            "支持的数据库:\n"
-            "- MySQL/MariaDB\n"
-            "- PostgreSQL\n"
-            "- SQLite\n"
-            "- Oracle\n"
-            "- SQL Server\n"
-            "- Hive\n\n"
-            "开源协议: MIT License"
-        )
+        from src.gui.dialogs.about_dialog import AboutDialog
+        dialog = AboutDialog(self.main_window)
+        dialog.exec()
 

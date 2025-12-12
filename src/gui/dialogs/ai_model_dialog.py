@@ -38,97 +38,323 @@ class AIModelDialog(QDialog):
     
     def init_ui(self):
         """初始化UI"""
-        layout = QVBoxLayout()
-        self.setLayout(layout)
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(16)
+        self.setLayout(main_layout)
+        
+        # 创建水平分割布局
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(16)
+        
+        # 左侧：提供商选择区域
+        left_group = QGroupBox("🤖 选择 AI 提供商")
+        left_group.setMaximumWidth(280)
+        left_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: 600;
+                border: none;
+                border-radius: 12px;
+                margin-top: 16px;
+                padding-top: 20px;
+                padding-bottom: 16px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 16px;
+                padding: 0 8px;
+                color: #1976d2;
+                font-size: 14px;
+            }
+        """)
+        left_layout = QVBoxLayout()
+        left_layout.setContentsMargins(16, 12, 16, 16)
+        left_layout.setSpacing(8)
+        
+        # 提供商列表
+        self.provider_list = QListWidget()
+        self.provider_list.setStyleSheet("""
+            QListWidget {
+                border: 2px solid #e1e8ed;
+                border-radius: 8px;
+                background-color: #fafbfc;
+                outline: none;
+            }
+            QListWidget::item {
+                padding: 10px;
+                border-radius: 6px;
+                margin: 2px;
+            }
+            QListWidget::item:hover {
+                background-color: #e3f2fd;
+            }
+            QListWidget::item:selected {
+                background-color: #1976d2;
+                color: white;
+            }
+        """)
+        
+        # 添加提供商选项
+        providers = [
+            ("阿里云通义千问", AIModelProvider.ALIYUN_QIANWEN),
+            ("OpenAI", AIModelProvider.OPENAI),
+            ("DeepSeek", AIModelProvider.DEEPSEEK),
+            ("智谱AI (GLM)", AIModelProvider.ZHIPU_GLM),
+            ("百度文心一言", AIModelProvider.BAIDU_WENXIN),
+            ("讯飞星火", AIModelProvider.XUNFEI_XINGHUO),
+            ("Moonshot (Kimi)", AIModelProvider.MOONSHOT),
+            ("腾讯混元", AIModelProvider.TENCENT_HUNYUAN),
+            ("Anthropic Claude", AIModelProvider.ANTHROPIC_CLAUDE),
+            ("Google Gemini", AIModelProvider.GOOGLE_GEMINI),
+            ("其他/自定义", AIModelProvider.CUSTOM)
+        ]
+        
+        for name, provider in providers:
+            item = QListWidgetItem(name)
+            item.setData(Qt.ItemDataRole.UserRole, provider)
+            self.provider_list.addItem(item)
+        
+        self.provider_list.setCurrentRow(0)
+        self.provider_list.currentRowChanged.connect(self.on_provider_list_changed)
+        left_layout.addWidget(self.provider_list)
+        
+        left_group.setLayout(left_layout)
+        content_layout.addWidget(left_group)
+        
+        # 右侧：配置表单区域
+        right_group = QGroupBox("⚙️ 配置详情")
+        right_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: 600;
+                border: none;
+                border-radius: 12px;
+                margin-top: 16px;
+                padding-top: 20px;
+                padding-bottom: 16px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 16px;
+                padding: 0 8px;
+                color: #1976d2;
+                font-size: 14px;
+            }
+        """)
+        right_layout = QVBoxLayout()
+        right_layout.setContentsMargins(20, 12, 20, 16)
+        right_layout.setSpacing(12)
         
         # 表单布局
         form_layout = QFormLayout()
+        form_layout.setSpacing(12)
+        form_layout.setVerticalSpacing(12)
+        form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         
         # 配置名称
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("例如: 阿里云通义千问")
-        self.name_edit.setMinimumWidth(300)
-        form_layout.addRow("配置名称:", self.name_edit)
+        name_label = QLabel("配置名称 *")
+        name_label.setStyleSheet("font-weight: 500;")
+        form_layout.addRow(name_label, self.name_edit)
         
-        # 提供商
-        self.provider_combo = QComboBox()
-        self.provider_combo.addItem("阿里云通义千问", AIModelProvider.ALIYUN_QIANWEN)
-        self.provider_combo.addItem("OpenAI", AIModelProvider.OPENAI)
-        self.provider_combo.addItem("DeepSeek", AIModelProvider.DEEPSEEK)
-        self.provider_combo.addItem("智谱AI (GLM)", AIModelProvider.ZHIPU_GLM)
-        self.provider_combo.addItem("百度文心一言", AIModelProvider.BAIDU_WENXIN)
-        self.provider_combo.addItem("讯飞星火", AIModelProvider.XUNFEI_XINGHUO)
-        self.provider_combo.addItem("Moonshot (Kimi)", AIModelProvider.MOONSHOT)
-        self.provider_combo.addItem("腾讯混元", AIModelProvider.TENCENT_HUNYUAN)
-        self.provider_combo.addItem("Anthropic Claude", AIModelProvider.ANTHROPIC_CLAUDE)
-        self.provider_combo.addItem("Google Gemini", AIModelProvider.GOOGLE_GEMINI)
-        self.provider_combo.addItem("其他/自定义", AIModelProvider.CUSTOM)
-        self.provider_combo.currentIndexChanged.connect(self.on_provider_changed)
-        self.provider_combo.setMinimumWidth(300)
-        form_layout.addRow("提供商:", self.provider_combo)
+        # 保存提供商引用（不再使用下拉框）
+        self.current_provider = AIModelProvider.ALIYUN_QIANWEN
         
         # API密钥
-        api_key_layout = QVBoxLayout()
-        api_key_layout.setSpacing(5)
+        api_key_container = QVBoxLayout()
+        api_key_container.setSpacing(4)
         
         self.api_key_edit = QLineEdit()
         self.api_key_edit.setPlaceholderText("请输入API密钥")
-        self.api_key_edit.setMinimumWidth(300)
-        api_key_layout.addWidget(self.api_key_edit)
+        # 直接显示API密钥，不使用密码模式
+        self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Normal)
+        api_key_container.addWidget(self.api_key_edit)
         
         # API密钥获取链接
         self.api_key_link = QLabel()
         self.api_key_link.setOpenExternalLinks(True)
-        self.api_key_link.setStyleSheet("QLabel { color: #0066CC; font-size: 11px; }")
-        api_key_layout.addWidget(self.api_key_link)
+        self.api_key_link.setStyleSheet("QLabel { color: #1976d2; font-size: 11px; }")
+        api_key_container.addWidget(self.api_key_link)
         
-        form_layout.addRow("API密钥:", api_key_layout)
+        api_key_label = QLabel("API 密钥 *")
+        api_key_label.setStyleSheet("font-weight: 500;")
+        form_layout.addRow(api_key_label, api_key_container)
         
         # 基础URL（可选）
         self.base_url_edit = QLineEdit()
         self.base_url_edit.setPlaceholderText("留空使用默认URL")
-        self.base_url_edit.setMinimumWidth(300)
-        form_layout.addRow("基础URL (可选):", self.base_url_edit)
+        base_url_label = QLabel("基础 URL")
+        base_url_label.setStyleSheet("font-weight: 500;")
+        form_layout.addRow(base_url_label, self.base_url_edit)
         
         # 默认模型
         self.default_model_edit = QLineEdit()
         self.default_model_edit.setText("qwen-plus")
         self.default_model_edit.setPlaceholderText("例如: qwen-plus")
-        self.default_model_edit.setMinimumWidth(300)
-        form_layout.addRow("默认模型:", self.default_model_edit)
+        default_model_label = QLabel("默认模型 *")
+        default_model_label.setStyleSheet("font-weight: 500;")
+        form_layout.addRow(default_model_label, self.default_model_edit)
         
         # Turbo模型
         self.turbo_model_edit = QLineEdit()
         self.turbo_model_edit.setText("qwen-turbo")
         self.turbo_model_edit.setPlaceholderText("例如: qwen-turbo")
-        self.turbo_model_edit.setMinimumWidth(300)
-        form_layout.addRow("Turbo模型:", self.turbo_model_edit)
+        turbo_model_label = QLabel("Turbo 模型 *")
+        turbo_model_label.setStyleSheet("font-weight: 500;")
+        form_layout.addRow(turbo_model_label, self.turbo_model_edit)
         
-        # 激活状态
-        self.active_check = QCheckBox()
+        # 选项区域
+        options_layout = QHBoxLayout()
+        options_layout.setSpacing(20)
+        
+        self.active_check = QCheckBox("✓ 激活此配置")
         self.active_check.setChecked(True)
-        form_layout.addRow("激活:", self.active_check)
+        self.active_check.setStyleSheet("""
+            QCheckBox {
+                font-size: 13px;
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 2px solid #bdc3c7;
+                border-radius: 4px;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #1976d2;
+                border-color: #1976d2;
+            }
+        """)
+        options_layout.addWidget(self.active_check)
         
-        # 设为默认
-        self.default_check = QCheckBox()
-        form_layout.addRow("设为默认:", self.default_check)
+        self.default_check = QCheckBox("⭐ 设为默认")
+        self.default_check.setStyleSheet("""
+            QCheckBox {
+                font-size: 13px;
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 2px solid #bdc3c7;
+                border-radius: 4px;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #ff9800;
+                border-color: #ff9800;
+            }
+        """)
+        options_layout.addWidget(self.default_check)
+        options_layout.addStretch()
         
-        layout.addLayout(form_layout)
+        form_layout.addRow("", options_layout)
         
-        # 按钮
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        button_box.accepted.connect(self.validate_and_accept)
-        button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
+        right_layout.addLayout(form_layout)
+        right_layout.addStretch()
+        right_group.setLayout(right_layout)
+        content_layout.addWidget(right_group)
+        
+        main_layout.addLayout(content_layout)
+        
+        # 应用输入框样式
+        input_style = """
+            QLineEdit {
+                border: 2px solid #e1e8ed;
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-size: 13px;
+                background-color: #fafbfc;
+                min-height: 18px;
+            }
+            QLineEdit:focus {
+                border-color: #1976d2;
+                background-color: white;
+            }
+            QLineEdit:hover {
+                border-color: #90caf9;
+            }
+        """
+        self.name_edit.setStyleSheet(input_style)
+        self.api_key_edit.setStyleSheet(input_style)
+        self.base_url_edit.setStyleSheet(input_style)
+        self.default_model_edit.setStyleSheet(input_style)
+        self.turbo_model_edit.setStyleSheet(input_style)
+        
+        # 按钮区域
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(12)
+        button_layout.setContentsMargins(0, 12, 0, 0)
+        button_layout.addStretch()
+        
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setMinimumWidth(100)
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: white;
+                color: #546e7a;
+                border: 2px solid #e1e8ed;
+                border-radius: 8px;
+                padding: 10px 24px;
+                font-weight: 600;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #f5f7fa;
+                border-color: #90a4ae;
+            }
+        """)
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+        
+        ok_btn = QPushButton("✓ 保存配置")
+        ok_btn.setMinimumWidth(120)
+        ok_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        ok_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #4caf50, stop:1 #388e3c);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 10px 24px;
+                font-weight: 600;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #66bb6a, stop:1 #43a047);
+            }
+        """)
+        ok_btn.clicked.connect(self.validate_and_accept)
+        button_layout.addWidget(ok_btn)
+        
+        main_layout.addLayout(button_layout)
+        
+        # 设置对话框样式和大小
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f5f7fa;
+            }
+        """)
+        self.resize(850, 520)
         
         # 初始化提供商相关设置
-        self.on_provider_changed()
+        self.on_provider_list_changed(0)
     
-    def on_provider_changed(self):
-        """提供商改变时的处理"""
-        provider = self.provider_combo.currentData()
+    def on_provider_list_changed(self, row):
+        """提供商列表选择改变时的处理"""
+        if row < 0:
+            return
+        
+        item = self.provider_list.item(row)
+        if not item:
+            return
+        
+        provider = item.data(Qt.ItemDataRole.UserRole)
+        self.current_provider = provider
         
         # 定义每个提供商的默认配置和API密钥获取网址
         provider_configs = {
@@ -221,16 +447,16 @@ class AIModelDialog(QDialog):
         
         self.name_edit.setText(self.model.name)
         
-        # 设置提供商
-        for i in range(self.provider_combo.count()):
-            if self.provider_combo.itemData(i) == self.model.provider:
-                self.provider_combo.setCurrentIndex(i)
+        # 设置提供商（在列表中选择）
+        for i in range(self.provider_list.count()):
+            item = self.provider_list.item(i)
+            if item and item.data(Qt.ItemDataRole.UserRole) == self.model.provider:
+                self.provider_list.setCurrentRow(i)
                 break
         
-        # 显示API密钥（已加密，显示为占位符）
-        # 只有在确实配置了密钥时才显示"已配置"
+        # 显示API密钥（直接显示）
         if self.model.api_key and self.model.api_key.get_secret_value():
-            self.api_key_edit.setPlaceholderText("已配置（编辑时需重新输入）")
+            self.api_key_edit.setText(self.model.api_key.get_secret_value())
         
         if self.model.base_url:
             self.base_url_edit.setText(self.model.base_url)
@@ -263,12 +489,10 @@ class AIModelDialog(QDialog):
         """获取模型配置"""
         from pydantic import SecretStr
         
-        provider = self.provider_combo.currentData()
-        
         return AIModelConfig(
             id=self.model.id if self.model else str(uuid.uuid4()),
             name=self.name_edit.text().strip(),
-            provider=provider,
+            provider=self.current_provider,
             api_key=SecretStr(self.api_key_edit.text().strip()),
             base_url=self.base_url_edit.text().strip() or None,
             default_model=self.default_model_edit.text().strip(),
