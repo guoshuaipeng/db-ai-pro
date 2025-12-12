@@ -40,8 +40,9 @@ class AIModelStorage:
         self.storage_path = Path(storage_path)
         self._key = self._get_or_create_key()
         
-        # 上次使用的模型ID存储路径
-        self.last_used_model_path = self.storage_path.parent / "last_used_model.txt"
+        # 使用ConfigDB存储上次使用的模型ID（不再使用文本文件）
+        from src.core.config_db import get_config_db
+        self._config_db = get_config_db()
     
     def _get_or_create_key(self) -> bytes:
         """获取或创建加密密钥（复用连接存储的密钥）"""
@@ -202,24 +203,19 @@ class AIModelStorage:
             return models  # 至少返回默认模型
     
     def get_last_used_model_id(self) -> Optional[str]:
-        """获取上次使用的模型ID"""
-        if not self.last_used_model_path.exists():
-            return None
-        
+        """获取上次使用的模型ID（从SQLite settings表）"""
         try:
-            with open(self.last_used_model_path, 'r', encoding='utf-8') as f:
-                model_id = f.read().strip()
-                return model_id if model_id else None
+            model_id = self._config_db.get_setting('last_used_ai_model_id', None)
+            return model_id if model_id else None
         except Exception as e:
             logger.warning(f"读取上次使用的模型ID失败: {str(e)}")
             return None
     
     def save_last_used_model_id(self, model_id: str):
-        """保存上次使用的模型ID"""
+        """保存上次使用的模型ID（到SQLite settings表）"""
         try:
-            with open(self.last_used_model_path, 'w', encoding='utf-8') as f:
-                f.write(model_id)
-            logger.debug(f"已保存上次使用的模型ID: {model_id}")
+            self._config_db.save_setting('last_used_ai_model_id', model_id)
+            logger.debug(f"已保存上次使用的模型ID到数据库: {model_id}")
         except Exception as e:
             logger.warning(f"保存上次使用的模型ID失败: {str(e)}")
     

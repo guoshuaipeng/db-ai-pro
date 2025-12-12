@@ -219,22 +219,9 @@ class ConnectionTreeWithSearch(QWidget):
                 
                 # 如果数据库下有可见的表，显示数据库项
                 db_item.setHidden(not db_visible)
-                # 注释掉自动展开，让用户手动展开
-                # if db_visible:
-                #     # 自动展开包含匹配表的数据库和"表"分类
-                #     db_item.setExpanded(True)
-                #     for k in range(db_item.childCount()):
-                #         category_item = db_item.child(k)
-                #         if TreeItemData.get_item_type(category_item) == TreeItemType.TABLE_CATEGORY:
-                #             category_item.setExpanded(True)
-                #             break
             
             # 如果连接下有可见的数据库，显示连接项
             connection_item.setHidden(not connection_visible)
-            # 注释掉自动展开，让用户手动展开
-            # if connection_visible:
-            #     # 自动展开包含匹配表的连接
-            #     connection_item.setExpanded(True)
     
     def restore_all_items(self):
         """恢复所有隐藏的项"""

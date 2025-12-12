@@ -14,9 +14,10 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QLineEdit,
     QSpinBox,
+    QMenu,
 )
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QEvent
+from PyQt6.QtGui import QFont, QKeyEvent, QKeySequence
 from typing import List, Dict, Optional
 from src.utils.toast import show_toast
 
@@ -69,7 +70,9 @@ class ResultTable(QWidget):
         # 结果表格
         self.table = QTableWidget()
         self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        # 支持单元格选择和多选
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectItems)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         
         # 设置表头
@@ -81,6 +84,13 @@ class ResultTable(QWidget):
         
         # 列的最大宽度（像素）
         self.max_column_width = 400
+        
+        # 安装事件过滤器以处理键盘事件（Ctrl+C复制）
+        self.table.installEventFilter(self)
+        
+        # 启用右键菜单
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.show_context_menu)
         
         layout.addWidget(self.table)
         
@@ -396,6 +406,65 @@ class ResultTable(QWidget):
             current_width = header.sectionSize(col_idx)
             if current_width > self.max_column_width:
                 header.resizeSection(col_idx, self.max_column_width)
+    
+    def eventFilter(self, obj, event):
+        """事件过滤器，处理Ctrl+C复制"""
+        if obj == self.table and event.type() == QEvent.Type.KeyPress:
+            key_event = event
+            # Ctrl+C 或 Cmd+C (macOS)
+            if key_event.matches(QKeySequence.StandardKey.Copy):
+                self.copy_selected_cells()
+                return True
+        return super().eventFilter(obj, event)
+    
+    def copy_selected_cells(self):
+        """复制选中的单元格内容到剪贴板"""
+        selected_items = self.table.selectedItems()
+        if not selected_items:
+            return
+        
+        # 获取选中的行和列范围
+        selected_rows = sorted(set(item.row() for item in selected_items))
+        selected_cols = sorted(set(item.column() for item in selected_items))
+        
+        if not selected_rows or not selected_cols:
+            return
+        
+        # 构建复制内容（TSV格式，兼容Excel）
+        copied_text = []
+        for row in selected_rows:
+            row_data = []
+            for col in selected_cols:
+                item = self.table.item(row, col)
+                if item:
+                    row_data.append(item.text())
+                else:
+                    row_data.append("")
+            copied_text.append("\t".join(row_data))
+        
+        # 复制到剪贴板
+        clipboard = QApplication.clipboard()
+        clipboard.setText("\n".join(copied_text))
+        
+        # 显示提示
+        cell_count = len(selected_items)
+        show_toast(f"已复制 {len(selected_rows)} 行 × {len(selected_cols)} 列 ({cell_count} 个单元格)", parent=self.table, duration=2000)
+    
+    def show_context_menu(self, position):
+        """显示右键菜单"""
+        selected_items = self.table.selectedItems()
+        
+        # 创建右键菜单
+        menu = QMenu(self)
+        
+        # 如果有选中的单元格，添加复制选项
+        if selected_items:
+            copy_action = menu.addAction("📋 复制选中内容 (Ctrl+C)")
+            copy_action.triggered.connect(self.copy_selected_cells)
+        
+        # 显示菜单（如果有选项）
+        if not menu.isEmpty():
+            menu.exec(self.table.mapToGlobal(position))
     
     def on_header_clicked(self, logical_index: int):
         """表头点击事件：复制列名到剪贴板"""

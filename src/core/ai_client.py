@@ -249,7 +249,6 @@ class AIClient:
 请生成对应的SQL查询语句。如果涉及表名或列名，请使用常见的命名（如users, orders, id, name, created_at等）。
 
 【注意事项】
-- **只返回一条SQL语句**，不要生成多条SQL
 - 仔细理解用户意图，生成最符合需求的SQL
 - 确保SQL语法正确，可以直接执行
 - 如果当前SQL编辑器中有SQL，请基于该SQL进行修改"""
@@ -288,18 +287,6 @@ class AIClient:
             if sql.endswith("```"):
                 sql = sql[:-3]
             sql = sql.strip()
-            
-            # 如果AI返回了多条SQL（用分号分隔），只取第一条
-            if ';' in sql:
-                # 按分号分割，取第一条非空SQL
-                sql_parts = [s.strip() for s in sql.split(';') if s.strip()]
-                if sql_parts:
-                    original_sql = sql
-                    sql = sql_parts[0]
-                    self.logger.warning(f"AI返回了多条SQL，只使用第一条")
-                    self.logger.info(f"原始返回: {original_sql}")
-                    if len(sql_parts) > 1:
-                        self.logger.info(f"其他SQL被忽略: {sql_parts[1:]}")
             
             # 记录AI返回的完整内容
             self.logger.info("-" * 80)
