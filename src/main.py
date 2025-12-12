@@ -104,6 +104,35 @@ def setup_windows_taskbar_icon(app: QApplication):
             # 如果设置失败，不影响程序运行
 
 
+def _add_default_config_db_connection(config_db):
+    """添加默认的SQLite配置数据库连接"""
+    import uuid
+    from datetime import datetime
+    
+    logger = logging.getLogger(__name__)
+    
+    # 获取配置数据库的路径
+    db_path = config_db.get_db_path()
+    
+    # 创建默认连接配置
+    default_connection = {
+        'id': str(uuid.uuid4()),
+        'name': '配置数据库 (config.db)',
+        'db_type': 'sqlite',
+        'host': '',
+        'port': None,
+        'database': db_path,
+        'username': '',
+        'password': '',
+        'charset': 'utf8mb4',
+        'extra_params': {}
+    }
+    
+    # 保存到配置数据库
+    config_db.save_connection(default_connection)
+    logger.info(f"已自动添加配置数据库连接: {db_path}")
+
+
 def init_config_database():
     """初始化配置数据库并迁移旧配置"""
     logger = logging.getLogger(__name__)
@@ -145,6 +174,15 @@ def init_config_database():
     
     except Exception as e:
         logger.error(f"配置迁移失败: {str(e)}", exc_info=True)
+    
+    # 检查是否是第一次运行（没有任何连接配置）
+    try:
+        all_connections = config_db.get_all_connections()
+        if not all_connections:
+            logger.info("检测到第一次运行，自动添加配置数据库连接")
+            _add_default_config_db_connection(config_db)
+    except Exception as e:
+        logger.error(f"添加默认配置数据库连接失败: {str(e)}", exc_info=True)
 
 
 def main():

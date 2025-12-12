@@ -98,6 +98,60 @@ pip install -r requirements.txt
 python src/main.py
 ```
 
+## Feature Showcase
+
+### 1. SQL Query & AI-Powered Generation
+
+Supports both traditional SQL editor and AI natural language queries. AI automatically analyzes table structures and generates accurate SQL statements.
+
+![SQL Query Interface](docs/images/查询.png)
+
+**Key Features**:
+- 🔹 SQL syntax highlighting editor
+- 🔹 AI natural language to SQL (supports English and Chinese)
+- 🔹 Multi-tab result display
+- 🔹 Direct result editing (auto-generates UPDATE statements)
+- 🔹 Data export (CSV, Excel, JSON)
+- 🔹 Result table with sorting and filtering
+
+### 2. AI Model Configuration
+
+Support multiple AI model configurations, compatible with OpenAI API format (supports local models like Ollama).
+
+![AI Configuration Interface](docs/images/ai配置.png)
+
+**Configuration Options**:
+- 🔹 Model name and API settings
+- 🔹 Token usage statistics
+- 🔹 Multi-model switching
+- 🔹 Custom API endpoints (supports local models)
+
+### 3. Table Structure Editor
+
+Visual table structure editing with AI-assisted quick table creation and field modification.
+
+![Table Editor Interface](docs/images/编辑表.png)
+
+**Editing Features**:
+- 🔹 Field management (add/delete/modify)
+- 🔹 Data type selection (adapts to different databases)
+- 🔹 Index management
+- 🔹 AI-assisted table structure design
+- 🔹 SQL preview and execution
+
+### 4. Table Structure Synchronization
+
+Synchronize table structures between multiple databases with batch operations support.
+
+![Table Structure Sync](docs/images/表结构同步.png)
+
+**Sync Features**:
+- 🔹 Source and target database selection
+- 🔹 Table structure difference comparison
+- 🔹 Batch sync multiple tables
+- 🔹 SQL script generation
+- 🔹 Safe change preview
+
 ## Usage
 
 ### 1. Add Database Connection

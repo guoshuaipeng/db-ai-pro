@@ -52,6 +52,10 @@ class ConfigDB:
         if config_dir and not os.path.exists(config_dir):
             os.makedirs(config_dir, exist_ok=True)
     
+    def get_db_path(self) -> str:
+        """获取配置数据库的文件路径"""
+        return self._db_path
+    
     @contextmanager
     def _get_connection(self):
         """获取数据库连接（上下文管理器）"""
