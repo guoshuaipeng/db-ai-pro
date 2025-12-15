@@ -14,8 +14,8 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QMenu,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QColor, QKeyEvent
+from PyQt6.QtCore import Qt, pyqtSignal, QEvent
+from PyQt6.QtGui import QFont, QColor, QKeyEvent, QKeySequence
 from typing import Optional
 import logging
 
@@ -86,6 +86,8 @@ class EditTableTab(QWidget):
         
         # 显示连接和表信息
         info_display = QLabel()
+        info_display.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)  # 允许鼠标选择文本
+        info_display.setCursor(Qt.CursorShape.IBeamCursor)  # 设置鼠标光标为文本光标
         if self.connection_id and self.db_manager:
             connection = self.db_manager.get_connection(self.connection_id)
             if connection:
@@ -123,7 +125,9 @@ class EditTableTab(QWidget):
         self.schema_table.setColumnCount(5)
         self.schema_table.setHorizontalHeaderLabels(["字段名", "类型", "可空", "默认值", "注释"])
         self.schema_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # 只读
-        self.schema_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        # 修改为可选择单个单元格，便于选择和复制文本
+        self.schema_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectItems)
+        self.schema_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)  # 支持多选
         self.schema_table.setAlternatingRowColors(True)  # 斑马纹
         self.schema_table.horizontalHeader().setStretchLastSection(True)  # 最后一列自动拉伸
         self.schema_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # 字段名列自适应
@@ -155,10 +159,14 @@ class EditTableTab(QWidget):
         # 启用右键菜单
         self.schema_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.schema_table.customContextMenuRequested.connect(self.show_schema_table_menu)
+        # 安装事件过滤器以支持Ctrl+C复制
+        self.schema_table.installEventFilter(self)
         schema_layout.addWidget(self.schema_table)
         
         # 表信息标签（显示主键和注释）
         self.table_info_label = QLabel()
+        self.table_info_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)  # 允许鼠标选择文本
+        self.table_info_label.setCursor(Qt.CursorShape.IBeamCursor)  # 设置鼠标光标为文本光标
         self.table_info_label.setStyleSheet("color: #666; padding: 5px; font-size: 11px;")
         self.table_info_label.setWordWrap(True)
         schema_layout.addWidget(self.table_info_label)
@@ -307,6 +315,50 @@ class EditTableTab(QWidget):
         
         # 初始状态显示到主窗口状态栏
         self.set_status("正在加载表结构...", timeout=0)
+    
+    def eventFilter(self, obj, event):
+        """事件过滤器，处理Ctrl+C复制"""
+        if obj == self.schema_table and event.type() == QEvent.Type.KeyPress:
+            if event.matches(QKeySequence.StandardKey.Copy):
+                self.copy_selected_cells()
+                return True
+        return super().eventFilter(obj, event)
+    
+    def copy_selected_cells(self):
+        """复制选中的单元格内容到剪贴板"""
+        selection = self.schema_table.selectedIndexes()
+        if not selection:
+            return
+        
+        # 按行和列排序
+        selection = sorted(selection, key=lambda x: (x.row(), x.column()))
+        
+        # 构建复制内容
+        rows_dict = {}
+        for index in selection:
+            row = index.row()
+            col = index.column()
+            if row not in rows_dict:
+                rows_dict[row] = {}
+            item = self.schema_table.item(row, col)
+            rows_dict[row][col] = item.text() if item else ""
+        
+        # 生成文本
+        lines = []
+        for row in sorted(rows_dict.keys()):
+            cols = rows_dict[row]
+            row_data = [cols.get(c, "") for c in sorted(cols.keys())]
+            lines.append("\t".join(row_data))
+        
+        # 复制到剪贴板
+        if lines:
+            from PyQt6.QtWidgets import QApplication
+            clipboard = QApplication.clipboard()
+            clipboard.setText("\n".join(lines))
+            
+            # 显示提示
+            cell_count = len(selection)
+            self.set_status(f"已复制 {cell_count} 个单元格")
     
     def set_status(self, message: str, is_error: bool = False, timeout: int = None):
         """设置状态信息（显示到主窗口状态栏）"""
@@ -682,27 +734,34 @@ class EditTableTab(QWidget):
                 name_item.setBackground(QColor("#fff3e0"))  # 浅橙色背景
                 name_item.setToolTip("主键字段")
             
+            # 允许文本选择和复制
+            name_item.setFlags(name_item.flags() | Qt.ItemFlag.ItemIsSelectable)
+            
             self.schema_table.setItem(row, 0, name_item)
             
             # 类型（绿色）
             type_item = QTableWidgetItem(col['type'])
             type_item.setForeground(QColor("#388e3c"))
+            type_item.setFlags(type_item.flags() | Qt.ItemFlag.ItemIsSelectable)
             self.schema_table.setItem(row, 1, type_item)
             
             # 可空（橙色）
             nullable_text = "是" if col['nullable'] == "可空" else "否"
             nullable_item = QTableWidgetItem(nullable_text)
             nullable_item.setForeground(QColor("#f57c00"))
+            nullable_item.setFlags(nullable_item.flags() | Qt.ItemFlag.ItemIsSelectable)
             self.schema_table.setItem(row, 2, nullable_item)
             
             # 默认值
             default_text = col['default'] if col['default'] else "-"
             default_item = QTableWidgetItem(default_text)
+            default_item.setFlags(default_item.flags() | Qt.ItemFlag.ItemIsSelectable)
             self.schema_table.setItem(row, 3, default_item)
             
             # 注释
             comment_text = col['comment'] if col['comment'] else "-"
             comment_item = QTableWidgetItem(comment_text)
+            comment_item.setFlags(comment_item.flags() | Qt.ItemFlag.ItemIsSelectable)
             self.schema_table.setItem(row, 4, comment_item)
         
         # 调整列宽
@@ -826,6 +885,26 @@ class EditTableTab(QWidget):
     def show_schema_table_menu(self, position):
         """显示表结构表格的右键菜单"""
         menu = QMenu(self)
+        
+        # 如果有选中的单元格，添加复制选项
+        selected_indexes = self.schema_table.selectedIndexes()
+        if selected_indexes:
+            copy_cells_action = menu.addAction("📋 复制选中内容 (Ctrl+C)")
+            copy_cells_action.triggered.connect(self.copy_selected_cells)
+            
+            menu.addSeparator()
+        
+        # 添加复制字段和所有字段的选项
+        selected_rows = self.schema_table.selectionModel().selectedRows()
+        if selected_rows:
+            copy_action = menu.addAction("📋 复制选中字段")
+            copy_action.triggered.connect(self.copy_selected_fields)
+        
+        copy_all_action = menu.addAction("📋 复制所有字段")
+        copy_all_action.triggered.connect(self.copy_all_fields)
+        
+        menu.addSeparator()
+        
         refresh_action = menu.addAction("🔄 刷新")
         # 刷新时强制从数据库重新获取
         refresh_action.triggered.connect(lambda: self.load_table_schema(force_refresh=True))
@@ -847,6 +926,73 @@ class EditTableTab(QWidget):
             clipboard = QApplication.clipboard()
             clipboard.setText(sql)
             self.set_status("SQL已复制到剪贴板")
+    
+    def copy_selected_fields(self):
+        """复制选中的字段信息到剪贴板"""
+        selected_rows = self.schema_table.selectionModel().selectedRows()
+        if not selected_rows:
+            return
+        
+        # 构建复制内容
+        lines = []
+        lines.append("字段名\t类型\t可空\t默认值\t注释")  # 表头
+        lines.append("-" * 80)
+        
+        for row_index in sorted([index.row() for index in selected_rows]):
+            row_data = []
+            for col in range(self.schema_table.columnCount()):
+                item = self.schema_table.item(row_index, col)
+                row_data.append(item.text() if item else "")
+            lines.append("\t".join(row_data))
+        
+        # 复制到剪贴板
+        from PyQt6.QtWidgets import QApplication
+        clipboard = QApplication.clipboard()
+        clipboard.setText("\n".join(lines))
+        
+        from src.utils.toast_manager import show_success
+        show_success(f"已复制 {len(selected_rows)} 个字段")
+    
+    def copy_all_fields(self):
+        """复制所有字段信息到剪贴板"""
+        if self.schema_table.rowCount() == 0:
+            return
+        
+        # 构建复制内容
+        lines = []
+        lines.append(f"表名: {self.table_name}")
+        lines.append(f"数据库: {self.database}")
+        lines.append("-" * 80)
+        lines.append("字段名\t类型\t可空\t默认值\t注释")  # 表头
+        lines.append("-" * 80)
+        
+        for row in range(self.schema_table.rowCount()):
+            row_data = []
+            for col in range(self.schema_table.columnCount()):
+                item = self.schema_table.item(row, col)
+                row_data.append(item.text() if item else "")
+            lines.append("\t".join(row_data))
+        
+        # 添加表信息
+        table_info = self.table_info_label.text()
+        if table_info:
+            lines.append("-" * 80)
+            lines.append(table_info)
+        
+        # 添加索引信息
+        index_info = self.index_list.toPlainText().strip()
+        if index_info and index_info != "正在加载索引信息..." and index_info != "无索引":
+            lines.append("-" * 80)
+            lines.append("索引列表:")
+            lines.append(index_info)
+        
+        # 复制到剪贴板
+        from PyQt6.QtWidgets import QApplication
+        clipboard = QApplication.clipboard()
+        clipboard.setText("\n".join(lines))
+        
+        from src.utils.toast_manager import show_success
+        show_success(f"已复制完整表结构（{self.schema_table.rowCount()} 个字段）")
     
     def clear_conversation(self):
         """清空对话"""

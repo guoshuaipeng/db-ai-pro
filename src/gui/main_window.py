@@ -387,6 +387,118 @@ class MainWindow(QMainWindow):
             logger.error(f"创建数据库失败: {str(e)}", exc_info=True)
             QMessageBox.critical(self, "错误", f"创建数据库失败: {str(e)}")
     
+    def delete_table(self, connection_id: str, database_name: str, table_name: str, table_item: 'QTreeWidgetItem'):
+        """删除表"""
+        from PyQt6.QtWidgets import QMessageBox, QInputDialog, QLineEdit
+        
+        # 获取连接信息
+        connection = self.db_manager.get_connection(connection_id)
+        if not connection:
+            QMessageBox.warning(self, "错误", "连接不存在")
+            return
+        
+        # 确认对话框
+        reply = QMessageBox.question(
+            self, 
+            "确认删除",
+            f"确定要删除表 <b>{database_name}.{table_name}</b> 吗？\n\n"
+            f"⚠️ 警告：此操作将删除表中的所有数据，且无法恢复！",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # 二次确认
+        text, ok = QInputDialog.getText(
+            self,
+            "二次确认",
+            f"请输入 <b>delete</b> 以确认删除表 <b>{table_name}</b>：",
+            QLineEdit.EchoMode.Normal
+        )
+        
+        if not ok or text.strip().lower() != "delete":
+            if ok:
+                QMessageBox.information(self, "取消", "确认文本不匹配，已取消删除操作")
+            return
+        
+        # 删除表
+        try:
+            from src.gui.workers.execute_sql_worker import ExecuteSQLWorker
+            
+            # 构建删除表的SQL
+            db_type = connection.db_type
+            if db_type.value in ('mysql', 'mariadb'):
+                sql = f"DROP TABLE `{table_name}`"
+            elif db_type.value == 'postgresql':
+                sql = f'DROP TABLE "{table_name}"'
+            elif db_type.value == 'sqlserver':
+                sql = f"DROP TABLE [{table_name}]"
+            elif db_type.value == 'sqlite':
+                sql = f'DROP TABLE "{table_name}"'
+            elif db_type.value == 'oracle':
+                sql = f'DROP TABLE "{table_name}"'
+            else:
+                QMessageBox.warning(self, "错误", f"数据库类型 {db_type.value} 不支持删除表")
+                return
+            
+            self.statusBar().showMessage(f"正在删除表 '{database_name}.{table_name}'...", 5000)
+            logger.info(f"执行删除表SQL: {sql}")
+            
+            # 创建worker执行SQL
+            worker = ExecuteSQLWorker(
+                connection.get_connection_string(),
+                connection.get_connect_args(),
+                connection.db_type,
+                sql,
+                database_name  # 指定数据库
+            )
+            
+            # 连接信号
+            def on_success(result):
+                from src.utils.toast_manager import show_success
+                show_success(f"表 '{table_name}' 已删除")
+                self.statusBar().showMessage(f"表 '{table_name}' 已删除", 5000)
+                
+                # 从树中移除表节点
+                parent = table_item.parent()
+                if parent:
+                    parent.removeChild(table_item)
+                    
+                # 清除可能缓存的表结构
+                from src.core.schema_cache import get_schema_cache
+                schema_cache = get_schema_cache()
+                # 清除该连接的所有缓存，因为表被删除了
+                schema_cache.clear_connection_cache(connection_id)
+            
+            def on_error(error):
+                from src.utils.toast_manager import show_error
+                show_error(f"删除表失败: {error}")
+                self.statusBar().showMessage(f"删除表失败", 5000)
+            
+            worker.finished.connect(on_success)
+            worker.error.connect(on_error)
+            worker.start()
+            
+            # 保存worker引用，避免被垃圾回收
+            if not hasattr(self, '_delete_table_workers'):
+                self._delete_table_workers = []
+            self._delete_table_workers.append(worker)
+            
+            # worker完成后清理
+            def cleanup():
+                if hasattr(self, '_delete_table_workers') and worker in self._delete_table_workers:
+                    self._delete_table_workers.remove(worker)
+                worker.deleteLater()
+            
+            worker.finished.connect(cleanup)
+            worker.error.connect(cleanup)
+            
+        except Exception as e:
+            logger.error(f"删除表时出错: {e}", exc_info=True)
+            QMessageBox.critical(self, "错误", f"删除表时出错：{str(e)}")
+    
     def delete_database(self, connection_id: str, database_name: str, db_item: 'QTreeWidgetItem'):
         """删除数据库"""
         from PyQt6.QtWidgets import QMessageBox, QInputDialog, QLineEdit

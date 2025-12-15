@@ -85,7 +85,7 @@ Create database tables quickly through natural language conversation. AI automat
 - 🔹 Database-compliant table creation statements
 - 🔹 One-click table creation execution
 
-### 4. Table Structure Editor
+### 4. Table Structure Editor and Management
 
 Visual table structure editing with AI-assisted quick table creation and field modification.
 
@@ -97,7 +97,14 @@ Visual table structure editing with AI-assisted quick table creation and field m
 - 🔹 Index management
 - 🔹 **AI Smart Table Modification**: Intelligently generates ALTER TABLE statements based on current table structure and natural language descriptions
 - 🔹 **Style Consistency**: Maintains consistent naming conventions and type choices with existing table structures when modifying tables
+- 🔹 **Copyable Information** 🆕: Table name, field info, etc. can be selected and copied, with right-click menu to copy selected or all fields
 - 🔹 SQL preview and execution
+
+**Table Management**:
+- 🔹 Right-click table nodes for various operations
+- 🔹 **Delete Table** 🆕: Double confirmation mechanism for safely deleting unwanted tables
+- 🔹 Copy table structure
+- 🔹 Query table data in new tab
 
 ### 5. Table Structure Synchronization
 

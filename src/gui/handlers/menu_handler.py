@@ -55,8 +55,8 @@ class MenuHandler:
         # 获取节点类型
         item_type = TreeItemData.get_item_type(item)
         
-        # 跳过根节点和分类项
-        if item_type in (TreeItemType.ROOT, TreeItemType.TABLE_CATEGORY, TreeItemType.LOADING, TreeItemType.ERROR, TreeItemType.EMPTY):
+        # 跳过根节点和特殊节点
+        if item_type in (TreeItemType.ROOT, TreeItemType.LOADING, TreeItemType.ERROR, TreeItemType.EMPTY):
             return
         
         # 获取连接ID（从当前项或其父项中）
@@ -67,7 +67,25 @@ class MenuHandler:
         menu = QMenu(self.main_window)
         
         # 根据节点类型显示不同的菜单
-        if item_type == TreeItemType.TABLE:
+        if item_type == TreeItemType.TABLE_CATEGORY:
+            # "表"分类节点的右键菜单
+            # 获取父节点（数据库节点）的数据库名
+            parent_item = item.parent()
+            if parent_item:
+                database = TreeItemData.get_item_data(parent_item)
+                if database:
+                    # 新建表
+                    create_table_action = QAction(self._get_icon('create'), "新建表", self.main_window)
+                    create_table_action.triggered.connect(lambda: self.main_window.create_table_in_database(connection_id, database))
+                    menu.addAction(create_table_action)
+                    
+                    menu.addSeparator()
+                    
+                    # 刷新表列表
+                    refresh_action = QAction(self._get_icon('refresh'), "刷新", self.main_window)
+                    refresh_action.triggered.connect(lambda: self.main_window.tree_data_handler.refresh_database_tables(connection_id, database))
+                    menu.addAction(refresh_action)
+        elif item_type == TreeItemType.TABLE:
             # 表项的右键菜单
             table_info = TreeItemData.get_table_info(item)
             if table_info:
@@ -88,6 +106,13 @@ class MenuHandler:
                 copy_structure_action = QAction(self._get_icon('copy'), "复制结构", self.main_window)
                 copy_structure_action.triggered.connect(lambda: self.main_window.table_structure_handler.copy_table_structure(connection_id, database, table_name))
                 menu.addAction(copy_structure_action)
+                
+                menu.addSeparator()
+                
+                # 删除表
+                delete_table_action = QAction(self._get_icon('delete'), "删除表", self.main_window)
+                delete_table_action.triggered.connect(lambda: self.main_window.delete_table(connection_id, database, table_name, item))
+                menu.addAction(delete_table_action)
                 
                 menu.addSeparator()
                 

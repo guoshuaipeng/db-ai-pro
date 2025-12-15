@@ -146,15 +146,41 @@ class ConfigDB:
                     default_model TEXT NOT NULL DEFAULT 'qwen-plus',
                     turbo_model TEXT NOT NULL DEFAULT 'qwen-turbo',
                     is_active INTEGER DEFAULT 1,
+                    is_current INTEGER DEFAULT 0,
                     is_default INTEGER DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
             """)
             
-            # 检查是否需要迁移旧表结构
+            # 检查是否需要迁移旧表结构或添加新字段
             cursor.execute("PRAGMA table_info(ai_models)")
             columns = [row[1] for row in cursor.fetchall()]
+            
+            # 检查是否需要添加 is_current 字段
+            if 'is_current' not in columns:
+                logger.info("检测到ai_models表缺少is_current字段，正在添加...")
+                try:
+                    cursor.execute("ALTER TABLE ai_models ADD COLUMN is_current INTEGER DEFAULT 0")
+                    logger.info("已添加is_current字段")
+                    
+                    # 尝试从 settings 表迁移 last_used_ai_model_id
+                    cursor.execute('SELECT value FROM settings WHERE key = "last_used_ai_model_id"')
+                    row = cursor.fetchone()
+                    if row:
+                        last_used_id = row[0]
+                        # 将该模型标记为当前使用
+                        cursor.execute("UPDATE ai_models SET is_current = 1 WHERE id = ? AND is_active = 1", (last_used_id,))
+                        logger.info(f"已将模型 {last_used_id} 标记为当前使用（从settings表迁移）")
+                        # 删除 settings 表中的旧记录
+                        cursor.execute('DELETE FROM settings WHERE key = "last_used_ai_model_id"')
+                        logger.info("已删除settings表中的last_used_ai_model_id记录")
+                    else:
+                        # 如果没有旧记录，将第一个激活的模型标记为当前使用
+                        cursor.execute("UPDATE ai_models SET is_current = 1 WHERE id = (SELECT id FROM ai_models WHERE is_active = 1 ORDER BY created_at LIMIT 1)")
+                        logger.info("已将第一个激活的模型标记为当前使用")
+                except Exception as e:
+                    logger.error(f"添加is_current字段失败: {str(e)}")
             
             # 如果是旧表结构（有model_name字段），需要迁移
             if 'model_name' in columns and 'name' not in columns:
@@ -643,32 +669,54 @@ class ConfigDB:
     
     def get_current_ai_model(self) -> Optional[Dict[str, Any]]:
         """
-        获取当前使用的 AI 模型配置（基于 last_used_ai_model_id）
+        获取当前使用的 AI 模型配置（基于 is_current 字段）
         
         :return: 模型配置字典，不存在返回 None
         """
-        # 从 settings 表获取上次使用的模型ID
-        last_used_id = self.get_setting('last_used_ai_model_id', None)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM ai_models WHERE is_current = 1 AND is_active = 1 ORDER BY updated_at DESC LIMIT 1")
+            row = cursor.fetchone()
+            
+            if row:
+                return {
+                    'id': row['id'],
+                    'name': row['name'],
+                    'provider': row['provider'],
+                    'api_key': row['api_key'],
+                    'base_url': row['base_url'],
+                    'default_model': row['default_model'],
+                    'turbo_model': row['turbo_model'],
+                    'is_active': bool(row['is_active']),
+                    'is_current': bool(row['is_current']),
+                }
+            
+            return None
+    
+    def set_current_ai_model(self, model_id: str) -> bool:
+        """
+        设置当前使用的 AI 模型
         
-        if last_used_id:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT * FROM ai_models WHERE id = ? AND is_active = 1", (last_used_id,))
-                row = cursor.fetchone()
-                
-                if row:
-                    return {
-                        'id': row['id'],
-                        'name': row['name'],
-                        'provider': row['provider'],
-                        'api_key': row['api_key'],
-                        'base_url': row['base_url'],
-                        'default_model': row['default_model'],
-                        'turbo_model': row['turbo_model'],
-                        'is_active': bool(row['is_active']),
-                    }
-        
-        return None
+        :param model_id: 模型ID
+        :return: 是否设置成功
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # 首先检查模型是否存在且激活
+            cursor.execute("SELECT id FROM ai_models WHERE id = ? AND is_active = 1", (model_id,))
+            if not cursor.fetchone():
+                logger.warning(f"模型 {model_id} 不存在或未激活")
+                return False
+            
+            # 取消所有模型的 is_current 标记
+            cursor.execute("UPDATE ai_models SET is_current = 0")
+            
+            # 设置指定模型为当前使用
+            cursor.execute("UPDATE ai_models SET is_current = 1 WHERE id = ?", (model_id,))
+            
+            logger.debug(f"已设置当前使用的AI模型: {model_id}")
+            return True
     
     # 保持向后兼容的别名
     def get_default_ai_model(self) -> Optional[Dict[str, Any]]:
@@ -697,6 +745,7 @@ class ConfigDB:
                     'default_model': row['default_model'],
                     'turbo_model': row['turbo_model'],
                     'is_active': bool(row['is_active']),
+                    'is_current': bool(row['is_current']),
                 })
             
             return models
@@ -735,6 +784,7 @@ class ConfigDB:
                     'default_model': row['default_model'],
                     'turbo_model': row['turbo_model'],
                     'is_active': bool(row['is_active']),
+                    'is_current': bool(row['is_current']),
                 }
             return None
     
