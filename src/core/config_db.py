@@ -153,6 +153,19 @@ class ConfigDB:
                 )
             """)
             
+            # 7. Token 统计表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS token_stats (
+                    model_id TEXT PRIMARY KEY,
+                    total_tokens INTEGER DEFAULT 0,
+                    prompt_tokens INTEGER DEFAULT 0,
+                    completion_tokens INTEGER DEFAULT 0,
+                    request_count INTEGER DEFAULT 0,
+                    last_used TEXT,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            
             # 检查是否需要迁移旧表结构或添加新字段
             cursor.execute("PRAGMA table_info(ai_models)")
             columns = [row[1] for row in cursor.fetchall()]
@@ -788,6 +801,141 @@ class ConfigDB:
                 }
             return None
     
+    # ==================== Token 统计管理 ====================
+    
+    def get_token_stats(self, model_id: str) -> Optional[Dict[str, Any]]:
+        """
+        获取指定模型的 Token 统计
+        
+        :param model_id: 模型ID
+        :return: Token统计字典，不存在返回 None
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM token_stats WHERE model_id = ?", (model_id,))
+            row = cursor.fetchone()
+            
+            if row:
+                return {
+                    'model_id': row['model_id'],
+                    'total_tokens': row['total_tokens'],
+                    'prompt_tokens': row['prompt_tokens'],
+                    'completion_tokens': row['completion_tokens'],
+                    'request_count': row['request_count'],
+                    'last_used': row['last_used'],
+                }
+            return None
+    
+    def save_token_stats(self, model_id: str, total_tokens: int, prompt_tokens: int, 
+                        completion_tokens: int, request_count: int, last_used: str = None):
+        """
+        保存或更新 Token 统计
+        
+        :param model_id: 模型ID
+        :param total_tokens: 总token数
+        :param prompt_tokens: 输入token数
+        :param completion_tokens: 输出token数
+        :param request_count: 请求次数
+        :param last_used: 最后使用时间（ISO格式字符串），如果为None则使用当前时间
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            now = datetime.now().isoformat()
+            
+            if last_used is None:
+                last_used = now
+            
+            cursor.execute("""
+                INSERT OR REPLACE INTO token_stats 
+                (model_id, total_tokens, prompt_tokens, completion_tokens, request_count, last_used, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (model_id, total_tokens, prompt_tokens, completion_tokens, request_count, last_used, now))
+            
+            logger.debug(f"保存Token统计: {model_id}")
+    
+    def add_token_usage(self, model_id: str, prompt_tokens: int, completion_tokens: int):
+        """
+        添加 Token 使用记录（累加）
+        
+        :param model_id: 模型ID
+        :param prompt_tokens: 本次使用的输入token数
+        :param completion_tokens: 本次使用的输出token数
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            now = datetime.now().isoformat()
+            
+            # 先获取当前统计
+            cursor.execute("SELECT * FROM token_stats WHERE model_id = ?", (model_id,))
+            row = cursor.fetchone()
+            
+            if row:
+                # 更新现有记录
+                new_total = row['total_tokens'] + prompt_tokens + completion_tokens
+                new_prompt = row['prompt_tokens'] + prompt_tokens
+                new_completion = row['completion_tokens'] + completion_tokens
+                new_count = row['request_count'] + 1
+                
+                cursor.execute("""
+                    UPDATE token_stats SET
+                        total_tokens = ?,
+                        prompt_tokens = ?,
+                        completion_tokens = ?,
+                        request_count = ?,
+                        last_used = ?,
+                        updated_at = ?
+                    WHERE model_id = ?
+                """, (new_total, new_prompt, new_completion, new_count, now, now, model_id))
+            else:
+                # 创建新记录
+                total = prompt_tokens + completion_tokens
+                cursor.execute("""
+                    INSERT INTO token_stats 
+                    (model_id, total_tokens, prompt_tokens, completion_tokens, request_count, last_used, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (model_id, total, prompt_tokens, completion_tokens, 1, now, now))
+            
+            logger.debug(f"添加Token使用: {model_id}, 输入={prompt_tokens}, 输出={completion_tokens}")
+    
+    def get_all_token_stats(self) -> List[Dict[str, Any]]:
+        """
+        获取所有模型的 Token 统计
+        
+        :return: Token统计列表
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM token_stats ORDER BY total_tokens DESC")
+            rows = cursor.fetchall()
+            
+            stats = []
+            for row in rows:
+                stats.append({
+                    'model_id': row['model_id'],
+                    'total_tokens': row['total_tokens'],
+                    'prompt_tokens': row['prompt_tokens'],
+                    'completion_tokens': row['completion_tokens'],
+                    'request_count': row['request_count'],
+                    'last_used': row['last_used'],
+                })
+            
+            return stats
+    
+    def clear_token_stats(self, model_id: str = None):
+        """
+        清除 Token 统计
+        
+        :param model_id: 模型ID，如果为None则清除所有统计
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            if model_id:
+                cursor.execute("DELETE FROM token_stats WHERE model_id = ?", (model_id,))
+                logger.debug(f"清除模型 {model_id} 的Token统计")
+            else:
+                cursor.execute("DELETE FROM token_stats")
+                logger.debug("清除所有Token统计")
+    
     # ==================== 数据迁移工具 ====================
     
     def migrate_ai_models_from_json(self, ai_models_file: str = None):
@@ -845,14 +993,13 @@ class ConfigDB:
             logger.error(f"迁移AI模型配置失败: {str(e)}")
             return 0
     
-    def migrate_from_json(self, connections_file: str = None, prompts_file: str = None, 
+    def migrate_from_json(self, connections_file: str = None, 
                          tree_cache_file: str = None, ai_models_file: str = None):
         """
         从 JSON 文件迁移数据到 SQLite
         迁移成功后自动将 JSON 文件重命名为 .backup
         
         :param connections_file: 连接配置 JSON 文件路径
-        :param prompts_file: 提示词配置 JSON 文件路径
         :param tree_cache_file: 树缓存 JSON 文件路径
         :param ai_models_file: AI模型配置 JSON 文件路径
         """
@@ -875,19 +1022,6 @@ class ConfigDB:
                 migrated_files.append(connections_file)
             except Exception as e:
                 logger.error(f"迁移连接配置失败: {str(e)}")
-        
-        # 迁移提示词配置
-        if prompts_file and os.path.exists(prompts_file):
-            try:
-                with open(prompts_file, 'r', encoding='utf-8') as f:
-                    prompts = json.load(f)
-                    for prompt_type, content in prompts.items():
-                        self.save_prompt(prompt_type, content)
-                        migrated_count += 1
-                logger.info(f"已迁移 {len(prompts)} 个提示词配置")
-                migrated_files.append(prompts_file)
-            except Exception as e:
-                logger.error(f"迁移提示词配置失败: {str(e)}")
         
         # 迁移树缓存
         if tree_cache_file and os.path.exists(tree_cache_file):

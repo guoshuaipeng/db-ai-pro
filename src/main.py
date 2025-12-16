@@ -147,13 +147,11 @@ def init_config_database():
         
         # 检查是否需要迁移
         connections_file = os.path.join(config_dir, "connections.json")
-        prompts_file = os.path.join(config_dir, "prompts.json")
         tree_cache_file = os.path.join(config_dir, "tree_cache.json")
         ai_models_file = os.path.join(config_dir, "ai_models.json")
         
         needs_migration = (
             os.path.exists(connections_file) or 
-            os.path.exists(prompts_file) or 
             os.path.exists(tree_cache_file) or
             os.path.exists(ai_models_file)
         )
@@ -162,7 +160,6 @@ def init_config_database():
             logger.info("检测到旧配置文件，开始迁移到 SQLite...")
             migrated_count = config_db.migrate_from_json(
                 connections_file=connections_file,
-                prompts_file=prompts_file,
                 tree_cache_file=tree_cache_file,
                 ai_models_file=ai_models_file
             )
