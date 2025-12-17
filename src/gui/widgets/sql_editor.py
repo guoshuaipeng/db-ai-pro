@@ -261,6 +261,7 @@ class SQLEditor(QWidget):
         self.enum_values_worker = None
         self._temp_table_schema = ""
         self._temp_table_names = []
+        self._all_table_names = []  # 保存所有表名列表（用于传递给AI）
         self._temp_enum_columns = {}  # 临时保存枚举字段信息
     
     def setup_completer(self):
@@ -499,7 +500,7 @@ class SQLEditor(QWidget):
         
         # 如果没有数据库连接，直接生成SQL（不带表结构）
         self.set_status("正在生成SQL...", timeout=0)
-        self._start_ai_generation(user_query, "", [])
+        self._start_ai_generation(user_query, "", [], [])
     
     def _is_generating(self):
         """检查是否正在生成SQL"""
@@ -584,6 +585,14 @@ class SQLEditor(QWidget):
             self.set_status("错误: 无法获取表名列表", is_error=True)
             return
         
+        # 保存所有表名列表（用于后续传递给AI）
+        # 处理两种格式：字典列表 [{"name": "...", "comment": "..."}] 或字符串列表 ["table1", "table2"]
+        if table_info_list and isinstance(table_info_list[0], dict):
+            self._all_table_names = [table_info["name"] for table_info in table_info_list]
+        else:
+            self._all_table_names = table_info_list if table_info_list else []
+        logger.info(f"保存了 {len(self._all_table_names)} 个表名: {self._all_table_names[:10]}...")
+        
         user_query = self.ai_input.toPlainText().strip()
         self.set_status(f"步骤2/4: AI正在选择相关表（从 {len(table_info_list)} 个表中）...", timeout=0)
         
@@ -617,7 +626,7 @@ class SQLEditor(QWidget):
         if not selected_tables:
             logger.warning("AI未选择任何表，使用空表结构生成SQL")
             user_query = self.ai_input.toPlainText().strip()
-            self._start_ai_generation(user_query, "", [])
+            self._start_ai_generation(user_query, "", [], self._all_table_names)
             return
         
         # 检查配置，决定步骤数
@@ -656,7 +665,7 @@ class SQLEditor(QWidget):
         
         # 如果没有连接，直接生成SQL
         user_query = self.ai_input.toPlainText().strip()
-        self._start_ai_generation(user_query, "", selected_tables)
+        self._start_ai_generation(user_query, "", selected_tables, self._all_table_names)
     
     def on_schema_ready_for_enum_selection(self, table_schema: str, table_names: list):
         """表结构获取完成回调（第二步：根据配置决定是否让AI选择枚举字段）"""
@@ -677,7 +686,7 @@ class SQLEditor(QWidget):
             logger.warning("表结构为空，直接生成SQL")
             user_query = self.ai_input.toPlainText().strip()
             self.set_status("正在生成SQL...", timeout=0)
-            self._start_ai_generation(user_query, "", table_names if table_names else [])
+            self._start_ai_generation(user_query, "", table_names if table_names else [], self._all_table_names)
             return
         
         # 检查配置：是否允许查询枚举值
@@ -691,7 +700,7 @@ class SQLEditor(QWidget):
             logger.info("配置不允许查询枚举值，跳过枚举字段识别，直接生成SQL")
             self.set_status("步骤3/3: 正在生成SQL...", timeout=0)
             user_query = self.ai_input.toPlainText().strip()
-            self._start_ai_generation(user_query, table_schema, table_names)
+            self._start_ai_generation(user_query, table_schema, table_names, self._all_table_names)
             return
         
         # 配置允许查询枚举值，使用AI选择枚举字段
@@ -734,7 +743,7 @@ class SQLEditor(QWidget):
             logger.info("AI未选择任何枚举字段，直接使用表结构生成SQL")
             user_query = self.ai_input.toPlainText().strip()
             self.set_status("正在生成SQL...", timeout=0)
-            self._start_ai_generation(user_query, self._temp_table_schema, self._temp_table_names)
+            self._start_ai_generation(user_query, self._temp_table_schema, self._temp_table_names, self._all_table_names)
             return
         
         # 如果配置不允许查询枚举值，直接使用表结构生成SQL
@@ -742,7 +751,7 @@ class SQLEditor(QWidget):
             logger.info("配置不允许查询枚举值，直接使用表结构生成SQL")
             user_query = self.ai_input.toPlainText().strip()
             self.set_status("正在生成SQL...", timeout=0)
-            self._start_ai_generation(user_query, self._temp_table_schema, self._temp_table_names)
+            self._start_ai_generation(user_query, self._temp_table_schema, self._temp_table_names, self._all_table_names)
             return
         
         # 如果AI判断不需要查询枚举值，直接使用表结构生成SQL
@@ -750,7 +759,7 @@ class SQLEditor(QWidget):
             logger.info("AI判断不需要查询枚举值，直接使用表结构生成SQL")
             user_query = self.ai_input.toPlainText().strip()
             self.set_status("正在生成SQL...", timeout=0)
-            self._start_ai_generation(user_query, self._temp_table_schema, self._temp_table_names)
+            self._start_ai_generation(user_query, self._temp_table_schema, self._temp_table_names, self._all_table_names)
             return
         
         # 需要查询枚举值（配置允许且AI判断需要）
@@ -775,7 +784,7 @@ class SQLEditor(QWidget):
         
         # 如果没有连接，直接使用表结构生成SQL
         user_query = self.ai_input.toPlainText().strip()
-        self._start_ai_generation(user_query, self._temp_table_schema, self._temp_table_names)
+        self._start_ai_generation(user_query, self._temp_table_schema, self._temp_table_names, self._all_table_names)
     
     def on_enum_values_ready(self, enhanced_schema: str):
         """枚举值查询完成回调（最后一步：生成SQL）"""
@@ -786,7 +795,7 @@ class SQLEditor(QWidget):
         self.set_status("正在生成SQL...", timeout=0)
         
         user_query = self.ai_input.toPlainText().strip()
-        self._start_ai_generation(user_query, enhanced_schema, self._temp_table_names)
+        self._start_ai_generation(user_query, enhanced_schema, self._temp_table_names, self._all_table_names)
         
         # 清理worker
         if self.enum_values_worker:
@@ -810,18 +819,25 @@ class SQLEditor(QWidget):
         
         user_query = self.ai_input.toPlainText().strip()
         # 确保传递非空的表结构（如果为空则传递空字符串）
-        self._start_ai_generation(user_query, table_schema if table_schema else "", table_names if table_names else [])
+        self._start_ai_generation(user_query, table_schema if table_schema else "", table_names if table_names else [], self._all_table_names)
         
         # 清理工作线程
         if hasattr(self, 'schema_worker') and self.schema_worker:
             self.schema_worker.deleteLater()
             self.schema_worker = None
     
-    def _start_ai_generation(self, user_query: str, table_schema: str, table_names: list = None):
-        """启动AI生成SQL"""
+    def _start_ai_generation(self, user_query: str, table_schema: str, table_names: list = None, all_table_names: list = None):
+        """启动AI生成SQL
+        
+        Args:
+            user_query: 用户查询
+            table_schema: 选中表的结构信息
+            table_names: 选中表的表名列表
+            all_table_names: 所有表名列表（用于传递给AI，让AI知道所有可用表）
+        """
         import logging
         logger = logging.getLogger(__name__)
-        logger.info(f"启动AI生成SQL，表结构是否为空: {not table_schema}, 表名数量: {len(table_names) if table_names else 0}")
+        logger.info(f"启动AI生成SQL，表结构是否为空: {not table_schema}, 选中表数量: {len(table_names) if table_names else 0}, 所有表数量: {len(all_table_names) if all_table_names else 0}")
         
         # 更新状态栏
         self.set_status("AI正在生成SQL...", timeout=0)
@@ -837,8 +853,13 @@ class SQLEditor(QWidget):
         # 获取当前SQL编辑器中的SQL（如果用户已经在查看某个表，AI可以基于此SQL进行修改）
         current_sql = self.sql_edit.toPlainText().strip() if hasattr(self, 'sql_edit') else ""
         
+        # 如果没有传递所有表名，尝试使用保存的
+        if all_table_names is None:
+            all_table_names = getattr(self, '_all_table_names', [])
+            logger.info(f"使用保存的所有表名列表: {len(all_table_names)} 个表")
+        
         # 创建并启动AI工作线程
-        self.ai_worker = AIWorker(self.ai_client, user_query, table_schema, table_names or [], db_type, current_sql)
+        self.ai_worker = AIWorker(self.ai_client, user_query, table_schema, table_names or [], db_type, current_sql, all_table_names or [])
         self.ai_worker.sql_generated.connect(self.on_sql_generated)
         self.ai_worker.error_occurred.connect(self.on_ai_error)
         self.ai_worker.start()

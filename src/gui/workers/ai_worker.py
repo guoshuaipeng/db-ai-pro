@@ -15,12 +15,13 @@ class AIWorker(QThread):
     sql_generated = pyqtSignal(str)  # 生成的SQL
     error_occurred = pyqtSignal(str)  # 错误信息
     
-    def __init__(self, ai_client, user_query: str, table_schema: str = "", table_names: list = None, db_type: str = None, current_sql: str = None):
+    def __init__(self, ai_client, user_query: str, table_schema: str = "", table_names: list = None, db_type: str = None, current_sql: str = None, all_table_names: list = None):
         super().__init__()
         self.ai_client = ai_client
         self.user_query = user_query
         self.table_schema = table_schema
         self.table_names = table_names or []
+        self.all_table_names = all_table_names or []  # 所有表名列表
         self.db_type = db_type  # 数据库类型
         self.current_sql = current_sql  # 当前SQL编辑器中的SQL
         self.table_columns_map = {}  # 表名 -> 列名列表的映射
@@ -225,12 +226,13 @@ class AIWorker(QThread):
             # 记录传递给AI的表结构信息
             logger.info(f"准备调用AI生成SQL，表结构是否为空: {not self.table_schema}")
             logger.info(f"表结构长度: {len(self.table_schema) if self.table_schema else 0}")
-            logger.info(f"表名列表: {self.table_names}")
+            logger.info(f"选中表名列表: {self.table_names}")
+            logger.info(f"所有表名列表: {self.all_table_names}")
             if self.table_schema:
                 logger.info(f"表结构前500字符: {self.table_schema[:500]}")
             
-            # 调用AI生成SQL（传递表结构信息、数据库类型和当前SQL）
-            sql = self.ai_client.generate_sql(self.user_query, self.table_schema, self.db_type, self.current_sql)
+            # 调用AI生成SQL（传递表结构信息、数据库类型、当前SQL和所有表名列表）
+            sql = self.ai_client.generate_sql(self.user_query, self.table_schema, self.db_type, self.current_sql, self.all_table_names)
             
             if self.isInterruptionRequested() or self._should_stop:
                 return

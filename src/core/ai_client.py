@@ -110,7 +110,7 @@ class AIClient:
         except Exception as e:
             self.logger.warning(f"记录Token使用情况失败: {str(e)}", exc_info=True)
     
-    def generate_sql(self, user_query: str, table_schema: Optional[str] = None, db_type: Optional[str] = None, current_sql: Optional[str] = None) -> str:
+    def generate_sql(self, user_query: str, table_schema: Optional[str] = None, db_type: Optional[str] = None, current_sql: Optional[str] = None, all_table_names: Optional[list] = None) -> str:
         """
         根据用户查询生成SQL
         
@@ -118,6 +118,7 @@ class AIClient:
         :param table_schema: 可选的表结构信息
         :param db_type: 可选的数据库类型（mysql, postgresql, oracle, sqlserver, sqlite, mariadb）
         :param current_sql: 当前SQL编辑器中的SQL（可选，如果提供，AI会优先基于此SQL进行修改）
+        :param all_table_names: 所有表名列表（可选，用于让AI知道所有可用表）
         :return: 生成的SQL语句
         """
         try:
@@ -148,7 +149,11 @@ class AIClient:
                 db_type_name = db_type_name_map.get(db_type.lower(), db_type)
                 system_prompt += f"\n\n【重要】当前数据库类型: {db_type_name}\n请根据 {db_type_name} 的SQL语法规范生成SQL语句，注意不同数据库的语法差异（如字符串引号、日期函数、分页语法等）。"
             
-            if table_schema and table_schema.strip():
+            # 优先使用传入的所有表名列表，如果没有则从表结构中提取
+            if all_table_names and len(all_table_names) > 0:
+                table_names = all_table_names
+                self.logger.info(f"使用传入的所有表名列表: {len(table_names)} 个表")
+            elif table_schema and table_schema.strip():
                 # 从表结构信息中提取所有表名
                 table_names = []
                 for line in table_schema.split('\n'):
@@ -158,16 +163,21 @@ class AIClient:
                             table_names.append(table_name)
                 
                 self.logger.info(f"从表结构中提取到 {len(table_names)} 个表名: {table_names}")
-                
-                # 格式化表名列表，每行一个，更清晰
-                if table_names:
-                    table_list_formatted = '\n'.join([f'  - {name}' for name in table_names])
-                    table_list_single = ', '.join(table_names)
-                else:
-                    # 如果提取不到表名，但表结构不为空，可能是格式问题
-                    self.logger.warning("⚠️ 无法从表结构中提取表名，但表结构不为空，可能是格式问题")
-                    table_list_formatted = '  (无法提取表名，请查看下方表结构信息)'
-                    table_list_single = '无法提取'
+            else:
+                table_names = []
+                self.logger.warning("⚠️ 没有表名列表，AI可能无法正确选择表")
+            
+            # 格式化表名列表，每行一个，更清晰
+            if table_names:
+                table_list_formatted = '\n'.join([f'  - {name}' for name in table_names])
+                table_list_single = ', '.join(table_names)
+            else:
+                # 如果提取不到表名，但表结构不为空，可能是格式问题
+                self.logger.warning("⚠️ 无法获取表名列表")
+                table_list_formatted = '  (无法获取表名列表，请查看下方表结构信息)'
+                table_list_single = '无法获取'
+            
+            if table_schema and table_schema.strip():
                 
                 # 构建清晰的用户提示词
                 db_type_info = ""

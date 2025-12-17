@@ -43,8 +43,10 @@ class TableListWorker(QThread):
                 cached_tables = cache.get_table_list(self.connection_id)
                 if cached_tables is not None:
                     logger.info(f"TableListWorker: 从缓存获取到 {len(cached_tables)} 个表")
+                    # 将字符串列表转换为字典列表格式，保持一致性
+                    table_info_list = [{"name": table_name, "comment": ""} for table_name in cached_tables]
                     if not (self.isInterruptionRequested() or self._should_stop):
-                        self.tables_ready.emit(cached_tables)
+                        self.tables_ready.emit(table_info_list)
                     return
             
             # 缓存未命中，从数据库查询
