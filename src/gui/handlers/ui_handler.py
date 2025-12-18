@@ -4,7 +4,7 @@ UI 初始化处理器
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, 
     QTreeWidgetItem, QToolBar, QPushButton, QComboBox, QLabel, QTabWidget,
-    QGroupBox
+    QGroupBox, QMenu
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QIcon
@@ -109,6 +109,15 @@ class UIHandler:
         # 设置Tab字体
         tab_font = QFont("Microsoft YaHei", 10)
         self.main_window.right_tab_widget.setFont(tab_font)
+        
+        # 启用tab bar的鼠标滚轮支持
+        tab_bar = self.main_window.right_tab_widget.tabBar()
+        tab_bar.setUsesScrollButtons(True)  # 启用滚动按钮
+        tab_bar.setElideMode(Qt.TextElideMode.ElideRight)  # 文本超出时省略
+        
+        # 设置tab bar的右键菜单
+        tab_bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        tab_bar.customContextMenuRequested.connect(self._on_tab_bar_context_menu)
         
         # 第一个tab：查询（包含AI查询、SQL编辑器和结果）
         query_tab = QWidget()
@@ -459,4 +468,53 @@ class UIHandler:
                 # 检查是否是查询标签页
                 if tab_text in ["查询", "Query"]:
                     self.main_window.right_tab_widget.setTabText(i, self.main_window.tr("查询"))
+    
+    def _on_tab_bar_context_menu(self, position):
+        """Tab bar右键菜单处理"""
+        tab_bar = self.main_window.right_tab_widget.tabBar()
+        index = tab_bar.tabAt(position)
+        
+        # 如果点击的不是tab，不显示菜单
+        if index < 0:
+            return
+        
+        # 创建右键菜单
+        menu = QMenu(self.main_window)
+        tab_count = self.main_window.right_tab_widget.count()
+        
+        # 关闭当前tab（第一个查询tab不能关闭）
+        if index > 0:
+            close_action = menu.addAction(self.main_window.tr("关闭"))
+            close_action.triggered.connect(lambda: self.main_window.close_query_tab(index))
+        
+        # 关闭其他tabs（只在有多个tab时显示，且当前tab不是第一个）
+        if tab_count > 1 and index > 0:
+            if menu.actions():  # 如果前面已经有菜单项，添加分隔符
+                menu.addSeparator()
+            close_others_action = menu.addAction(self.main_window.tr("关闭其他"))
+            close_others_action.triggered.connect(lambda: self._close_other_tabs(index))
+        
+        # 关闭所有tabs（只在有多个tab时显示）
+        if tab_count > 1:
+            if menu.actions():  # 如果前面已经有菜单项，添加分隔符
+                menu.addSeparator()
+            close_all_action = menu.addAction(self.main_window.tr("关闭所有"))
+            close_all_action.triggered.connect(self._close_all_tabs)
+        
+        # 只有有菜单项时才显示菜单
+        if menu.actions():
+            menu.exec(tab_bar.mapToGlobal(position))
+    
+    def _close_other_tabs(self, keep_index: int):
+        """关闭除了指定index之外的所有tabs（保留第一个查询tab）"""
+        # 从后往前关闭，避免索引变化
+        for i in range(self.main_window.right_tab_widget.count() - 1, -1, -1):
+            if i != keep_index and i != 0:  # 保留当前tab和第一个查询tab
+                self.main_window.close_query_tab(i)
+    
+    def _close_all_tabs(self):
+        """关闭所有tabs（保留第一个查询tab）"""
+        # 从后往前关闭，避免索引变化
+        for i in range(self.main_window.right_tab_widget.count() - 1, 0, -1):
+            self.main_window.close_query_tab(i)
 

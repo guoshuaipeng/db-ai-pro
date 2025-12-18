@@ -100,7 +100,11 @@ class QueryWorker(QThread):
                     self.query_progress.emit(f"正在执行查询 {idx + 1}/{len(sql_statements)}...")
                     
                     try:
-                        if self.is_query:
+                        # 对每条SQL语句单独判断是查询还是非查询
+                        stmt_upper = sql_stmt.strip().upper()
+                        is_stmt_query = stmt_upper.startswith(("SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"))
+                        
+                        if is_stmt_query:
                             # 执行查询
                             with engine.connect() as conn:
                                 result = conn.execute(text(sql_stmt))
@@ -119,14 +123,18 @@ class QueryWorker(QThread):
                         else:
                             # 执行非查询语句
                             # 如果是DELETE语句，在日志中打印
-                            if sql_stmt.strip().upper().startswith('DELETE'):
+                            if stmt_upper.startswith('DELETE'):
                                 logger.info("=" * 80)
                                 logger.info(f"执行DELETE语句: {sql_stmt}")
                                 logger.info("=" * 80)
                             
-                            with engine.begin() as conn:
+                            # 对于非查询语句，使用connect()而不是begin()，避免result对象过早关闭的问题
+                            with engine.connect() as conn:
                                 result = conn.execute(text(sql_stmt))
+                                # 在事务提交前获取rowcount
                                 affected_rows = result.rowcount
+                                # 手动提交事务
+                                conn.commit()
                                 results.append((sql_stmt, True, None, None, affected_rows, None))
                     except Exception as e:
                         error_msg = str(e)
@@ -170,12 +178,16 @@ class QueryWorker(QThread):
                         logger.info(f"执行DELETE语句: {self.sql}")
                         logger.info("=" * 80)
                     
-                    with engine.begin() as conn:
+                    # 对于非查询语句，使用connect()而不是begin()，避免result对象过早关闭的问题
+                    with engine.connect() as conn:
                         if self.isInterruptionRequested() or self._should_stop:
                             return
                         
                         result = conn.execute(text(self.sql))
+                        # 在事务提交前获取rowcount
                         affected_rows = result.rowcount
+                        # 手动提交事务
+                        conn.commit()
                         
                         self.query_progress.emit(f"执行成功，影响 {affected_rows} 行")
                         self.query_finished.emit(True, None, None, affected_rows, None)

@@ -859,7 +859,10 @@ class SQLEditor(QWidget):
             logger.info(f"使用保存的所有表名列表: {len(all_table_names)} 个表")
         
         # 创建并启动AI工作线程
-        self.ai_worker = AIWorker(self.ai_client, user_query, table_schema, table_names or [], db_type, current_sql, all_table_names or [])
+        # 如果已经选中了表，就只传递选中的表，不再传递所有表（因为AI已经在第一步选择了表）
+        # 如果没有选中表，才传递所有表名（作为降级处理）
+        tables_to_pass = table_names if table_names else (all_table_names or [])
+        self.ai_worker = AIWorker(self.ai_client, user_query, table_schema, table_names or [], db_type, current_sql, tables_to_pass)
         self.ai_worker.sql_generated.connect(self.on_sql_generated)
         self.ai_worker.error_occurred.connect(self.on_ai_error)
         self.ai_worker.start()
