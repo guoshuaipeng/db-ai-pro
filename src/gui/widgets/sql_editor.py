@@ -145,7 +145,8 @@ class SQLEditor(QWidget):
         ai_label.setStyleSheet("font-weight: bold; font-size: 12px; padding: 5px;")
         ai_layout.addWidget(ai_label)
         
-        self.ai_input = QTextEdit()
+        # 使用QPlainTextEdit而不是QTextEdit，确保只支持纯文本，不支持格式
+        self.ai_input = QPlainTextEdit()
         self.ai_input.setPlaceholderText("在此输入中文描述，AI将自动生成SQL并执行查询...\n\n💡 提示：\n- 按 Enter 键直接查询\n- 按 Shift+Enter 换行\n\n例如：\n- 查询所有用户信息\n- 统计每个部门的员工数量\n- 查找最近一周的订单")
         self.ai_input.setFont(QFont("Microsoft YaHei", 10))
         self.ai_input.installEventFilter(self)  # 安装事件过滤器，用于处理回车键
@@ -955,7 +956,7 @@ class SQLEditor(QWidget):
             if key_event.key() in [Qt.Key.Key_Enter, Qt.Key.Key_Return]:
                 # 如果按住了 Shift，允许换行
                 if key_event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-                    return False  # 让 QTextEdit 处理换行
+                    return False  # 让 QPlainTextEdit 处理换行
                 else:
                     # 否则触发查询
                     self.generate_sql_from_ai()
