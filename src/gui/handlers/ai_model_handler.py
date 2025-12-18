@@ -74,35 +74,50 @@ class AIModelHandler:
         
         # 设置当前选择的模型（优先使用上次使用的模型）
         if active_models:
+            selected_model_id = active_models[selected_index].id
+            previous_model_id = getattr(self.main_window, 'current_ai_model_id', None)
+            
             # 先临时断开信号，避免触发 on_ai_model_changed
             self.main_window.ai_model_combo.blockSignals(True)
             self.main_window.ai_model_combo.setCurrentIndex(selected_index)
             self.main_window.ai_model_combo.blockSignals(False)
             
             # 更新当前模型ID
-            selected_model_id = active_models[selected_index].id
             self.main_window.current_ai_model_id = selected_model_id
             
-            # 如果当前使用的模型未找到，设置选中的模型为当前使用
-            if not found_current:
-                self.main_window.ai_model_storage.set_current_model(selected_model_id)
-                logger.info(f"已设置新的当前模型ID到数据库: {selected_model_id}")
+            # 如果找到了当前模型，说明数据库中的模型和下拉框选中的一致，不需要更新数据库
+            if found_current and selected_model_id == current_id:
+                logger.debug(f"当前模型已在列表中且已选中，无需更新数据库: {selected_model_id}")
+            elif not found_current:
+                # 如果当前使用的模型未找到或未激活，需要判断是否需要更新数据库
+                if not current_id:
+                    # 数据库中没有记录，设置第一个激活的模型
+                    self.main_window.ai_model_storage.set_current_model(selected_model_id)
+                    logger.info(f"数据库中没有当前模型记录，已设置第一个激活模型为当前使用: {selected_model_id}")
+                else:
+                    # 当前模型存在但未激活，保持数据库记录不变，只在下拉框中选择第一个
+                    logger.warning(f"当前使用的模型ID {current_id} 未激活，但保持数据库记录不变，下拉框显示第一个模型")
             
-            # 更新SQL编辑器的AI客户端（如果模型确实改变了）
+            # 只有当模型真正改变时才更新SQL编辑器的AI客户端
             if hasattr(self.main_window, 'sql_editor'):
-                try:
-                    from src.core.ai_client import AIClient
-                    model_config = active_models[selected_index]
-                    self.main_window.sql_editor.ai_client = AIClient(
-                        api_key=model_config.api_key.get_secret_value(),
-                        base_url=model_config.get_base_url(),
-                        default_model=model_config.default_model,
-                        turbo_model=model_config.turbo_model
-                    )
-                    self.main_window.sql_editor.ai_client._current_model_id = model_config.id
-                    logger.info(f"已加载模型: {model_config.name}")
-                except Exception as e:
-                    logger.error(f"加载AI模型失败: {str(e)}")
+                # 检查模型是否真的改变了
+                model_changed = (previous_model_id != selected_model_id)
+                if model_changed:
+                    try:
+                        from src.core.ai_client import AIClient
+                        model_config = active_models[selected_index]
+                        self.main_window.sql_editor.ai_client = AIClient(
+                            api_key=model_config.api_key.get_secret_value(),
+                            base_url=model_config.get_base_url(),
+                            default_model=model_config.default_model,
+                            turbo_model=model_config.turbo_model
+                        )
+                        self.main_window.sql_editor.ai_client._current_model_id = model_config.id
+                        logger.info(f"模型已切换，已加载: {model_config.name}")
+                    except Exception as e:
+                        logger.error(f"加载AI模型失败: {str(e)}")
+                else:
+                    logger.debug(f"模型未改变，跳过AI客户端更新: {selected_model_id}")
     
     def on_ai_model_changed(self, index: int):
         """AI模型选择改变"""
@@ -110,9 +125,15 @@ class AIModelHandler:
         if not model_id:
             return
         
+        # 检查模型是否真的改变了
+        previous_model_id = getattr(self.main_window, 'current_ai_model_id', None)
+        if previous_model_id == model_id:
+            logger.debug(f"模型未改变，跳过设置: {model_id}")
+            return
+        
         self.main_window.current_ai_model_id = model_id
         
-        # 设置为当前使用的模型
+        # 设置为当前使用的模型（方法内部会检查是否已经是当前模型，避免不必要的更新）
         self.main_window.ai_model_storage.set_current_model(model_id)
         logger.info(f"已设置当前使用的模型ID: {model_id}")
         

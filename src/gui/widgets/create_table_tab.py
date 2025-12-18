@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QSplitter,
     QTextEdit,
+    QPlainTextEdit,
     QPushButton,
     QLabel,
     QScrollArea,
@@ -19,7 +20,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class ChatInputTextEdit(QTextEdit):
+class ChatInputTextEdit(QPlainTextEdit):
     """支持 Enter 发送、Ctrl+Enter 换行的输入框（新建表对话）"""
     
     send_message = pyqtSignal()  # 发送消息信号

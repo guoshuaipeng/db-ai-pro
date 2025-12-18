@@ -2035,15 +2035,18 @@ class MultiResultTable(QWidget):
     
     def eventFilter(self, obj, event):
         """事件过滤器，用于处理tab双击事件"""
-        if obj == self.tab_widget.tabBar():
-            from PyQt6.QtGui import QMouseEvent
-            if event.type() == event.Type.MouseButtonDblClick:
-                mouse_event = event
-                if mouse_event.button() == Qt.MouseButton.LeftButton:
-                    index = self.tab_widget.tabBar().tabAt(mouse_event.position().toPoint())
-                    if index >= 0 and index in self.tab_sql_map:
-                        self.copy_sql_to_clipboard(self.tab_sql_map[index])
-                        return True
+        try:
+            if obj == self.tab_widget.tabBar():
+                if event.type() == event.Type.MouseButtonDblClick:
+                    mouse_event = event
+                    if mouse_event.button() == Qt.MouseButton.LeftButton:
+                        index = self.tab_widget.tabBar().tabAt(mouse_event.position().toPoint())
+                        if index >= 0 and index in self.tab_sql_map:
+                            self.copy_sql_to_clipboard(self.tab_sql_map[index])
+                            return True
+        except Exception as e:
+            # 记录错误但不中断事件处理流程
+            logger.debug(f"eventFilter处理事件时出错: {str(e)}", exc_info=True)
         return super().eventFilter(obj, event)
     
     def on_tab_context_menu(self, position):

@@ -300,6 +300,13 @@ class UIHandler:
         toolbar.addAction(ai_config_action)
         self.main_window.ai_config_action = ai_config_action
         
+        # AI 提示词配置按钮
+        prompt_config_action = QAction(self._get_icon('edit'), self.main_window.tr("提示词配置"), self.main_window)
+        prompt_config_action.setToolTip("配置 AI 提示词")
+        prompt_config_action.triggered.connect(self.main_window.configure_prompts)
+        toolbar.addAction(prompt_config_action)
+        self.main_window.prompt_config_action = prompt_config_action
+        
         toolbar.addSeparator()
         
         # 添加连接按钮
@@ -334,11 +341,11 @@ class UIHandler:
         
         self.main_window.ai_model_combo = QComboBox()
         self.main_window.ai_model_combo.setMinimumWidth(200)
+        # 先刷新模型列表（填充下拉框），再连接信号，避免启动时触发变更事件
+        self.main_window.refresh_ai_models()
+        # 在填充完下拉框后再连接信号
         self.main_window.ai_model_combo.currentIndexChanged.connect(self.main_window.on_ai_model_changed)
         toolbar.addWidget(self.main_window.ai_model_combo)
-        
-        # 刷新模型列表
-        self.main_window.refresh_ai_models()
         
         toolbar.addSeparator()
         

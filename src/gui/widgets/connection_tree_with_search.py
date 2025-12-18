@@ -1,9 +1,9 @@
 """
 带搜索功能的连接树组件
 """
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QTreeWidgetItem
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QTreeWidgetItem, QApplication
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QKeyEvent
+from PyQt6.QtGui import QKeyEvent, QKeySequence
 from src.gui.widgets.connection_tree import ConnectionTree
 from src.gui.utils.tree_item_types import TreeItemData, TreeItemType
 import logging
@@ -51,6 +51,7 @@ class ConnectionTreeWithSearch(QWidget):
         self.search_box.setPlaceholderText("搜索表名...")
         self.search_box.textChanged.connect(self.on_search_text_changed)
         self.search_box.returnPressed.connect(self.on_search_return_pressed)
+        self.search_box.editingFinished.connect(self.on_search_editing_finished)
         
         # 设置完整的样式
         self.search_box.setStyleSheet("""
@@ -84,13 +85,20 @@ class ConnectionTreeWithSearch(QWidget):
         if event.type() == event.Type.KeyPress:
             key_event = event
             
-            # 如果焦点在树上，按任意字母、数字或常用符号键，聚焦搜索框
+            # 如果焦点在树上，处理键盘事件
             if obj == self.tree:
+                # 处理 Ctrl+C 复制
+                if key_event.matches(QKeySequence.StandardKey.Copy):
+                    self.copy_selected_item()
+                    return True
+                
                 key = key_event.key()
                 # 检查是否是可打印字符（字母、数字、常用符号）
-                if (Qt.Key.Key_A <= key <= Qt.Key.Key_Z) or \
-                   (Qt.Key.Key_0 <= key <= Qt.Key.Key_9) or \
-                   key in [Qt.Key.Key_Underscore, Qt.Key.Key_Minus, Qt.Key.Key_Period]:
+                # 排除 Ctrl 修饰键，避免干扰 Ctrl+C 等快捷键
+                if key_event.modifiers() == Qt.KeyboardModifier.NoModifier and \
+                   ((Qt.Key.Key_A <= key <= Qt.Key.Key_Z) or \
+                    (Qt.Key.Key_0 <= key <= Qt.Key.Key_9) or \
+                    key in [Qt.Key.Key_Underscore, Qt.Key.Key_Minus, Qt.Key.Key_Period]):
                     # 聚焦搜索框
                     self.search_box.setFocus()
                     # 将按键文本添加到搜索框
@@ -129,19 +137,44 @@ class ConnectionTreeWithSearch(QWidget):
         self.restore_all_items()
     
     def on_search_text_changed(self, text: str):
-        """搜索文本改变时的处理"""
-        if not text.strip():
+        """搜索文本改变时的处理（自动去除前后空格）"""
+        # 去除前后空格后进行搜索
+        search_text = text.strip()
+        if not search_text:
             # 如果搜索框为空，恢复所有项
             self.restore_all_items()
             return
         
-        # 执行搜索过滤
-        self.filter_tables(text.strip())
+        # 执行搜索过滤（使用去除前后空格的文本）
+        self.filter_tables(search_text)
+    
+    def on_search_editing_finished(self):
+        """搜索框编辑完成时，自动去除前后空格"""
+        current_text = self.search_box.text()
+        trimmed_text = current_text.strip()
+        if current_text != trimmed_text:
+            # 如果前后有空格，自动去除
+            self.search_box.setText(trimmed_text)
     
     def on_search_return_pressed(self):
         """按回车键时的处理"""
         # 选中第一个匹配的表项
         self.select_first_match()
+    
+    def copy_selected_item(self):
+        """复制选中的树项文本到剪贴板"""
+        current_item = self.tree.currentItem()
+        if not current_item:
+            return
+        
+        # 获取选中项的文本
+        item_text = current_item.text(0)
+        if not item_text:
+            return
+        
+        # 复制到剪贴板
+        clipboard = QApplication.clipboard()
+        clipboard.setText(item_text)
     
     def filter_tables(self, search_text: str):
         """根据搜索文本过滤表"""

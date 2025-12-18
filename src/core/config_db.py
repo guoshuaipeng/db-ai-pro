@@ -717,10 +717,21 @@ class ConfigDB:
             cursor = conn.cursor()
             
             # 首先检查模型是否存在且激活
-            cursor.execute("SELECT id FROM ai_models WHERE id = ? AND is_active = 1", (model_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT id, is_current FROM ai_models WHERE id = ? AND is_active = 1", (model_id,))
+            model_row = cursor.fetchone()
+            if not model_row:
                 logger.warning(f"模型 {model_id} 不存在或未激活")
                 return False
+            
+            # 如果该模型已经是当前模型，则不需要更新
+            if model_row['is_current']:
+                logger.debug(f"模型 {model_id} 已经是当前使用的模型，跳过更新")
+                return True
+            
+            # 获取模型名称用于日志
+            cursor.execute("SELECT name FROM ai_models WHERE id = ?", (model_id,))
+            name_row = cursor.fetchone()
+            model_name = name_row['name'] if name_row else model_id
             
             # 取消所有模型的 is_current 标记
             cursor.execute("UPDATE ai_models SET is_current = 0")
@@ -728,6 +739,7 @@ class ConfigDB:
             # 设置指定模型为当前使用
             cursor.execute("UPDATE ai_models SET is_current = 1 WHERE id = ?", (model_id,))
             
+            logger.info(f"已更新当前使用的AI模型: {model_name} (ID: {model_id})")
             logger.debug(f"已设置当前使用的AI模型: {model_id}")
             return True
     
