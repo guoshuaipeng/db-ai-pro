@@ -1400,8 +1400,35 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "警告", "请先选择一个数据库连接")
             return
         
-        # 创建新的查询tab
-        from PyQt6.QtWidgets import QWidget, QVBoxLayout, QSplitter, QHBoxLayout
+        # 检查是否已存在相同的tab（相同连接、数据库、表）
+        for i in range(self.right_tab_widget.count()):
+            tab_widget = self.right_tab_widget.widget(i)
+            if hasattr(tab_widget, '_is_table_query_tab'):
+                # 这是一个表查询tab
+                if (hasattr(tab_widget, '_table_query_connection_id') and 
+                    hasattr(tab_widget, '_table_query_database') and 
+                    hasattr(tab_widget, '_table_query_table_name')):
+                    if (tab_widget._table_query_connection_id == connection_id and
+                        tab_widget._table_query_database == database and
+                        tab_widget._table_query_table_name == table_name):
+                        # 找到相同的tab，切换到它并重新执行查询
+                        self.right_tab_widget.setCurrentIndex(i)
+                        # 重新执行查询
+                        if hasattr(tab_widget, '_sql_editor'):
+                            sql_editor = tab_widget._sql_editor
+                            connection = self.db_manager.get_connection(connection_id)
+                            if database and connection and connection.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+                                sql = f"SELECT * FROM `{database}`.`{table_name}`"
+                            else:
+                                sql = f"SELECT * FROM `{table_name}`"
+                            sql_editor.set_sql(sql)
+                            # 触发执行
+                            if hasattr(tab_widget, '_execute_query_func'):
+                                tab_widget._execute_query_func(sql)
+                        return
+        
+        # 不存在相同的tab，创建新的查询tab
+        from PyQt6.QtWidgets import QWidget, QVBoxLayout, QSplitter, QHBoxLayout, QGroupBox
         from src.gui.widgets.sql_editor import SQLEditor
         from src.gui.widgets.multi_result_table import MultiResultTable
         
@@ -1411,33 +1438,58 @@ class MainWindow(QMainWindow):
         query_layout.setSpacing(5)
         query_tab.setLayout(query_layout)
         
-        # 在新tab顶部添加连接显示（紧凑的一行）
-        connection_bar = QWidget()
-        connection_bar.setMaximumHeight(30)  # 限制最大高度
-        connection_bar_layout = QHBoxLayout()
-        connection_bar_layout.setContentsMargins(0, 0, 0, 0)  # 去掉内边距
-        connection_bar_layout.setSpacing(8)
-        connection_bar.setLayout(connection_bar_layout)
+        # 在查询tab顶部添加连接选择（用GroupBox包裹，与第一个查询tab相同样式）
+        connection_group = QGroupBox(self.tr("查询范围"))
+        connection_group.setStyleSheet("QGroupBox { font-weight: bold; padding-top: 10px; }")
+        connection_group_layout = QHBoxLayout()
+        connection_group_layout.setSpacing(10)
+        connection_group_layout.setContentsMargins(10, 15, 10, 10)
+        connection_group.setLayout(connection_group_layout)
         
+        # 当前连接
         connection_label = QLabel(self.tr("当前连接:"))
-        connection_label.setStyleSheet("font-size: 12px;")
-        connection_bar_layout.addWidget(connection_label, 0)  # 不拉伸
+        connection_group_layout.addWidget(connection_label)
         
-        # 使用文本标签显示连接信息
-        connection_info = QLabel()
-        connection = self.db_manager.get_connection(connection_id)
-        if connection:
+        # 为这个tab创建独立的连接组合框
+        tab_connection_combo = QComboBox()
+        tab_connection_combo.setMinimumWidth(250)
+        # 加载所有连接
+        for conn in self.db_manager.get_all_connections():
+            tab_connection_combo.addItem(conn.name, conn.id)
+        # 设置当前选中的连接
+        for i in range(tab_connection_combo.count()):
+            if tab_connection_combo.itemData(i) == connection_id:
+                tab_connection_combo.setCurrentIndex(i)
+                break
+        connection_group_layout.addWidget(tab_connection_combo)
+        
+        # 当前数据库
+        database_label = QLabel(self.tr("当前数据库:"))
+        connection_group_layout.addWidget(database_label)
+        
+        # 为这个tab创建独立的数据库组合框
+        tab_database_combo = QComboBox()
+        tab_database_combo.setMinimumWidth(200)
+        # 加载数据库列表
+        try:
+            databases = self.db_manager.get_databases(connection_id)
+            for db in databases:
+                tab_database_combo.addItem(db, db)
+            # 设置当前选中的数据库
             if database:
-                info_text = f"{connection.name} - {database}"
-            else:
-                info_text = f"{connection.name} ({connection.db_type.value})"
-            connection_info.setText(info_text)
-            connection_info.setStyleSheet("color: #1976d2; font-weight: bold; font-size: 12px;")
-        connection_bar_layout.addWidget(connection_info, 0)  # 不拉伸
+                index = tab_database_combo.findData(database)
+                if index >= 0:
+                    tab_database_combo.setCurrentIndex(index)
+            elif databases:
+                tab_database_combo.setCurrentIndex(0)
+        except Exception as e:
+            logger.warning(f"加载数据库列表失败: {e}")
         
-        connection_bar_layout.addStretch(1)  # 剩余空间拉伸
+        connection_group_layout.addWidget(tab_database_combo)
         
-        query_layout.addWidget(connection_bar, 0)  # 不拉伸
+        connection_group_layout.addStretch()  # 添加弹性空间
+        
+        query_layout.addWidget(connection_group)
         
         query_splitter = QSplitter(Qt.Orientation.Vertical)
         query_splitter.setChildrenCollapsible(False)
@@ -1469,6 +1521,51 @@ class MainWindow(QMainWindow):
         query_tab._result_table = result_table
         query_tab._connection_id = connection_id
         query_tab._database = database
+        query_tab._table_query_connection_id = connection_id
+        query_tab._table_query_database = database
+        query_tab._table_query_table_name = table_name
+        query_tab._is_table_query_tab = True
+        query_tab._connection_combo = tab_connection_combo
+        query_tab._database_combo = tab_database_combo
+        
+        # 为这个tab的连接组合框添加切换处理
+        def on_tab_connection_changed(text: str):
+            new_connection_id = tab_connection_combo.currentData()
+            if new_connection_id:
+                # 更新tab的连接ID
+                query_tab._table_query_connection_id = new_connection_id
+                query_tab._connection_id = new_connection_id
+                # 加载该连接的数据库列表
+                tab_database_combo.clear()
+                try:
+                    databases = self.db_manager.get_databases(new_connection_id)
+                    for db in databases:
+                        tab_database_combo.addItem(db, db)
+                    if databases:
+                        tab_database_combo.setCurrentIndex(0)
+                        # 更新数据库
+                        on_tab_database_changed(tab_database_combo.currentText())
+                except Exception as e:
+                    logger.warning(f"加载数据库列表失败: {e}")
+                # 更新SQL编辑器的数据库信息
+                sql_editor.set_database_info(self.db_manager, new_connection_id, None)
+        
+        def on_tab_database_changed(text: str):
+            new_database = tab_database_combo.currentData()
+            if new_database and query_tab._connection_id:
+                # 更新tab的数据库
+                query_tab._table_query_database = new_database
+                query_tab._database = new_database
+                # 更新SQL编辑器的数据库信息
+                sql_editor.set_database_info(self.db_manager, query_tab._connection_id, new_database)
+                # 切换数据库
+                try:
+                    self.db_manager.switch_database(query_tab._connection_id, new_database)
+                except Exception as e:
+                    logger.error(f"切换数据库失败: {e}")
+        
+        tab_connection_combo.currentTextChanged.connect(on_tab_connection_changed)
+        tab_database_combo.currentTextChanged.connect(on_tab_database_changed)
         
         # 为这个tab的SQL编辑器创建独立的执行函数
         def execute_query_in_this_tab(sql: str = None):
@@ -1514,11 +1611,24 @@ class MainWindow(QMainWindow):
                 except:
                     pass
             
+            # 获取当前tab选中的连接和数据库（从组合框获取，因为用户可能切换了）
+            current_connection_id = tab_connection_combo.currentData() if hasattr(query_tab, '_connection_combo') else query_tab._connection_id
+            current_database = tab_database_combo.currentData() if hasattr(query_tab, '_database_combo') else query_tab._database
+            
             # 获取连接对象
-            connection = self.db_manager.get_connection(query_tab._connection_id)
+            connection = self.db_manager.get_connection(current_connection_id)
             if not connection:
                 QMessageBox.warning(self, "错误", "无法获取数据库连接")
                 return
+            
+            # 如果数据库改变了，需要切换数据库（对于需要切换的情况）
+            if current_database:
+                try:
+                    self.db_manager.switch_database(current_connection_id, current_database)
+                    # 重新获取连接（因为switch_database可能更新了连接配置）
+                    connection = self.db_manager.get_connection(current_connection_id)
+                except Exception as e:
+                    logger.warning(f"切换数据库失败: {e}")
             
             # 创建新的查询worker（使用添加了LIMIT的SQL）
             query_tab._query_worker = QueryWorker(
@@ -1545,18 +1655,21 @@ class MainWindow(QMainWindow):
                     else:
                         query_sql = original_sql
                     
+                    # 获取当前连接ID（可能在查询过程中用户切换了连接）
+                    current_conn_id = tab_connection_combo.currentData() if hasattr(query_tab, '_connection_combo') else query_tab._connection_id
+                    
                     if success:
                         if data is not None:
-                            result_table.add_result(query_sql, data, None, None, columns, connection_id=query_tab._connection_id)
+                            result_table.add_result(query_sql, data, None, None, columns, connection_id=current_conn_id)
                             if data:
                                 sql_editor.set_status(f"查询完成: {len(data)} 行")
                             else:
                                 sql_editor.set_status(f"查询完成: 0 行")
                         elif affected_rows is not None:
-                            result_table.add_result(query_sql, None, None, affected_rows, None, connection_id=query_tab._connection_id)
+                            result_table.add_result(query_sql, None, None, affected_rows, None, connection_id=current_conn_id)
                             sql_editor.set_status(f"执行成功: 影响 {affected_rows} 行")
                     else:
-                        result_table.add_result(query_sql, None, error, None, None, connection_id=query_tab._connection_id)
+                        result_table.add_result(query_sql, None, error, None, None, connection_id=current_conn_id)
                         sql_editor.set_status(f"执行失败: {error}", is_error=True)
                     
                     # 恢复执行按钮状态
@@ -1570,14 +1683,17 @@ class MainWindow(QMainWindow):
                     total_success = 0
                     total_failed = 0
                     
+                    # 获取当前连接ID（可能在查询过程中用户切换了连接）
+                    current_conn_id = tab_connection_combo.currentData() if hasattr(query_tab, '_connection_combo') and tab_connection_combo else query_tab._connection_id
+                    
                     # 对于多查询，使用原始SQL（因为results中的query_sql可能带自动添加的LIMIT）
                     for query_sql, success, data, error, affected_rows, columns in results:
                         if success:
                             total_success += 1
-                            result_table.add_result(query_sql, data, error, affected_rows, columns, connection_id=query_tab._connection_id)
+                            result_table.add_result(query_sql, data, error, affected_rows, columns, connection_id=current_conn_id)
                         else:
                             total_failed += 1
-                            result_table.add_result(query_sql, None, error, None, None, connection_id=query_tab._connection_id)
+                            result_table.add_result(query_sql, None, error, None, None, connection_id=current_conn_id)
                     
                     if total_failed == 0:
                         sql_editor.set_status(f"所有查询完成: {total_success} 条成功")

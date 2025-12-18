@@ -160,16 +160,16 @@ class TreeHandler:
                 item.setExpanded(True)
                 # 展开时会自动触发 on_item_expanded，加载表列表（已经在on_item_expanded中使用延迟执行）
         elif item_type == TreeItemType.TABLE:
-            # 双击表项，查询表数据
+            # 双击表项，在新标签页中查询表数据
             table_info = TreeItemData.get_table_info(item)
             if table_info:
                 database, table_name = table_info
-                # 查询表数据（使用延迟执行，避免阻塞）
+                # 在新标签页中查询表数据（使用延迟执行，避免阻塞）
                 def query_data():
                     # 先切换到该连接和数据库
                     self.main_window.set_current_connection(connection_id, database=database, from_combo=True)
-                    # 然后查询表数据
-                    self.main_window.query_handler.query_table_data(connection_id, table_name, database)
+                    # 然后在新标签页中查询表数据
+                    self.main_window.query_table_data_in_new_tab(connection_id, table_name, database)
                 QTimer.singleShot(1, query_data)
     
     def on_item_clicked(self, item: QTreeWidgetItem, column: int):
