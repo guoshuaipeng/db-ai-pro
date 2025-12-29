@@ -1732,10 +1732,11 @@ class MainWindow(QMainWindow):
         # 在新的SQL编辑器中显示SQL
         sql_editor.set_sql(sql)
         
-        # 添加新tab（使用表名作为tab标题）
-        tab_title = f"{table_name}"
+        # 添加新tab（使用"库名-表名"格式，默认是查询所以不显示"查询"）
         if database:
-            tab_title = f"{database}.{table_name}"
+            tab_title = f"{database}-{table_name}"
+        else:
+            tab_title = f"{table_name}"
         tab_index = self.right_tab_widget.addTab(query_tab, tab_title)
         
         # 切换到新tab

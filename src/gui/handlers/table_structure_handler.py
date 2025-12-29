@@ -43,8 +43,8 @@ class TableStructureHandler:
         )
         create_table_tab.execute_sql_signal.connect(self.main_window.execute_query)
         
-        # 添加到tab控件
-        tab_index = self.main_window.right_tab_widget.addTab(create_table_tab, f"新建表 - {self.main_window.current_database}")
+        # 添加到tab控件（使用"新增表-库名"格式）
+        tab_index = self.main_window.right_tab_widget.addTab(create_table_tab, f"新增表-{self.main_window.current_database}")
         self.main_window.right_tab_widget.setCurrentIndex(tab_index)
     
     def copy_table_structure(self, connection_id: str, database: str, table_name: str):
@@ -120,8 +120,8 @@ class TableStructureHandler:
     
     def edit_table_structure(self, connection_id: str, database: str, table_name: str):
         """编辑表结构"""
-        # 检查是否已经存在该表的编辑tab
-        tab_title = f"编辑表 - {table_name}"
+        # 检查是否已经存在该表的编辑tab（使用"编辑表-库名-表名"格式）
+        tab_title = f"编辑表-{database}-{table_name}"
         for i in range(self.main_window.right_tab_widget.count()):
             if self.main_window.right_tab_widget.tabText(i) == tab_title:
                 # 如果已存在，切换到该tab

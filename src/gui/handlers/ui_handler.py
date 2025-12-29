@@ -113,7 +113,7 @@ class UIHandler:
         # 启用tab bar的鼠标滚轮支持
         tab_bar = self.main_window.right_tab_widget.tabBar()
         tab_bar.setUsesScrollButtons(True)  # 启用滚动按钮
-        tab_bar.setElideMode(Qt.TextElideMode.ElideRight)  # 文本超出时省略
+        tab_bar.setElideMode(Qt.TextElideMode.ElideNone)  # 文本超出时不隐藏，显示完整内容
         
         # 设置tab bar的右键菜单
         tab_bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)

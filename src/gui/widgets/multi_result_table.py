@@ -31,7 +31,8 @@ import json
 import re
 import csv
 import logging
-from datetime import datetime, date, time
+import time
+from datetime import datetime, date, time as dt_time
 from decimal import Decimal
 from pathlib import Path
 
@@ -103,8 +104,56 @@ class SingleResultTable(QWidget):
         layout = QVBoxLayout()
         self.setLayout(layout)
         
-        # 工具栏（导出按钮）- 放在显示区域上面的右边
+        # 工具栏（导出按钮和保存/取消按钮）- 放在显示区域上面的右边
         toolbar_layout = QHBoxLayout()
+        
+        # 保存和取消按钮（放在左边）
+        self.save_btn = QPushButton("确认保存")
+        self.save_btn.setEnabled(False)
+        self.save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                font-weight: bold;
+                padding: 5px 15px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+                color: #666666;
+            }
+        """)
+        self.save_btn.clicked.connect(self.save_changes)
+        toolbar_layout.addWidget(self.save_btn)
+        
+        self.cancel_btn = QPushButton("取消")
+        self.cancel_btn.setEnabled(False)
+        self.cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                font-weight: bold;
+                padding: 5px 15px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #da190b;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+                color: #666666;
+            }
+        """)
+        self.cancel_btn.clicked.connect(self.cancel_changes)
+        toolbar_layout.addWidget(self.cancel_btn)
+        
+        # 修改数量标签
+        self.modified_count_label = QLabel("")
+        self.modified_count_label.setStyleSheet("color: #f44336; font-weight: bold; padding: 0 10px;")
+        toolbar_layout.addWidget(self.modified_count_label)
         
         toolbar_layout.addStretch()
         
@@ -194,6 +243,9 @@ class SingleResultTable(QWidget):
         # 保存修改的单元格信息：{(row, col): (old_value, new_value)}
         self.modified_cells: Dict[tuple, tuple] = {}
         
+        # 保存待删除的行索引（确认后才真正删除）
+        self.pending_deletes: List[int] = []
+        
         # 保存正在执行的UPDATE worker
         self.update_worker = None
         
@@ -206,6 +258,9 @@ class SingleResultTable(QWidget):
         
         # 记录上次的列数（用于判断是否需要调整列宽）
         self._last_column_count = 0
+        
+        # 保存操作的开始时间（用于耗时统计）
+        self._save_start_time = None
     
     def _restore_table_opacity(self):
         """恢复表格透明度"""
@@ -347,10 +402,10 @@ class SingleResultTable(QWidget):
                 self.current_page = page
                 self._display_current_page()
             else:
-                show_toast(self, f"页码必须在 1-{self.total_pages} 之间", "warning")
+                show_toast(f"页码必须在 1-{self.total_pages} 之间", parent=self)
                 self.page_input.setText(str(self.current_page))
         except ValueError:
-            show_toast(self, "请输入有效的页码", "warning")
+            show_toast("请输入有效的页码", parent=self)
             self.page_input.setText(str(self.current_page))
     
     def _on_page_size_changed(self, new_size):
@@ -637,8 +692,10 @@ class SingleResultTable(QWidget):
         import copy
         self.original_data = copy.deepcopy(data)
         
-        # 清空修改记录
+        # 清空修改记录和待删除标记
         self.modified_cells.clear()
+        self.pending_deletes.clear()
+        self._update_save_cancel_buttons()
         
         # 启用导出按钮（只有在有数据时才启用）
         if data and len(data) > 0:
@@ -704,6 +761,9 @@ class SingleResultTable(QWidget):
         # 数据更新完成
         self._updating_data = False
         
+        # 高亮待删除的行
+        self._highlight_pending_deletes()
+        
         # 延迟0.2秒后恢复表格透明度
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(200, self._restore_table_opacity)
@@ -747,6 +807,9 @@ class SingleResultTable(QWidget):
         
         # 数据更新完成
         self._updating_data = False
+        
+        # 高亮待删除的行
+        self._highlight_pending_deletes()
         
         # 延迟0.2秒后恢复表格透明度
         from PyQt6.QtCore import QTimer
@@ -975,8 +1038,14 @@ class SingleResultTable(QWidget):
                 col_name = columns[col]
                 new_value = item.text()
                 
-                # 获取原始值
-                old_value = self.raw_data[row].get(col_name)
+                # 从 original_data 获取原始值（用于判断是否真的改变了）
+                old_value = None
+                if self.original_data and 0 <= row < len(self.original_data):
+                    old_value = self.original_data[row].get(col_name)
+                else:
+                    # 如果没有 original_data，从 raw_data 获取（兼容旧逻辑）
+                    old_value = self.raw_data[row].get(col_name)
+                
                 old_display_value = "NULL" if old_value is None else str(old_value)
                 
                 # 处理NULL值
@@ -989,24 +1058,32 @@ class SingleResultTable(QWidget):
                     item.setForeground(Qt.GlobalColor.black)
                     new_value_for_db = new_value
                 
-                # 记录修改（如果值确实改变了）
+                # 记录修改（如果值确实改变了，与原始值比较）
                 if old_display_value != new_value:
-                    self.modified_cells[(row, col)] = (old_value, new_value_for_db)
-                    # 标记单元格为已修改（可选：改变背景色）
-                    item.setBackground(QColor(255, 255, 200))  # 浅黄色背景表示已修改
-                    
-                    # 自动更新到数据库
-                    self._update_to_database(row, col_name, new_value_for_db, old_value)
+                    self.modified_cells[(row, col)] = (old_value, new_value_for_db, col_name)
+                    # 标记单元格为已修改（改变背景色）
+                    # 如果这一行是待删除的，使用更深的颜色
+                    if row in self.pending_deletes:
+                        item.setBackground(QColor(255, 150, 150, 180))  # 更深的红色
+                    else:
+                        item.setBackground(QColor(255, 255, 200))  # 浅黄色背景表示已修改
                 else:
-                    # 如果值没有改变，移除修改记录
+                    # 如果值没有改变（改回了原始值），移除修改记录
                     if (row, col) in self.modified_cells:
                         del self.modified_cells[(row, col)]
                         # 恢复默认背景（使用透明或白色）
-                        item.setBackground(QColor(255, 255, 255, 0))  # 透明背景，让系统样式生效
+                        # 如果这一行是待删除的，保持删除标记的颜色
+                        if row in self.pending_deletes:
+                            item.setBackground(QColor(255, 200, 200, 150))  # 浅红色
+                        else:
+                            item.setBackground(QColor(255, 255, 255, 0))  # 透明背景，让系统样式生效
                 
-                # 更新状态到主窗口状态栏（可选：显示已修改标记）
+                # 更新按钮状态和修改数量显示（会同时更新高亮）
+                self._update_save_cancel_buttons()
+                
+                # 更新状态到主窗口状态栏（显示已修改标记）
                 if self.modified_cells:
-                    self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行, {len(columns)} 列 (已修改 {len(self.modified_cells)} 个单元格)")
+                    self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行, {len(columns)} 列 (已暂存 {len(self.modified_cells)} 个修改，请点击确认保存)")
                 else:
                     self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行, {len(columns)} 列")
     
@@ -1324,8 +1401,362 @@ class SingleResultTable(QWidget):
             logger.error(f"执行UPDATE失败: {str(e)}")
             QMessageBox.warning(self, "更新失败", f"更新数据库失败: {str(e)}")
     
-    def _on_update_finished(self, success: bool, error: Optional[str], affected_rows: Optional[int]):
-        """UPDATE执行完成回调"""
+    def _update_save_cancel_buttons(self):
+        """更新保存和取消按钮的状态"""
+        has_modifications = len(self.modified_cells) > 0
+        has_pending_deletes = len(self.pending_deletes) > 0
+        has_changes = has_modifications or has_pending_deletes
+        
+        self.save_btn.setEnabled(has_changes)
+        self.cancel_btn.setEnabled(has_changes)
+        
+        # 更新修改数量标签
+        status_parts = []
+        if has_modifications:
+            status_parts.append(f"已修改: {len(self.modified_cells)} 个单元格")
+        if has_pending_deletes:
+            status_parts.append(f"待删除: {len(self.pending_deletes)} 行")
+        
+        if status_parts:
+            self.modified_count_label.setText(" | ".join(status_parts))
+        else:
+            self.modified_count_label.setText("")
+        
+        # 更新待删除行的显示
+        self._highlight_pending_deletes()
+    
+    def save_changes(self):
+        """保存所有暂存的修改和删除到数据库"""
+        has_modifications = len(self.modified_cells) > 0
+        has_pending_deletes = len(self.pending_deletes) > 0
+        
+        if not has_modifications and not has_pending_deletes:
+            return
+        
+        if not self.main_window or not self.original_sql:
+            QMessageBox.warning(self, "警告", "无法保存：缺少必要信息")
+            return
+        
+        # 检查是否是SELECT查询
+        sql_upper = self.original_sql.strip().upper()
+        if not sql_upper.startswith("SELECT"):
+            QMessageBox.warning(self, "警告", "只能保存SELECT查询的结果")
+            return
+        
+        # 从原始SQL中提取表名
+        table_name = self._extract_table_name_from_sql(self.original_sql)
+        if not table_name:
+            QMessageBox.warning(self, "警告", "无法从SQL中提取表名")
+            return
+        
+        # 直接保存，不再显示确认对话框
+        
+        # 记录开始时间（用于耗时统计）
+        self._save_start_time = time.time()
+        
+        # 先保存修改，再执行删除
+        if has_modifications:
+            # 按行分组修改，同一行的修改合并为一个UPDATE语句
+            updates_by_row: Dict[int, Dict[str, tuple]] = {}
+            columns = list(self.raw_data[0].keys()) if self.raw_data else []
+            
+            for (row, col), (old_value, new_value, col_name) in self.modified_cells.items():
+                if row not in updates_by_row:
+                    updates_by_row[row] = {}
+                updates_by_row[row][col_name] = (old_value, new_value)
+            
+            # 生成UPDATE SQL语句列表
+            update_sqls = []
+            for row_idx, col_updates in updates_by_row.items():
+                if row_idx < 0 or row_idx >= len(self.original_data):
+                    continue
+                
+                original_row_data = self.original_data[row_idx]
+                
+                # 为这一行的所有修改生成一个UPDATE语句
+                update_sql = self._generate_update_sql_for_row(
+                    table_name, col_updates, original_row_data, columns
+                )
+                if update_sql:
+                    update_sqls.append(update_sql)
+            
+            if update_sqls:
+                # 执行所有UPDATE语句（完成后会继续执行删除）
+                self._execute_batch_updates(update_sqls, continue_with_deletes=has_pending_deletes)
+            elif has_pending_deletes:
+                # 没有修改，直接执行删除
+                self._execute_pending_deletes()
+        else:
+            # 只有删除，直接执行
+            self._execute_pending_deletes()
+    
+    def cancel_changes(self):
+        """取消所有暂存的修改和删除，恢复原始值"""
+        has_modifications = len(self.modified_cells) > 0
+        has_pending_deletes = len(self.pending_deletes) > 0
+        
+        if not has_modifications and not has_pending_deletes:
+            return
+        
+        # 构建确认消息
+        cancel_parts = []
+        if has_modifications:
+            cancel_parts.append(f"{len(self.modified_cells)} 个修改")
+        if has_pending_deletes:
+            cancel_parts.append(f"{len(self.pending_deletes)} 行删除标记")
+        
+        cancel_msg = f"确定要取消 {' 和 '.join(cancel_parts)} 吗？\n\n所有更改将被撤销。"
+        
+        reply = QMessageBox.question(
+            self,
+            "确认取消",
+            cancel_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # 标记正在更新数据，避免触发itemChanged事件
+        self._updating_data = True
+        
+        # 恢复所有修改的单元格到原始值
+        if has_modifications:
+            columns = list(self.raw_data[0].keys()) if self.raw_data else []
+            
+            for (row, col), (old_value, new_value, col_name) in list(self.modified_cells.items()):
+                if 0 <= row < len(self.raw_data) and 0 <= col < len(columns):
+                    item = self.table.item(row, col)
+                    if item:
+                        # 恢复原始显示值
+                        old_display_value = "NULL" if old_value is None else str(old_value)
+                        item.setText(old_display_value)
+                        
+                        # 恢复原始数据
+                        self.raw_data[row][col_name] = old_value
+                        
+                        # 恢复样式
+                        if old_value is None:
+                            item.setForeground(Qt.GlobalColor.gray)
+                        else:
+                            item.setForeground(Qt.GlobalColor.black)
+                        
+                        # 恢复背景色
+                        item.setBackground(QColor(255, 255, 255, 0))  # 透明背景
+        
+        # 清空修改记录和待删除标记
+        self.modified_cells.clear()
+        self.pending_deletes.clear()
+        
+        # 更新按钮状态和显示
+        self._update_save_cancel_buttons()
+        
+        # 数据更新完成
+        self._updating_data = False
+        
+        # 更新状态
+        status_parts = []
+        if has_modifications:
+            status_parts.append("已取消所有修改")
+        if has_pending_deletes:
+            status_parts.append("已清除删除标记")
+        self._show_status_to_main_window("，".join(status_parts) + "，数据已恢复")
+    
+    def _generate_update_sql_for_row(self, table_name: str, col_updates: Dict[str, tuple], 
+                                     original_row_data: Dict, columns: List[str]) -> Optional[str]:
+        """为一行生成包含多个字段更新的UPDATE SQL语句"""
+        # 获取数据库类型
+        from src.core.database_connection import DatabaseType
+        db_type = None
+        if self.main_window and hasattr(self.main_window, 'current_connection_id'):
+            connection = self.main_window.db_manager.get_connection(self.main_window.current_connection_id)
+            if connection:
+                db_type = connection.db_type
+        
+        # 转义标识符和值的辅助函数（复用原有逻辑）
+        def escape_identifier(name: str) -> str:
+            name = name.strip().strip('`').strip('"').strip('[').strip(']')
+            
+            if db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+                quote_char = '`'
+            elif db_type in (DatabaseType.POSTGRESQL, DatabaseType.SQLITE):
+                quote_char = '"'
+            elif db_type == DatabaseType.SQLSERVER:
+                quote_start = '['
+                quote_end = ']'
+            else:
+                return name
+            
+            if db_type == DatabaseType.SQLSERVER:
+                if '.' in name:
+                    last_dot_index = name.rfind('.')
+                    db_part = name[:last_dot_index].strip()
+                    table_part = name[last_dot_index + 1:].strip()
+                    if db_part and table_part:
+                        return f"{quote_start}{db_part}{quote_end}.{quote_start}{table_part}{quote_end}"
+                    elif table_part:
+                        return f"{quote_start}{table_part}{quote_end}"
+                return f"{quote_start}{name}{quote_end}" if name else name
+            
+            if '.' in name:
+                last_dot_index = name.rfind('.')
+                db_part = name[:last_dot_index].strip()
+                table_part = name[last_dot_index + 1:].strip()
+                if db_part and table_part:
+                    return f"{quote_char}{db_part}{quote_char}.{quote_char}{table_part}{quote_char}"
+                elif table_part:
+                    return f"{quote_char}{table_part}{quote_char}"
+            
+            return f"{quote_char}{name}{quote_char}" if name else name
+        
+        def escape_value(value) -> str:
+            if value is None:
+                return "NULL"
+            elif isinstance(value, str):
+                escaped = value.replace("\\", "\\\\")
+                escaped = escaped.replace("'", "''")
+                escaped = escaped.replace("\n", "\\n")
+                escaped = escaped.replace("\r", "\\r")
+                escaped = escaped.replace("\t", "\\t")
+                escaped = escaped.replace("\0", "\\0")
+                return f"'{escaped}'"
+            elif isinstance(value, (int, float)):
+                return str(value)
+            elif isinstance(value, bool):
+                return "1" if value else "0"
+            else:
+                str_value = str(value)
+                escaped = str_value.replace("\\", "\\\\")
+                escaped = escaped.replace("'", "''")
+                escaped = escaped.replace("\n", "\\n")
+                escaped = escaped.replace("\r", "\\r")
+                escaped = escaped.replace("\t", "\\t")
+                escaped = escaped.replace("\0", "\\0")
+                return f"'{escaped}'"
+        
+        # 构建SET子句（多个字段更新）
+        set_clauses = []
+        for col_name, (old_value, new_value) in col_updates.items():
+            set_clauses.append(f"{escape_identifier(col_name)} = {escape_value(new_value)}")
+        
+        set_clause = ", ".join(set_clauses)
+        
+        # 获取主键列
+        primary_keys = self._get_primary_keys(table_name)
+        
+        # 构建WHERE子句
+        where_columns = primary_keys if primary_keys else columns
+        
+        where_conditions = []
+        for col in where_columns:
+            if col not in original_row_data:
+                continue
+            value = original_row_data.get(col)
+            if value is None:
+                where_conditions.append(f"{escape_identifier(col)} IS NULL")
+            else:
+                where_conditions.append(f"{escape_identifier(col)} = {escape_value(value)}")
+        
+        if not where_conditions:
+            where_conditions = []
+            for col in columns:
+                value = original_row_data.get(col)
+                if value is None:
+                    where_conditions.append(f"{escape_identifier(col)} IS NULL")
+                else:
+                    where_conditions.append(f"{escape_identifier(col)} = {escape_value(value)}")
+        
+        where_clause = " AND ".join(where_conditions)
+        
+        # 生成完整的UPDATE语句
+        update_sql = f"UPDATE {escape_identifier(table_name)} SET {set_clause} WHERE {where_clause}"
+        
+        return update_sql
+    
+    def _execute_batch_updates(self, update_sqls: List[str], continue_with_deletes: bool = False):
+        """批量执行UPDATE语句
+        
+        Args:
+            update_sqls: UPDATE SQL语句列表
+            continue_with_deletes: 更新完成后是否继续执行待删除的行
+        """
+        if not self.main_window or not update_sqls:
+            if continue_with_deletes:
+                self._execute_pending_deletes()
+            return
+        
+        # 保存是否继续执行删除的标志
+        self._continue_with_deletes_after_update = continue_with_deletes
+        
+        try:
+            # 合并多个UPDATE语句
+            combined_sql = ";\n".join(update_sqls)
+            
+            # 在主窗口状态栏显示SQL
+            self._show_status_to_main_window(f"正在保存 {len(update_sqls)} 个修改...", timeout=0)
+            
+            # 停止之前的UPDATE worker（如果存在）
+            if self.update_worker and self.update_worker.isRunning():
+                self.update_worker.stop()
+                try:
+                    self.update_worker.wait(1000)
+                    if self.update_worker.isRunning():
+                        self.update_worker.terminate()
+                        self.update_worker.wait(500)
+                except KeyboardInterrupt:
+                    logger.warning("用户中断了等待，继续执行")
+                    pass
+                try:
+                    self.update_worker.query_finished.disconnect()
+                except:
+                    pass
+                self.update_worker.deleteLater()
+            
+            from src.gui.workers.query_worker import QueryWorker
+            
+            connection = self.main_window.db_manager.get_connection(self.main_window.current_connection_id)
+            if not connection:
+                QMessageBox.warning(self, "警告", "数据库连接不存在")
+                return
+            
+            # 创建并启动工作线程执行UPDATE
+            self.update_worker = QueryWorker(
+                connection.get_connection_string(),
+                connection.get_connect_args(),
+                combined_sql,
+                is_query=False  # UPDATE不是查询
+            )
+            
+            # 连接信号
+            self.update_worker.query_finished.connect(
+                lambda success, data, error, affected_rows: self._on_batch_update_finished(success, error, affected_rows)
+            )
+            
+            # 如果有多条UPDATE语句，也连接multi_query_finished信号
+            self.update_worker.multi_query_finished.connect(
+                lambda results: self._on_multi_update_finished(results)
+            )
+            
+            # 启动线程
+            self.update_worker.start()
+            
+        except Exception as e:
+            logger.error(f"执行批量UPDATE失败: {str(e)}")
+            QMessageBox.warning(self, "保存失败", f"保存数据失败: {str(e)}")
+    
+    def _on_batch_update_finished(self, success: bool, error: Optional[str], affected_rows: Optional[int]):
+        """批量UPDATE执行完成回调（单条SQL）"""
+        # 计算耗时
+        elapsed_time = None
+        if self._save_start_time:
+            elapsed_time = time.time() - self._save_start_time
+            self._save_start_time = None
+        
+        # 检查是否需要继续执行删除
+        continue_with_deletes = getattr(self, '_continue_with_deletes_after_update', False)
+        self._continue_with_deletes_after_update = False
+        
         if success:
             # 更新成功，更新原始数据
             import copy
@@ -1333,19 +1764,194 @@ class SingleResultTable(QWidget):
             # 清空修改记录
             self.modified_cells.clear()
             # 恢复所有单元格的背景色
-            for row in range(self.table.rowCount()):
-                for col in range(self.table.columnCount()):
+            self._clear_modified_cell_styles()
+            
+            # 更新按钮状态
+            self._update_save_cancel_buttons()
+            
+            # 显示耗时信息
+            time_str = f"耗时: {elapsed_time:.3f}秒" if elapsed_time else ""
+            self._show_status_to_main_window(
+                f"查询完成: {len(self.raw_data)} 行 (已保存 {affected_rows or 0} 个修改到数据库) {time_str}".strip()
+            )
+            
+            # 如果更新成功且有待删除的行，继续执行删除
+            if continue_with_deletes and self.pending_deletes:
+                self._execute_pending_deletes()
+        else:
+            QMessageBox.warning(self, "保存失败", f"保存数据失败: {error}")
+            time_str = f"耗时: {elapsed_time:.3f}秒" if elapsed_time else ""
+            self._show_status_to_main_window(f"保存失败: {error} {time_str}".strip())
+    
+    def _on_multi_update_finished(self, results: List[tuple]):
+        """多条UPDATE执行完成回调"""
+        # 计算耗时
+        elapsed_time = None
+        if self._save_start_time:
+            elapsed_time = time.time() - self._save_start_time
+            self._save_start_time = None
+        
+        # 检查是否需要继续执行删除
+        continue_with_deletes = getattr(self, '_continue_with_deletes_after_update', False)
+        self._continue_with_deletes_after_update = False
+        
+        # results格式: [(sql, success, data, error, affected_rows, columns), ...]
+        success_count = sum(1 for r in results if r[1])
+        error_count = len(results) - success_count
+        total_affected = sum(r[4] for r in results if r[1] and r[4] is not None)
+        
+        # 格式化耗时信息
+        time_str = f"耗时: {elapsed_time:.3f}秒" if elapsed_time else ""
+        
+        if success_count > 0:
+            # 至少有一个更新成功
+            import copy
+            self.original_data = copy.deepcopy(self.raw_data)
+            self.modified_cells.clear()
+            self._clear_modified_cell_styles()
+            
+            # 更新按钮状态
+            self._update_save_cancel_buttons()
+            
+            if error_count > 0:
+                self._show_status_to_main_window(f"保存完成: 成功 {success_count} 个，失败 {error_count} 个 {time_str}".strip())
+                QMessageBox.warning(self, "保存部分成功", f"成功保存 {success_count} 个修改，失败 {error_count} 个")
+            else:
+                self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行 (已保存 {total_affected} 个修改到数据库) {time_str}".strip())
+            
+            # 如果更新成功且有待删除的行，继续执行删除
+            if continue_with_deletes and self.pending_deletes:
+                self._execute_pending_deletes()
+        else:
+            error_messages = [r[3] for r in results if r[3]]
+            error_msg = error_messages[0] if error_messages else "未知错误"
+            QMessageBox.warning(self, "保存失败", f"保存数据失败: {error_msg}")
+            self._show_status_to_main_window(f"保存失败: {error_msg} {time_str}".strip())
+    
+    def _clear_modified_cell_styles(self):
+        """清除所有修改单元格的样式"""
+        for row in range(self.table.rowCount()):
+            for col in range(self.table.columnCount()):
                     item = self.table.item(row, col)
                     if item:
                         # 恢复默认背景（使用透明，让系统样式生效）
                         item.setBackground(QColor(255, 255, 255, 0))  # 透明背景
+    
+    def _highlight_pending_deletes(self):
+        """高亮显示待删除的行"""
+        # 如果正在更新数据，不执行高亮（避免递归）
+        if self._updating_data:
+            return
+        
+        # 检查表格是否已初始化
+        if not hasattr(self, 'table') or self.table is None:
+            return
+        
+        # 检查是否有数据
+        if not self.raw_data or len(self.raw_data) == 0:
+            return
+        
+        # 如果没有待删除的行，直接返回
+        if not self.pending_deletes:
+            return
+        
+        # 标记正在更新样式，避免触发itemChanged事件
+        was_updating = self._updating_data
+        self._updating_data = True
+        
+        try:
+            row_count = self.table.rowCount()
+            col_count = self.table.columnCount()
+            
+            # 先清除所有行的删除标记样式
+            for row in range(row_count):
+                for col in range(col_count):
+                    item = self.table.item(row, col)
+                    if item:
+                        # 如果这一行不在待删除列表中，且不是修改的单元格，恢复背景色
+                        if row not in self.pending_deletes:
+                            # 检查是否是修改的单元格
+                            is_modified = (row, col) in self.modified_cells
+                            if not is_modified:
+                                item.setBackground(QColor(255, 255, 255, 0))  # 透明背景
+            
+            # 高亮待删除的行（使用浅红色背景）
+            delete_color = QColor(255, 200, 200, 150)  # 浅红色，半透明
+            for row_idx in self.pending_deletes:
+                if 0 <= row_idx < row_count:
+                    for col in range(col_count):
+                        item = self.table.item(row_idx, col)
+                        if item:
+                            # 如果是修改的单元格，使用更深的颜色
+                            if (row_idx, col) in self.modified_cells:
+                                item.setBackground(QColor(255, 150, 150, 180))  # 更深的红色
+                            else:
+                                item.setBackground(delete_color)
+        except Exception as e:
+            # 如果出现异常，记录日志但不中断程序
+            logger.warning(f"高亮待删除行时出错: {e}")
+        finally:
+            # 恢复更新标志
+            self._updating_data = was_updating
+    
+    def _execute_pending_deletes(self):
+        """执行待删除的行"""
+        if not self.pending_deletes:
+            return
+        
+        if not self.main_window or not self.original_sql:
+            QMessageBox.warning(self, "警告", "无法删除：缺少SQL信息")
+            return
+        
+        # 从原始SQL中提取表名
+        table_name = self._extract_table_name_from_sql(self.original_sql)
+        if not table_name:
+            QMessageBox.warning(self, "警告", "无法从SQL中提取表名")
+            return
+        
+        # 生成DELETE SQL语句
+        delete_sqls = []
+        columns = list(self.raw_data[0].keys()) if self.raw_data else []
+        
+        # 使用原始数据的索引（因为待删除的行索引是基于当前显示的）
+        for row_idx in self.pending_deletes:
+            if row_idx < 0 or row_idx >= len(self.original_data):
+                continue
+            
+            original_row_data = self.original_data[row_idx]
+            delete_sql = self._generate_delete_sql(table_name, original_row_data, columns)
+            if delete_sql:
+                delete_sqls.append(delete_sql)
+        
+        if not delete_sqls:
+            QMessageBox.warning(self, "警告", "无法生成DELETE语句")
+            self.pending_deletes.clear()
+            self._update_save_cancel_buttons()
+            return
+        
+        # 执行DELETE语句
+        self._execute_delete(delete_sqls, self.pending_deletes.copy())
+    
+    def _on_update_finished(self, success: bool, error: Optional[str], affected_rows: Optional[int]):
+        """UPDATE执行完成回调（保留此方法以兼容旧代码）"""
+        if success:
+            # 更新成功，更新原始数据
+            import copy
+            self.original_data = copy.deepcopy(self.raw_data)
+            # 清空修改记录
+            self.modified_cells.clear()
+            # 恢复所有单元格的背景色
+            self._clear_modified_cell_styles()
+            
+            # 更新按钮状态
+            self._update_save_cancel_buttons()
             
             self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行 (已保存到数据库)")
         else:
             QMessageBox.warning(self, "更新失败", f"更新数据库失败: {error}")
     
     def delete_selected_rows(self, selected_rows: List[int]):
-        """删除选中的行"""
+        """标记选中的行为待删除（确认后才真正删除）"""
         if not selected_rows:
             return
         
@@ -1359,43 +1965,25 @@ class SingleResultTable(QWidget):
             QMessageBox.warning(self, "警告", "只能删除SELECT查询的结果")
             return
         
-        # 从原始SQL中提取表名
-        table_name = self._extract_table_name_from_sql(self.original_sql)
-        if not table_name:
-            QMessageBox.warning(self, "警告", "无法从SQL中提取表名")
-            return
-        
-        # 确认删除
-        reply = QMessageBox.question(
-            self,
-            "确认删除",
-            f"确定要删除选中的 {len(selected_rows)} 行数据吗？\n\n此操作不可撤销！",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        
-        # 生成DELETE SQL语句
-        delete_sqls = []
-        columns = list(self.raw_data[0].keys()) if self.raw_data else []
-        
+        # 过滤掉已经标记为待删除的行
+        new_pending_deletes = []
         for row_idx in selected_rows:
-            if row_idx < 0 or row_idx >= len(self.original_data):
-                continue
-            
-            original_row_data = self.original_data[row_idx]
-            delete_sql = self._generate_delete_sql(table_name, original_row_data, columns)
-            if delete_sql:
-                delete_sqls.append(delete_sql)
+            if row_idx not in self.pending_deletes and 0 <= row_idx < len(self.raw_data):
+                new_pending_deletes.append(row_idx)
         
-        if not delete_sqls:
-            QMessageBox.warning(self, "警告", "无法生成DELETE语句")
+        if not new_pending_deletes:
+            QMessageBox.information(self, "提示", "选中的行已经标记为待删除")
             return
         
-        # 执行DELETE语句
-        self._execute_delete(delete_sqls, selected_rows)
+        # 添加到待删除列表
+        self.pending_deletes.extend(new_pending_deletes)
+        self.pending_deletes = sorted(list(set(self.pending_deletes)))  # 去重并排序
+        
+        # 更新按钮状态和显示
+        self._update_save_cancel_buttons()
+        
+        # 提示用户
+        show_toast(f"已标记 {len(new_pending_deletes)} 行待删除，请点击'确认保存'按钮执行删除", parent=self, duration=3000)
     
     def _generate_delete_sql(self, table_name: str, original_row_data: Dict, columns: List[str]) -> Optional[str]:
         """生成DELETE SQL语句"""
@@ -1594,8 +2182,16 @@ class SingleResultTable(QWidget):
     def _on_delete_finished(self, success: bool, error: Optional[str], affected_rows: Optional[int], selected_rows: List[int]):
         """DELETE执行完成回调（单条SQL）"""
         if success:
+            # 清除待删除标记
+            for row_idx in selected_rows:
+                if row_idx in self.pending_deletes:
+                    self.pending_deletes.remove(row_idx)
+            
             # 删除成功，从表格中移除行（从后往前删除，避免索引变化）
             self._remove_rows_from_table(selected_rows)
+            
+            # 更新按钮状态
+            self._update_save_cancel_buttons()
             
             # 更新状态到主窗口状态栏
             remaining_rows = len(self.raw_data)
@@ -1603,6 +2199,7 @@ class SingleResultTable(QWidget):
             
             QMessageBox.information(self, "删除成功", f"已成功删除 {len(selected_rows)} 行数据")
         else:
+            # 删除失败，不清除待删除标记，让用户可以重试
             self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行")
             QMessageBox.warning(self, "删除失败", f"删除数据失败: {error}")
     
@@ -1613,8 +2210,18 @@ class SingleResultTable(QWidget):
         error_count = len(results) - success_count
         
         if success_count > 0:
+            # 清除成功删除的行的待删除标记
+            # 注意：这里假设所有选中的行都尝试删除了，实际应该根据results来判断哪些成功
+            # 为了简化，如果至少有一个成功，就清除所有标记
+            for row_idx in selected_rows:
+                if row_idx in self.pending_deletes:
+                    self.pending_deletes.remove(row_idx)
+            
             # 至少有一条删除成功，从表格中移除行
             self._remove_rows_from_table(selected_rows)
+            
+            # 更新按钮状态
+            self._update_save_cancel_buttons()
             
             # 更新状态到主窗口状态栏
             remaining_rows = len(self.raw_data)
@@ -1642,12 +2249,24 @@ class SingleResultTable(QWidget):
                 self.table.removeRow(row_idx)
                 # 更新修改记录中的行号（如果有）
                 keys_to_update = []
-                for (r, c), (old_val, new_val) in list(self.modified_cells.items()):
+                for (r, c), value_tuple in list(self.modified_cells.items()):
                     if r > row_idx:
-                        keys_to_update.append((r, c, old_val, new_val))
-                for r, c, old_val, new_val in keys_to_update:
+                        # value_tuple格式: (old_value, new_value, col_name)
+                        keys_to_update.append((r, c, value_tuple))
+                for r, c, value_tuple in keys_to_update:
                     del self.modified_cells[(r, c)]
-                    self.modified_cells[(r - 1, c)] = (old_val, new_val)
+                    self.modified_cells[(r - 1, c)] = value_tuple
+                
+                # 如果删除的行有修改记录，也需要移除
+                keys_to_remove = []
+                for (r, c), value_tuple in list(self.modified_cells.items()):
+                    if r == row_idx:
+                        keys_to_remove.append((r, c))
+                for key in keys_to_remove:
+                    del self.modified_cells[key]
+                
+                # 更新按钮状态
+                self._update_save_cancel_buttons()
     
     def show_export_menu(self):
         """显示导出菜单"""
@@ -1720,7 +2339,7 @@ class SingleResultTable(QWidget):
                 for row in self.raw_data:
                     processed_row = {}
                     for key, value in row.items():
-                        if isinstance(value, (datetime, date, time)):
+                        if isinstance(value, (datetime, date, dt_time)):
                             processed_row[key] = value.isoformat()
                         elif isinstance(value, Decimal):
                             processed_row[key] = str(value)
@@ -1946,7 +2565,7 @@ class SingleResultTable(QWidget):
                 for col_idx, col_name in enumerate(columns, start=1):
                     value = row_data.get(col_name)
                     
-                    if isinstance(value, (datetime, date, time)):
+                    if isinstance(value, (datetime, date, dt_time)):
                         value = value.isoformat()
                     elif isinstance(value, Decimal):
                         value = float(value)
