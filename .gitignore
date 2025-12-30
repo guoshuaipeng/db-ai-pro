@@ -160,3 +160,4 @@ temp/
 *.sqlite
 /tests/test_openapi_client.py
 /tests/test_openapi_broker.py
+/tests/test_openapi_member_client.py
