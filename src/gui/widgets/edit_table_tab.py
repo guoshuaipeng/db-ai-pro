@@ -61,6 +61,7 @@ class EditTableTab(QWidget):
         self.schema_worker = None  # 表结构工作线程
         self.index_worker = None  # 索引工作线程
         self.current_table_schema = ""  # 当前表结构
+        self._execute_worker = None  # 执行SQL的工作线程
         self.init_ui()
         # 异步加载表结构
         self.load_table_schema()
@@ -911,12 +912,77 @@ class EditTableTab(QWidget):
         menu.exec(self.schema_table.mapToGlobal(position))
     
     def execute_sql(self):
-        """执行SQL"""
+        """执行SQL（使用当前tab的数据库连接）"""
         sql = self.sql_edit.toPlainText().strip()
         if not sql:
             return
         
-        self.execute_sql_signal.emit(sql)
+        # 使用当前tab的数据库连接执行SQL，而不是主窗口的当前连接
+        if not self.db_manager or not self.connection_id:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "警告", "数据库连接信息不存在")
+            return
+        
+        connection = self.db_manager.get_connection(self.connection_id)
+        if not connection:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "警告", "连接不存在")
+            return
+        
+        # 使用当前tab的连接和数据库执行SQL
+        from src.gui.workers.query_worker import QueryWorker
+        
+        # 停止之前的worker（如果有）
+        if hasattr(self, '_execute_worker') and self._execute_worker:
+            try:
+                if self._execute_worker.isRunning():
+                    self._execute_worker.stop()
+                    if not self._execute_worker.wait(2000):
+                        self._execute_worker.terminate()
+                        self._execute_worker.wait(500)
+                try:
+                    self._execute_worker.query_finished.disconnect()
+                    self._execute_worker.error_occurred.disconnect()
+                except:
+                    pass
+                self._execute_worker.deleteLater()
+            except RuntimeError:
+                pass
+            self._execute_worker = None
+        
+        # 创建worker执行SQL
+        self._execute_worker = QueryWorker(
+            connection.get_connection_string(),
+            connection.get_connect_args(),
+            sql,
+            is_query=False  # ALTER TABLE不是查询
+        )
+        
+        # 连接信号
+        self._execute_worker.query_finished.connect(self._on_execute_finished)
+        
+        # 启动worker
+        self._execute_worker.start()
+        self.set_status("正在执行修改表语句...", timeout=0)
+    
+    def _on_execute_finished(self, success: bool, data, error: Optional[str], affected_rows: Optional[int], columns=None):
+        """SQL执行完成回调"""
+        if success:
+            self.set_status(f"执行成功: 影响 {affected_rows or 0} 行")
+            # 自动刷新表结构
+            self.load_table_schema(force_refresh=True)
+            # 显示成功消息
+            from src.utils.toast_manager import show_success
+            show_success("修改表结构成功")
+        else:
+            self.set_status(f"执行失败: {error}", is_error=True)
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "执行失败", f"执行SQL失败: {error}")
+        
+        # 清理worker
+        if self._execute_worker:
+            self._execute_worker.deleteLater()
+            self._execute_worker = None
     
     def copy_sql(self):
         """复制SQL到剪贴板"""
@@ -1055,4 +1121,21 @@ class EditTableTab(QWidget):
             except RuntimeError:
                 pass
             self.index_worker = None
+        
+        # 停止execute worker
+        if self._execute_worker:
+            try:
+                if self._execute_worker.isRunning():
+                    self._execute_worker.stop()
+                    if not self._execute_worker.wait(2000):
+                        self._execute_worker.terminate()
+                        self._execute_worker.wait(500)
+                try:
+                    self._execute_worker.query_finished.disconnect()
+                except:
+                    pass
+                self._execute_worker.deleteLater()
+            except RuntimeError:
+                pass
+            self._execute_worker = None
 

@@ -1,6 +1,7 @@
 # GUI框架
 PyQt6>=6.6.0
 PyQt6-Qt6>=6.6.0
+PyQt6-QScintilla>=2.14.0  # QScintilla代码编辑器（支持代码折叠、语法高亮）
 
 # 数据库驱动
 sqlalchemy>=2.0.0  # SQL工具包和ORM

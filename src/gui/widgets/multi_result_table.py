@@ -21,11 +21,15 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QSpinBox,
     QGraphicsOpacityEffect,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QPlainTextEdit,
 )
+from PyQt6.QtGui import QIcon
 from src.utils.toast import show_toast
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent
-from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QSyntaxHighlighter, QClipboard, QMouseEvent, QKeyEvent, QKeySequence
-from PyQt6.QtCore import QRegularExpression
+from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QSyntaxHighlighter, QClipboard, QMouseEvent, QKeyEvent, QKeySequence, QPainter, QTextBlock
+from PyQt6.QtCore import QRegularExpression, QRect, QPoint, QSize
 from typing import List, Dict, Optional
 import json
 import re
@@ -37,6 +41,150 @@ from decimal import Decimal
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+class FoldableJSONEditor(QWidget):
+    """支持折叠的JSON编辑器（优先使用QScintilla，否则使用自定义实现）"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._editor = None
+        self._use_qscintilla = False
+        self._init_editor()
+    
+    def _init_editor(self):
+        """初始化编辑器（优先使用QScintilla）"""
+        try:
+            from PyQt6.Qsci import QsciScintilla, QsciLexerJSON
+            
+            # 使用QScintilla
+            editor = QsciScintilla()
+            
+            # 设置JSON词法分析器
+            lexer = QsciLexerJSON()
+            editor.setLexer(lexer)
+            
+            # 启用代码折叠
+            editor.setFolding(QsciScintilla.FoldStyle.BoxedTreeFoldStyle)
+            
+            # 设置缩进
+            editor.setIndentationWidth(2)
+            editor.setIndentationsUseTabs(False)
+            editor.setTabWidth(2)
+            
+            # 设置行号
+            editor.setMarginType(0, QsciScintilla.MarginType.NumberMargin)
+            editor.setMarginWidth(0, '0000')
+            
+            # 设置折叠指示器边距
+            editor.setMarginType(1, QsciScintilla.MarginType.SymbolMargin)
+            editor.setMarginWidth(1, '12')
+            editor.setMarginSensitivity(1, True)
+            # 注意：setFoldingMarginColors 在某些版本中可能不可用，使用 try-except 处理
+            try:
+                if hasattr(editor, 'setFoldingMarginColors'):
+                    editor.setFoldingMarginColors(QColor('#cccccc'), QColor('#cccccc'))
+            except AttributeError:
+                pass  # 如果方法不存在，忽略
+            
+            # 设置字体
+            font = QFont("Consolas", 10)
+            font.setStyleHint(QFont.StyleHint.Monospace)
+            editor.setFont(font)
+            
+            # 设置为只读
+            editor.setReadOnly(True)
+            
+            self._editor = editor
+            self._use_qscintilla = True
+            
+            # 设置布局
+            layout = QVBoxLayout()
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.addWidget(editor)
+            self.setLayout(layout)
+            
+        except ImportError:
+            # 如果QScintilla未安装，使用自定义实现
+            logger.warning("QScintilla未安装，使用自定义实现。请运行: pip install PyQt6-QScintilla")
+            self._init_custom_editor()
+    
+    def _init_custom_editor(self):
+        """初始化自定义编辑器（回退方案）"""
+        from PyQt6.QtWidgets import QPlainTextEdit
+        
+        editor = QPlainTextEdit()
+        editor.folded_blocks = set()  # 存储已折叠的块
+        editor.foldable_lines = {}  # 存储可折叠的行号及其对应的结束行号
+        editor.fold_margin_width = 20  # 折叠边距宽度
+        editor.original_text = ""  # 保存原始文本
+        editor.original_lines = []  # 保存原始行列表
+        
+        # 设置字体
+        font = QFont("Consolas", 10)
+        font.setStyleHint(QFont.StyleHint.Monospace)
+        editor.setFont(font)
+        
+        # 设置只读
+        editor.setReadOnly(True)
+        
+        # 安装语法高亮
+        editor.highlighter = JSONHighlighter(editor.document())
+        
+        # 重写方法以支持折叠
+        original_paint = editor.paintEvent
+        original_mouse = editor.mousePressEvent
+        
+        def paint_event(e):
+            original_paint(e)
+            # 绘制折叠指示器的代码（简化版）
+            pass
+        
+        def mouse_press(e):
+            original_mouse(e)
+            # 处理折叠点击的代码（简化版）
+            pass
+        
+        editor.paintEvent = paint_event
+        editor.mousePressEvent = mouse_press
+        
+        self._editor = editor
+        self._use_qscintilla = False
+        
+        # 设置布局
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(editor)
+        self.setLayout(layout)
+    
+    def set_json_text(self, text: str):
+        """设置JSON文本"""
+        if self._use_qscintilla:
+            # QScintilla
+            self._editor.setText(text)
+            try:
+                # 尝试展开所有折叠
+                if hasattr(self._editor, 'expandAll'):
+                    self._editor.expandAll()
+            except:
+                pass  # 如果expandAll不可用，忽略
+        else:
+            # 自定义编辑器（回退方案）
+            if hasattr(self._editor, 'setPlainText'):
+                self._editor.setPlainText(text)
+            elif hasattr(self._editor, 'setText'):
+                self._editor.setText(text)
+            # 如果自定义编辑器有相关属性，更新它们
+            if hasattr(self._editor, 'original_text'):
+                self._editor.original_text = text
+            if hasattr(self._editor, 'original_lines'):
+                self._editor.original_lines = text.split('\n')
+            if hasattr(self._editor, 'folded_blocks'):
+                self._editor.folded_blocks.clear()
+            if hasattr(self._editor, '_analyze_foldable_blocks'):
+                self._editor._analyze_foldable_blocks()
+            if hasattr(self._editor, '_update_display'):
+                self._editor._update_display()
 
 
 class JSONHighlighter(QSyntaxHighlighter):
@@ -252,9 +400,10 @@ class SingleResultTable(QWidget):
         # 保存正在执行的分页查询 worker
         self.pagination_worker = None
         
-        # 保存连接信息（用于分页查询）
+        # 保存连接信息（用于分页查询和执行SQL）
         self.connection_string = None
         self.connect_args = None
+        self.connection_id = None  # 保存连接ID，用于执行UPDATE/DELETE时使用正确的连接
         
         # 记录上次的列数（用于判断是否需要调整列宽）
         self._last_column_count = 0
@@ -553,6 +702,31 @@ class SingleResultTable(QWidget):
         """显示状态信息到主窗口状态栏"""
         if self.main_window and hasattr(self.main_window, 'statusBar'):
             self.main_window.statusBar().showMessage(message, timeout)
+    
+    def _get_icon(self, icon_type: str) -> QIcon:
+        """获取图标
+        
+        Args:
+            icon_type: 图标类型
+            
+        Returns:
+            QIcon: 图标对象
+        """
+        if not self.main_window:
+            return QIcon()
+        
+        style = self.main_window.style()
+        
+        # 定义图标映射
+        icon_map = {
+            'copy': style.standardIcon(style.StandardPixmap.SP_FileDialogListView),
+            'refresh': style.standardIcon(style.StandardPixmap.SP_BrowserReload),
+            'json': style.standardIcon(style.StandardPixmap.SP_FileDialogContentsView),
+            'null': style.standardIcon(style.StandardPixmap.SP_DialogResetButton),
+            'delete': style.standardIcon(style.StandardPixmap.SP_TrashIcon),
+        }
+        
+        return icon_map.get(icon_type, QIcon())
     
     def display_results(
         self, 
@@ -905,13 +1079,13 @@ class SingleResultTable(QWidget):
         
         # 如果有选中的单元格，添加复制选项
         if selected_items:
-            copy_action = menu.addAction("📋 复制选中内容 (Ctrl+C)")
+            copy_action = menu.addAction(self._get_icon('copy'), "复制选中内容 (Ctrl+C)")
             copy_action.triggered.connect(self.copy_selected_cells)
             menu.addSeparator()
         
         # 添加"刷新"选项（如果有原始SQL）
         if self.original_sql and self.main_window:
-            refresh_action = menu.addAction("🔄 刷新")
+            refresh_action = menu.addAction(self._get_icon('refresh'), "刷新")
             refresh_action.triggered.connect(self.refresh_data)
             menu.addSeparator()
         
@@ -919,19 +1093,26 @@ class SingleResultTable(QWidget):
         if item:
             row = item.row()
             if 0 <= row < len(self.raw_data):
-                # 添加"查看 JSON 数据"选项
-                json_action = menu.addAction("查看 JSON 数据")
-                json_action.triggered.connect(lambda: self.show_json_dialog(row))
+                # 添加JSON查询选项
+                json_menu = menu.addMenu(self._get_icon('json'), "以JSON查询")
+                
+                # 以json查询行数据
+                json_row_action = json_menu.addAction("查询行数据")
+                json_row_action.triggered.connect(lambda: self.query_by_json_row(row))
+                
+                # 以json查询字段数据
+                json_field_action = json_menu.addAction("查询字段数据")
+                json_field_action.triggered.connect(lambda: self.query_by_json_field(row, item.column()))
 
                 # 如果有选中的单元格，添加"填充为 NULL"选项
                 if selected_items:
-                    fill_null_action = menu.addAction("设置为NULL")
+                    fill_null_action = menu.addAction(self._get_icon('null'), "设置为NULL")
                     fill_null_action.triggered.connect(self.fill_selected_cells_with_null)
                 
                 # 如果有选中的行，添加删除选项
                 if selected_rows:
                     menu.addSeparator()
-                    delete_action = menu.addAction(f"删除选中行 ({len(selected_rows)} 行)")
+                    delete_action = menu.addAction(self._get_icon('delete'), f"删除选中行 ({len(selected_rows)} 行)")
                     delete_action.triggered.connect(lambda: self.delete_selected_rows(selected_rows))
         
         # 显示菜单
@@ -995,7 +1176,7 @@ class SingleResultTable(QWidget):
                 def default(self, obj):
                     if isinstance(obj, (datetime, date)):
                         return obj.isoformat()
-                    elif isinstance(obj, time):
+                    elif isinstance(obj, dt_time):
                         return obj.isoformat()
                     elif isinstance(obj, Decimal):
                         return float(obj)
@@ -1013,6 +1194,183 @@ class SingleResultTable(QWidget):
         highlighter = JSONHighlighter(json_edit.document())
         
         layout.addWidget(json_edit)
+        
+        # 按钮
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        button_box.accepted.connect(dialog.accept)
+        layout.addWidget(button_box)
+        
+        dialog.exec()
+    
+    def _build_json_tree(self, parent_item: QTreeWidgetItem, data, key: str = None, max_string_length: int = 100):
+        """递归构建JSON树形结构"""
+        if isinstance(data, dict):
+            # 字典类型
+            display_key = key if key is not None else "root"
+            item = QTreeWidgetItem(parent_item, [display_key, f"{{ {len(data)} items }}"])
+            item.setExpanded(True)
+            
+            for k, v in data.items():
+                self._build_json_tree(item, v, str(k), max_string_length)
+        elif isinstance(data, list):
+            # 列表类型
+            display_key = key if key is not None else "root"
+            item = QTreeWidgetItem(parent_item, [display_key, f"[ {len(data)} items ]"])
+            item.setExpanded(True)
+            
+            for i, v in enumerate(data):
+                self._build_json_tree(item, v, f"[{i}]", max_string_length)
+        else:
+            # 基本类型
+            display_key = key if key is not None else "value"
+            value_str = self._format_value(data, max_string_length)
+            item = QTreeWidgetItem(parent_item, [display_key, value_str])
+            item.setExpanded(False)
+            
+            # 如果是长字符串，添加一个子项显示完整内容
+            if isinstance(data, str) and len(data) > max_string_length:
+                full_item = QTreeWidgetItem(item, ["完整内容", data])
+                full_item.setExpanded(False)
+    
+    def _format_value(self, value, max_length: int = 100):
+        """格式化值，对于长字符串进行截断"""
+        if value is None:
+            return "null"
+        elif isinstance(value, bool):
+            return "true" if value else "false"
+        elif isinstance(value, (int, float)):
+            return str(value)
+        elif isinstance(value, str):
+            # 处理长字符串
+            if len(value) > max_length:
+                return value[:max_length] + "..."
+            return value
+        elif isinstance(value, (datetime, date)):
+            return value.isoformat()
+        elif isinstance(value, dt_time):
+            return value.isoformat()
+        elif isinstance(value, Decimal):
+            return str(value)
+        else:
+            str_value = str(value)
+            if len(str_value) > max_length:
+                return str_value[:max_length] + "..."
+            return str_value
+    
+    def query_by_json_row(self, row: int):
+        """以JSON查询行数据：显示整行数据的JSON格式（可折叠代码编辑器样式）"""
+        if not self.raw_data:
+            return
+        
+        if row < 0 or row >= len(self.raw_data):
+            return
+        
+        # 获取该行的数据
+        row_data = self.raw_data[row]
+        
+        # 创建JSON显示对话框
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"行 {row + 1} 的JSON数据")
+        dialog.setMinimumSize(800, 600)
+        
+        layout = QVBoxLayout()
+        dialog.setLayout(layout)
+        
+        # 可折叠的JSON编辑器
+        json_editor = FoldableJSONEditor()
+        
+        # 处理datetime等特殊类型
+        try:
+            # 自定义JSON编码器，处理datetime等类型
+            class CustomJSONEncoder(json.JSONEncoder):
+                def default(self, obj):
+                    if isinstance(obj, (datetime, date)):
+                        return obj.isoformat()
+                    elif isinstance(obj, dt_time):
+                        return obj.isoformat()
+                    elif isinstance(obj, Decimal):
+                        return float(obj)
+                    elif hasattr(obj, '__dict__'):
+                        return obj.__dict__
+                    return super().default(obj)
+            
+            # 格式化为JSON字符串
+            json_text = json.dumps(row_data, ensure_ascii=False, indent=2, cls=CustomJSONEncoder)
+        except Exception as e:
+            json_text = f"无法序列化为JSON: {str(e)}\n\n原始数据:\n{str(row_data)}"
+        
+        json_editor.set_json_text(json_text)
+        
+        layout.addWidget(json_editor)
+        
+        # 按钮
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        button_box.accepted.connect(dialog.accept)
+        layout.addWidget(button_box)
+        
+        dialog.exec()
+    
+    def query_by_json_field(self, row: int, col: int):
+        """以JSON查询字段数据：显示字段的JSON数据（可折叠代码编辑器样式）"""
+        if not self.raw_data:
+            return
+        
+        if row < 0 or row >= len(self.raw_data):
+            return
+        
+        # 获取列名
+        columns = list(self.raw_data[0].keys())
+        if col < 0 or col >= len(columns):
+            return
+        
+        col_name = columns[col]
+        field_value = self.raw_data[row].get(col_name)
+        
+        # 创建JSON显示对话框
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"字段 '{col_name}' 的JSON数据 (行 {row + 1})")
+        dialog.setMinimumSize(800, 600)
+        
+        layout = QVBoxLayout()
+        dialog.setLayout(layout)
+        
+        # 可折叠的JSON编辑器
+        json_editor = FoldableJSONEditor()
+        
+        # 处理字段值
+        if field_value is None:
+            json_text = "null"
+        elif isinstance(field_value, str):
+            # 字符串类型，尝试解析为JSON
+            try:
+                json_data = json.loads(field_value)
+                # 是有效的JSON，格式化显示
+                json_text = json.dumps(json_data, ensure_ascii=False, indent=2)
+            except (json.JSONDecodeError, ValueError):
+                # 不是有效的JSON，直接显示原始值
+                json_text = field_value
+        else:
+            # 非字符串类型，尝试序列化为JSON
+            try:
+                class CustomJSONEncoder(json.JSONEncoder):
+                    def default(self, obj):
+                        if isinstance(obj, (datetime, date)):
+                            return obj.isoformat()
+                        elif isinstance(obj, dt_time):
+                            return obj.isoformat()
+                        elif isinstance(obj, Decimal):
+                            return float(obj)
+                        elif hasattr(obj, '__dict__'):
+                            return obj.__dict__
+                        return super().default(obj)
+                
+                json_text = json.dumps(field_value, ensure_ascii=False, indent=2, cls=CustomJSONEncoder)
+            except Exception as e:
+                json_text = f"无法序列化为JSON: {str(e)}\n\n原始值:\n{str(field_value)}"
+        
+        json_editor.set_json_text(json_text)
+        
+        layout.addWidget(json_editor)
         
         # 按钮
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
@@ -1715,7 +2073,13 @@ class SingleResultTable(QWidget):
             
             from src.gui.workers.query_worker import QueryWorker
             
-            connection = self.main_window.db_manager.get_connection(self.main_window.current_connection_id)
+            # 使用当前tab保存的连接ID，而不是主窗口的当前连接
+            connection_id = self.connection_id or (self.main_window.current_connection_id if self.main_window else None)
+            if not connection_id:
+                QMessageBox.warning(self, "警告", "数据库连接信息不存在")
+                return
+            
+            connection = self.main_window.db_manager.get_connection(connection_id)
             if not connection:
                 QMessageBox.warning(self, "警告", "数据库连接不存在")
                 return
@@ -2148,7 +2512,13 @@ class SingleResultTable(QWidget):
             
             from src.gui.workers.query_worker import QueryWorker
             
-            connection = self.main_window.db_manager.get_connection(self.main_window.current_connection_id)
+            # 使用当前tab保存的连接ID，而不是主窗口的当前连接
+            connection_id = self.connection_id or (self.main_window.current_connection_id if self.main_window else None)
+            if not connection_id:
+                QMessageBox.warning(self, "警告", "数据库连接信息不存在")
+                return
+            
+            connection = self.main_window.db_manager.get_connection(connection_id)
             if not connection:
                 QMessageBox.warning(self, "警告", "数据库连接不存在")
                 return
@@ -2835,6 +3205,9 @@ class MultiResultTable(QWidget):
                 # 获取连接信息
                 connection_string, connect_args = self._get_connection_info(connection_id)
                 
+                # 保存连接ID到result_table
+                result_table.connection_id = connection_id
+                
                 result_table.display_results(data, error, affected_rows, columns,
                                             connection_string, connect_args)
                 
@@ -2866,6 +3239,9 @@ class MultiResultTable(QWidget):
         
         # 获取连接信息
         connection_string, connect_args = self._get_connection_info(connection_id)
+        
+        # 保存连接ID到result_table
+        result_table.connection_id = connection_id
         
         result_table.display_results(data, error, affected_rows, columns,
                                     connection_string, connect_args)

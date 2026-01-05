@@ -177,21 +177,8 @@ class SchemaWorker(QThread):
                         col_name = col['name']
                         col_type = str(col['type'])
                         
-                        # 简化类型显示（移除长度信息，保留核心类型）
-                        if 'ENUM' in col_type.upper() or 'enum' in col_type.lower():
-                            col_type = 'ENUM'
-                        elif 'VARCHAR' in col_type or 'CHAR' in col_type:
-                            col_type = 'VARCHAR/STRING'
-                        elif 'INT' in col_type:
-                            col_type = 'INTEGER'
-                        elif 'DECIMAL' in col_type or 'NUMERIC' in col_type:
-                            col_type = 'DECIMAL'
-                        elif 'DATETIME' in col_type or 'TIMESTAMP' in col_type:
-                            col_type = 'DATETIME'
-                        elif 'DATE' in col_type:
-                            col_type = 'DATE'
-                        elif 'TEXT' in col_type:
-                            col_type = 'TEXT'
+                        # 保留完整的类型信息（包括长度），不简化
+                        # 这样在编辑表界面可以看到完整的字段类型，如 VARCHAR(100), INT(11) 等
                         
                         nullable = "可空" if col.get('nullable', True) else "非空"
                         
