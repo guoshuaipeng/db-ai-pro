@@ -89,13 +89,13 @@ class TreeDataHandler:
             display_name = f"{conn.name} ({conn.db_type.value})"
             self.main_window.connection_combo.addItem(display_name, conn.id)
         
-        # 如果当前连接存在，设置下拉框选中项并加载数据库列表
+        # 如果当前连接存在，设置下拉框选中项并延迟加载数据库列表（避免阻塞UI）
         if self.main_window.current_connection_id:
             for i in range(self.main_window.connection_combo.count()):
                 if self.main_window.connection_combo.itemData(i) == self.main_window.current_connection_id:
                     self.main_window.connection_combo.setCurrentIndex(i)
-                    # 加载当前连接的数据库列表
-                    self.main_window.load_databases_for_combo(self.main_window.current_connection_id)
+                    # 延迟加载数据库列表，确保UI先显示
+                    QTimer.singleShot(100, lambda: self.main_window.load_databases_for_combo(self.main_window.current_connection_id))
                     break
         
         # 调整列宽

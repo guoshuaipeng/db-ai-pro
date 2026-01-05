@@ -208,15 +208,26 @@ class FloatingResultWindow(QMainWindow):
         if self.query_worker and self.query_worker.isRunning():
             self.query_worker.stop()
             try:
-                self.query_worker.wait(1000)
-                if self.query_worker.isRunning():
+                # 等待线程结束，最多等待2秒
+                if not self.query_worker.wait(2000):
+                    # 如果等待超时，强制终止
                     self.query_worker.terminate()
                     self.query_worker.wait(500)
+                # 断开信号连接
+                try:
+                    self.query_worker.query_finished.disconnect()
+                except:
+                    pass
+                # 延迟删除，确保线程完全结束
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(200, self.query_worker.deleteLater)
             except KeyboardInterrupt:
                 logger.warning("等待查询中断")
                 pass
             except Exception as e:
                 logger.warning(f"停止查询失败: {str(e)}")
+            finally:
+                self.query_worker = None
         
         # 显示加载状态
         self.statusBar().showMessage("正在刷新查询结果...", 0)
@@ -278,13 +289,16 @@ class FloatingResultWindow(QMainWindow):
             logger.error(f"处理查询结果失败: {str(e)}", exc_info=True)
             self.statusBar().showMessage(f"处理结果失败: {str(e)}", 5000)
         finally:
-            # 清理worker
+            # 清理worker（延迟删除，确保线程已完全结束）
             if self.query_worker:
                 try:
                     self.query_worker.query_finished.disconnect()
                 except:
                     pass
-                self.query_worker.deleteLater()
+                # 只有在线程已经结束时才删除
+                if not self.query_worker.isRunning():
+                    from PyQt6.QtCore import QTimer
+                    QTimer.singleShot(200, self.query_worker.deleteLater)
                 self.query_worker = None
     
     def closeEvent(self, event):
@@ -293,9 +307,23 @@ class FloatingResultWindow(QMainWindow):
         if self.query_worker and self.query_worker.isRunning():
             self.query_worker.stop()
             try:
-                self.query_worker.wait(500)
-            except:
-                pass
+                # 等待线程结束，最多等待2秒
+                if not self.query_worker.wait(2000):
+                    # 如果等待超时，强制终止
+                    self.query_worker.terminate()
+                    self.query_worker.wait(500)
+                # 断开信号连接
+                try:
+                    self.query_worker.query_finished.disconnect()
+                except:
+                    pass
+                # 延迟删除，确保线程完全结束
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(200, self.query_worker.deleteLater)
+            except Exception as e:
+                logger.warning(f"停止查询线程失败: {str(e)}")
+            finally:
+                self.query_worker = None
         
         # 发出信号通知窗口已关闭
         self.window_closed.emit()

@@ -125,10 +125,12 @@ class MainWindow(QMainWindow):
         
         self.ui_handler.init_ui()
         self.setup_connections()
-        self.load_saved_connections()
+        
+        # 先显示UI，然后异步加载连接（避免数据库连接失败时阻塞UI显示）
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(100, self.load_saved_connections)  # 延迟100ms加载连接，确保UI先显示
         
         # 延时启动预加载（避免阻塞启动）
-        from PyQt6.QtCore import QTimer
         QTimer.singleShot(1500, self.preload_handler.start_preload)  # 1.5秒后开始预加载
     
     def closeEvent(self, event):
@@ -685,7 +687,7 @@ class MainWindow(QMainWindow):
             self.set_current_connection(self.current_connection_id, database=database, from_combo=True)
     
     def load_databases_for_combo(self, connection_id: str):
-        """加载连接的数据库列表到下拉框"""
+        """加载连接的数据库列表到下拉框（异步执行，不阻塞UI）"""
         if not connection_id:
             logger.debug("load_databases_for_combo: connection_id 为空")
             return
@@ -697,6 +699,23 @@ class MainWindow(QMainWindow):
         
         logger.info(f"正在加载连接 {connection.name} 的数据库列表...")
         
+        # 停止之前可能正在运行的数据库列表worker（如果有）
+        if connection_id in self.database_list_workers:
+            old_worker = self.database_list_workers[connection_id]
+            if old_worker and old_worker.isRunning():
+                try:
+                    old_worker.databases_ready.disconnect()
+                    old_worker.error_occurred.disconnect()
+                except:
+                    pass
+                old_worker.stop()
+                if not old_worker.wait(200):
+                    old_worker.terminate()
+                    old_worker.wait(100)
+                old_worker.deleteLater()
+            if connection_id in self.database_list_workers:
+                del self.database_list_workers[connection_id]
+        
         # 断开信号避免触发
         try:
             self.database_combo.currentTextChanged.disconnect()
@@ -706,31 +725,93 @@ class MainWindow(QMainWindow):
         # 清空下拉框
         self.database_combo.clear()
         
-        # 获取数据库列表
-        try:
-            databases = self.db_manager.get_databases(connection_id)
-            logger.info(f"获取到 {len(databases)} 个数据库: {databases[:5] if len(databases) > 5 else databases}")
-            for db in databases:
-                self.database_combo.addItem(db, db)
-            
-            # 设置当前数据库
-            if self.current_database:
-                index = self.database_combo.findData(self.current_database)
-                if index >= 0:
-                    self.database_combo.setCurrentIndex(index)
-                    logger.info(f"已设置当前数据库: {self.current_database}")
-            elif databases:
-                # 如果没有指定当前数据库，默认选择第一个
-                self.database_combo.setCurrentIndex(0)
-                logger.info(f"默认选择第一个数据库: {databases[0]}")
-        except Exception as e:
-            logger.warning(f"获取数据库列表失败: {e}", exc_info=True)
+        # 使用后台线程获取数据库列表，避免阻塞UI
+        from src.gui.workers.database_list_worker import DatabaseListWorker
         
-        # 重新连接信号
-        try:
-            self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
-        except:
-            pass
+        # 创建worker来异步获取数据库列表
+        worker = DatabaseListWorker(
+            connection.get_connection_string(),
+            connection.get_connect_args(),
+            connection.db_type
+        )
+        
+        def on_databases_ready(databases: list):
+            """数据库列表加载完成回调"""
+            try:
+                logger.info(f"获取到 {len(databases)} 个数据库: {databases[:5] if len(databases) > 5 else databases}")
+                for db in databases:
+                    self.database_combo.addItem(db, db)
+                
+                # 设置当前数据库（只有在信号已断开时才设置，避免触发循环）
+                try:
+                    # 检查信号是否已断开（通常在load_databases_for_combo开始时断开）
+                    self.database_combo.currentTextChanged.disconnect()
+                    signal_was_connected = False
+                except:
+                    signal_was_connected = True
+                
+                # 只有在信号已断开时才设置当前项（避免触发on_database_combo_changed）
+                if not signal_was_connected:
+                    if self.current_database:
+                        index = self.database_combo.findData(self.current_database)
+                        if index >= 0:
+                            self.database_combo.setCurrentIndex(index)
+                            logger.info(f"已设置当前数据库: {self.current_database}")
+                        elif databases:
+                            # 如果找不到，默认选择第一个
+                            self.database_combo.setCurrentIndex(0)
+                            logger.info(f"默认选择第一个数据库: {databases[0]}")
+                    elif databases:
+                        # 如果没有指定当前数据库，默认选择第一个
+                        self.database_combo.setCurrentIndex(0)
+                        logger.info(f"默认选择第一个数据库: {databases[0]}")
+                    
+                    # 重新连接信号
+                    try:
+                        self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
+                    except:
+                        pass
+                elif signal_was_connected:
+                    # 如果信号本来就是连接的，重新连接
+                    try:
+                        self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
+                    except:
+                        pass
+            except Exception as e:
+                logger.error(f"更新数据库下拉框失败: {e}", exc_info=True)
+                # 确保信号重新连接
+                try:
+                    self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
+                except:
+                    pass
+            finally:
+                # 清理worker引用
+                if connection_id in self.database_list_workers:
+                    del self.database_list_workers[connection_id]
+                worker.deleteLater()
+        
+        def on_error(error: str):
+            """加载错误回调"""
+            logger.warning(f"获取数据库列表失败: {error}", exc_info=True)
+            # 重新连接信号
+            try:
+                self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
+            except:
+                pass
+            # 清理worker引用
+            if connection_id in self.database_list_workers:
+                del self.database_list_workers[connection_id]
+            worker.deleteLater()
+        
+        # 连接信号
+        worker.databases_ready.connect(on_databases_ready)
+        worker.error_occurred.connect(on_error)
+        
+        # 保存worker引用，避免被垃圾回收，并便于后续停止
+        self.database_list_workers[connection_id] = worker
+        
+        # 启动worker（在后台线程中执行）
+        worker.start()
     
     def set_current_connection(self, connection_id: str, update_completion: bool = True, database: Optional[str] = None, from_combo: bool = False):
         """设置当前连接（确保所有操作都是非阻塞的）
@@ -800,31 +881,39 @@ class MainWindow(QMainWindow):
             # 这确保直接查询时也能获取到表列表
             self.sql_editor.set_database_info(self.db_manager, connection_id, database)
             
-            # 加载并同步数据库下拉框
-            self.load_databases_for_combo(connection_id)
-            
-            # 设置数据库下拉框的选中项
-            try:
-                self.database_combo.currentTextChanged.disconnect()
-            except:
-                pass
-            
-            if database:
-                # 如果指定了数据库，选择该数据库
-                index = self.database_combo.findData(database)
-                if index >= 0:
-                    self.database_combo.setCurrentIndex(index)
-                else:
-                    # 如果找不到，默认选择第一个数据库
-                    self.database_combo.setCurrentIndex(0)
+            # 如果不是来自下拉框选择，或者下拉框为空，才加载数据库列表（避免循环调用）
+            if not from_combo or self.database_combo.count() == 0:
+                # 加载并同步数据库下拉框
+                # 先设置数据库下拉框的选中项（在加载完成后）
+                # 这里先断开信号，等待load_databases_for_combo的回调来设置当前项
+                try:
+                    self.database_combo.currentTextChanged.disconnect()
+                except:
+                    pass
+                self.load_databases_for_combo(connection_id)
             else:
-                # 如果没有指定数据库，默认选择第一个数据库
-                self.database_combo.setCurrentIndex(0)
-            
-            try:
-                self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
-            except:
-                pass
+                # 来自下拉框选择，只需要更新当前项（不重新加载列表，避免循环）
+                try:
+                    self.database_combo.currentTextChanged.disconnect()
+                except:
+                    pass
+                
+                if database:
+                    # 如果指定了数据库，选择该数据库
+                    index = self.database_combo.findData(database)
+                    if index >= 0:
+                        self.database_combo.setCurrentIndex(index)
+                    elif self.database_combo.count() > 0:
+                        # 如果找不到，默认选择第一个数据库
+                        self.database_combo.setCurrentIndex(0)
+                elif self.database_combo.count() > 0:
+                    # 如果没有指定数据库，默认选择第一个数据库
+                    self.database_combo.setCurrentIndex(0)
+                
+                try:
+                    self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
+                except:
+                    pass
     
     
     def load_databases_for_connection(self, connection_item: QTreeWidgetItem, connection_id: str, force_reload: bool = False):
