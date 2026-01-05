@@ -84,7 +84,13 @@ class PaginationWorker(QThread):
         
         finally:
             if engine:
-                engine.dispose()
+                try:
+                    engine.dispose()
+                except:
+                    pass
+            
+            # 确保线程正确退出
+            self.quit()
     
     def _execute_count(self, engine):
         """执行 COUNT 查询获取总行数"""

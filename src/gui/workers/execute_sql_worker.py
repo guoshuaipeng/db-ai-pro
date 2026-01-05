@@ -87,4 +87,7 @@ class ExecuteSQLWorker(QThread):
                     engine.dispose()
                 except:
                     pass
+            
+            # 确保线程正确退出
+            self.quit()
 

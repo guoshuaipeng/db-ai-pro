@@ -346,16 +346,6 @@ class UIHandler:
         # 在填充完下拉框后再连接信号
         self.main_window.ai_model_combo.currentIndexChanged.connect(self.main_window.on_ai_model_changed)
         toolbar.addWidget(self.main_window.ai_model_combo)
-        
-        toolbar.addSeparator()
-        
-        # 执行查询按钮
-        execute_action = QAction(self._get_icon('execute'), self.main_window.tr("执行"), self.main_window)
-        execute_action.setToolTip("执行 SQL 查询")
-        execute_action.setShortcut("F5")
-        execute_action.triggered.connect(self.main_window.execute_query)
-        toolbar.addAction(execute_action)
-        self.main_window.execute_action = execute_action
     
     def _get_icon(self, icon_type: str) -> QIcon:
         """获取图标
@@ -461,8 +451,6 @@ class UIHandler:
             self.main_window.refresh_action.setText(self.main_window.tr("刷新"))
         if hasattr(self.main_window, 'create_table_action'):
             self.main_window.create_table_action.setText(self.main_window.tr("新建表"))
-        if hasattr(self.main_window, 'execute_action'):
-            self.main_window.execute_action.setText(self.main_window.tr("执行"))
         if hasattr(self.main_window, 'ai_model_label'):
             self.main_window.ai_model_label.setText(self.main_window.tr("AI模型:"))
         if hasattr(self.main_window, 'connection_label'):

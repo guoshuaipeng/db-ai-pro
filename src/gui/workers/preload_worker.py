@@ -90,4 +90,7 @@ class PreloadWorker(QThread):
         except Exception as e:
             logger.error(f"预加载过程中发生错误: {str(e)}")
             self.finished_all.emit()
+        finally:
+            # 确保线程正确退出
+            self.quit()
 

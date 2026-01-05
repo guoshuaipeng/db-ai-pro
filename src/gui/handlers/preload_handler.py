@@ -29,6 +29,11 @@ class PreloadHandler:
     
     def start_preload(self):
         """启动预加载所有连接的表"""
+        # 检查窗口是否正在关闭
+        if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
+            logger.debug("窗口正在关闭，跳过预加载")
+            return
+        
         connections = self.main_window.db_manager.get_all_connections()
         if not connections:
             return
@@ -67,6 +72,10 @@ class PreloadHandler:
         """预加载完成一个数据库的回调"""
         # 使用QTimer延迟执行，避免在信号回调中直接修改UI导致dataChanged警告
         def update_tree():
+            # 检查窗口是否正在关闭
+            if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
+                return
+            
             try:
                 # 找到根节点（"我的连接"）
                 root_item = None

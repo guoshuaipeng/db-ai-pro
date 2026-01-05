@@ -139,4 +139,7 @@ class ConnectionInitWorker(QThread):
                 error_msg = "缺少 PostgreSQL 驱动 (psycopg2)。请运行: pip install psycopg2-binary"
             logger.error(f"{error_msg} - {self.connection.name}")
             self.init_finished.emit(self.connection_id, False, error_msg)
+        finally:
+            # 确保线程正确退出
+            self.quit()
 

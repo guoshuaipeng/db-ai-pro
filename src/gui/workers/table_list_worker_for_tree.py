@@ -112,4 +112,10 @@ class TableListWorkerForTree(QThread):
                     engine.dispose()
                 except Exception as e:
                     logger.warning(f"清理数据库引擎失败: {str(e)}")
+            
+            # 确保线程正确退出
+            self.quit()
+            
+            # 确保线程正确退出
+            self.quit()
 

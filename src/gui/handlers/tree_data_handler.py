@@ -173,6 +173,10 @@ class TreeDataHandler:
         
         # 使用QTimer延迟执行数据库连接操作，确保不阻塞UI
         def start_database_loading():
+            # 检查窗口是否正在关闭
+            if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
+                return
+            
             # 获取连接信息
             connection = self.main_window.db_manager.get_connection(connection_id)
             if not connection:
@@ -231,6 +235,17 @@ class TreeDataHandler:
             worker.loading_item = loading_item
             worker.connection_item = connection_item
             worker.connection_id = connection_id
+            
+            # 定义清理函数（当线程完全结束时调用）
+            def cleanup_worker():
+                """清理worker（在线程finished信号触发时调用）"""
+                try:
+                    if connection_id in self.main_window.database_list_workers:
+                        del self.main_window.database_list_workers[connection_id]
+                    worker.deleteLater()
+                except RuntimeError:
+                    pass  # 对象已被删除，忽略
+            
             # 明确使用QueuedConnection，确保信号在UI线程的事件循环中异步处理
             worker.databases_ready.connect(
                 lambda databases, conn_id=connection_id: self.on_databases_loaded(connection_item, loading_item, databases, conn_id),
@@ -240,6 +255,8 @@ class TreeDataHandler:
                 lambda error, conn_id=connection_id: self.on_databases_load_error(connection_item, loading_item, error),
                 Qt.ConnectionType.QueuedConnection
             )
+            # 连接finished信号，确保线程完全结束后才清理（优雅的方式，不阻塞）
+            worker.finished.connect(cleanup_worker)
             
             # 将worker存储到字典中
             self.main_window.database_list_workers[connection_id] = worker
@@ -250,6 +267,29 @@ class TreeDataHandler:
     
     def on_databases_loaded(self, connection_item: QTreeWidgetItem, loading_item: QTreeWidgetItem, databases: List[str], connection_id: str = None):
         """数据库列表加载完成回调"""
+        # 检查窗口是否正在关闭
+        if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
+            # 清理worker引用
+            if connection_id and connection_id in self.main_window.database_list_workers:
+                try:
+                    worker = self.main_window.database_list_workers[connection_id]
+                    if worker:
+                        try:
+                            worker.databases_ready.disconnect()
+                            worker.error_occurred.disconnect()
+                        except:
+                            pass
+                        # 等待线程退出后再删除
+                        if worker.isRunning():
+                            if not worker.wait(500):
+                                worker.terminate()
+                                worker.wait(200)
+                        worker.deleteLater()
+                    del self.main_window.database_list_workers[connection_id]
+                except:
+                    pass
+            return
+        
         # 检查对象是否仍然有效
         try:
             if not connection_item or not hasattr(connection_item, 'text'):
@@ -297,7 +337,7 @@ class TreeDataHandler:
         else:
             logger.warning(f"⚠️ connection_id 为空，无法保存数据库缓存")
         
-        # 清理worker（加载完成后）
+        # 清理worker引用（线程会通过finished信号自动清理，这里只清理字典引用）
         if connection_id and connection_id in self.main_window.database_list_workers:
             try:
                 worker = self.main_window.database_list_workers[connection_id]
@@ -307,8 +347,8 @@ class TreeDataHandler:
                         worker.error_occurred.disconnect()
                     except:
                         pass
-                    worker.deleteLater()
-                del self.main_window.database_list_workers[connection_id]
+                    # 断开信号后，不再需要立即删除，finished信号会处理清理
+                    del self.main_window.database_list_workers[connection_id]
             except RuntimeError:
                 pass
         
@@ -343,6 +383,29 @@ class TreeDataHandler:
     
     def on_databases_load_error(self, connection_item: QTreeWidgetItem, loading_item: QTreeWidgetItem, error: str):
         """数据库列表加载错误回调"""
+        # 检查窗口是否正在关闭
+        if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
+            # 清理worker引用
+            try:
+                # 查找对应的连接ID并清理worker
+                for conn_id, worker in list(self.main_window.database_list_workers.items()):
+                    if worker and hasattr(worker, 'connection_item') and worker.connection_item == connection_item:
+                        try:
+                            if worker:
+                                try:
+                                    worker.databases_ready.disconnect()
+                                    worker.error_occurred.disconnect()
+                                except:
+                                    pass
+                                # 断开信号后，不再需要立即删除，finished信号会处理清理
+                                del self.main_window.database_list_workers[conn_id]
+                        except:
+                            pass
+                        break
+            except:
+                pass
+            return
+        
         import time
         import threading
         start_time = time.time()
@@ -350,6 +413,10 @@ class TreeDataHandler:
         
         # 使用QTimer延迟更新UI，避免阻塞主线程
         def update_ui():
+            # 再次检查窗口是否正在关闭（在延迟执行时）
+            if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
+                return
+            
             # 检查对象是否仍然有效
             try:
                 if not connection_item or not hasattr(connection_item, 'text'):
@@ -401,8 +468,8 @@ class TreeDataHandler:
                                     worker.error_occurred.disconnect()
                                 except:
                                     pass
-                                worker.deleteLater()
-                            del self.main_window.database_list_workers[conn_id]
+                                # 断开信号后，不再需要立即删除，finished信号会处理清理
+                                del self.main_window.database_list_workers[conn_id]
                         except RuntimeError:
                             pass
                         break
@@ -511,6 +578,10 @@ class TreeDataHandler:
         
         # 使用QTimer延迟执行数据库连接操作，确保不阻塞UI
         def start_table_loading():
+            # 检查窗口是否正在关闭
+            if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
+                return
+            
             # 获取连接信息
             connection = self.main_window.db_manager.get_connection(connection_id)
             if not connection:
@@ -956,7 +1027,7 @@ class TreeDataHandler:
                 except (RuntimeError, AttributeError):
                     pass
         
-        # 清理worker
+        # 清理worker引用（线程会通过finished信号自动清理，这里只清理字典引用）
         if connection_id in self.main_window.database_list_workers:
             try:
                 worker = self.main_window.database_list_workers[connection_id]
@@ -966,8 +1037,8 @@ class TreeDataHandler:
                         worker.error_occurred.disconnect()
                     except:
                         pass
-                    worker.deleteLater()
-                del self.main_window.database_list_workers[connection_id]
+                    # 断开信号后，不再需要立即删除，finished信号会处理清理
+                    del self.main_window.database_list_workers[connection_id]
             except RuntimeError:
                 pass
     

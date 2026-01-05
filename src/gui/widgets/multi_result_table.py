@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem,
     QPlainTextEdit,
+    QSizePolicy,
 )
 from PyQt6.QtGui import QIcon
 from src.utils.toast import show_toast
@@ -95,6 +96,22 @@ class FoldableJSONEditor(QWidget):
             # 设置为只读
             editor.setReadOnly(True)
             
+            # 设置横向滚动：禁用自动换行，启用横向滚动条
+            editor.setWrapMode(QsciScintilla.WrapMode.WrapNone)  # 不自动换行
+            editor.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)  # 需要时显示横向滚动条
+            
+            # 设置最大行长度（允许很长的行）
+            editor.setEdgeMode(QsciScintilla.EdgeMode.EdgeNone)  # 不显示边缘线
+            
+            # 确保可以完全滚动到最右边：设置最大文档宽度
+            # 设置一个很大的值，确保长行不会导致滚动条无法到达最右边
+            try:
+                editor.setScrollWidth(1)  # 自动计算宽度
+                editor.setScrollWidthTracking(True)  # 跟踪文档宽度变化
+            except AttributeError:
+                # 如果方法不存在，忽略
+                pass
+            
             self._editor = editor
             self._use_qscintilla = True
             
@@ -127,6 +144,10 @@ class FoldableJSONEditor(QWidget):
         
         # 设置只读
         editor.setReadOnly(True)
+        
+        # 设置横向滚动：禁用自动换行，启用横向滚动条
+        editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)  # 不自动换行
+        editor.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)  # 需要时显示横向滚动条
         
         # 安装语法高亮
         editor.highlighter = JSONHighlighter(editor.document())
@@ -256,7 +277,7 @@ class SingleResultTable(QWidget):
         toolbar_layout = QHBoxLayout()
         
         # 保存和取消按钮（放在左边）
-        self.save_btn = QPushButton("确认保存")
+        self.save_btn = QPushButton("保存")
         self.save_btn.setEnabled(False)
         self.save_btn.setStyleSheet("""
             QPushButton {
@@ -1093,15 +1114,16 @@ class SingleResultTable(QWidget):
         if item:
             row = item.row()
             if 0 <= row < len(self.raw_data):
-                # 添加JSON查询选项
-                json_menu = menu.addMenu(self._get_icon('json'), "以JSON查询")
+                # 添加分隔线（如果前面有内容）
+                if menu.actions():
+                    menu.addSeparator()
                 
-                # 以json查询行数据
-                json_row_action = json_menu.addAction("查询行数据")
+                # 查询行数据（一级菜单）
+                json_row_action = menu.addAction(self._get_icon('json'), "以JSON查询行数据")
                 json_row_action.triggered.connect(lambda: self.query_by_json_row(row))
                 
-                # 以json查询字段数据
-                json_field_action = json_menu.addAction("查询字段数据")
+                # 查询字段数据（一级菜单）
+                json_field_action = menu.addAction(self._get_icon('json'), "以JSON查询字段数据")
                 json_field_action.triggered.connect(lambda: self.query_by_json_field(row, item.column()))
 
                 # 如果有选中的单元格，添加"填充为 NULL"选项
@@ -1274,10 +1296,12 @@ class SingleResultTable(QWidget):
         dialog.setMinimumSize(800, 600)
         
         layout = QVBoxLayout()
+        layout.setContentsMargins(5, 5, 5, 5)
         dialog.setLayout(layout)
         
         # 可折叠的JSON编辑器
         json_editor = FoldableJSONEditor()
+        json_editor.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         
         # 处理datetime等特殊类型
         try:
@@ -1332,10 +1356,12 @@ class SingleResultTable(QWidget):
         dialog.setMinimumSize(800, 600)
         
         layout = QVBoxLayout()
+        layout.setContentsMargins(5, 5, 5, 5)
         dialog.setLayout(layout)
         
         # 可折叠的JSON编辑器
         json_editor = FoldableJSONEditor()
+        json_editor.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         
         # 处理字段值
         if field_value is None:
@@ -1441,7 +1467,7 @@ class SingleResultTable(QWidget):
                 
                 # 更新状态到主窗口状态栏（显示已修改标记）
                 if self.modified_cells:
-                    self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行, {len(columns)} 列 (已暂存 {len(self.modified_cells)} 个修改，请点击确认保存)")
+                    self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行, {len(columns)} 列 (已暂存 {len(self.modified_cells)} 个修改，请点击保存)")
                 else:
                     self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行, {len(columns)} 列")
     
@@ -1856,26 +1882,6 @@ class SingleResultTable(QWidget):
         if not has_modifications and not has_pending_deletes:
             return
         
-        # 构建确认消息
-        cancel_parts = []
-        if has_modifications:
-            cancel_parts.append(f"{len(self.modified_cells)} 个修改")
-        if has_pending_deletes:
-            cancel_parts.append(f"{len(self.pending_deletes)} 行删除标记")
-        
-        cancel_msg = f"确定要取消 {' 和 '.join(cancel_parts)} 吗？\n\n所有更改将被撤销。"
-        
-        reply = QMessageBox.question(
-            self,
-            "确认取消",
-            cancel_msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        
         # 标记正在更新数据，避免触发itemChanged事件
         self._updating_data = True
         
@@ -1913,13 +1919,7 @@ class SingleResultTable(QWidget):
         # 数据更新完成
         self._updating_data = False
         
-        # 更新状态
-        status_parts = []
-        if has_modifications:
-            status_parts.append("已取消所有修改")
-        if has_pending_deletes:
-            status_parts.append("已清除删除标记")
-        self._show_status_to_main_window("，".join(status_parts) + "，数据已恢复")
+        # 取消完成，不显示提示信息
     
     def _generate_update_sql_for_row(self, table_name: str, col_updates: Dict[str, tuple], 
                                      original_row_data: Dict, columns: List[str]) -> Optional[str]:
@@ -2107,7 +2107,8 @@ class SingleResultTable(QWidget):
             
         except Exception as e:
             logger.error(f"执行批量UPDATE失败: {str(e)}")
-            QMessageBox.warning(self, "保存失败", f"保存数据失败: {str(e)}")
+            # 只显示状态栏提示，不弹出对话框
+            self._show_status_to_main_window(f"保存失败: {str(e)}")
     
     def _on_batch_update_finished(self, success: bool, error: Optional[str], affected_rows: Optional[int]):
         """批量UPDATE执行完成回调（单条SQL）"""
@@ -2143,7 +2144,7 @@ class SingleResultTable(QWidget):
             if continue_with_deletes and self.pending_deletes:
                 self._execute_pending_deletes()
         else:
-            QMessageBox.warning(self, "保存失败", f"保存数据失败: {error}")
+            # 只显示状态栏提示，不弹出对话框
             time_str = f"耗时: {elapsed_time:.3f}秒" if elapsed_time else ""
             self._show_status_to_main_window(f"保存失败: {error} {time_str}".strip())
     
@@ -2178,8 +2179,8 @@ class SingleResultTable(QWidget):
             self._update_save_cancel_buttons()
             
             if error_count > 0:
+                # 只显示状态栏提示，不弹出对话框
                 self._show_status_to_main_window(f"保存完成: 成功 {success_count} 个，失败 {error_count} 个 {time_str}".strip())
-                QMessageBox.warning(self, "保存部分成功", f"成功保存 {success_count} 个修改，失败 {error_count} 个")
             else:
                 self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行 (已保存 {total_affected} 个修改到数据库) {time_str}".strip())
             
@@ -2189,7 +2190,7 @@ class SingleResultTable(QWidget):
         else:
             error_messages = [r[3] for r in results if r[3]]
             error_msg = error_messages[0] if error_messages else "未知错误"
-            QMessageBox.warning(self, "保存失败", f"保存数据失败: {error_msg}")
+            # 只显示状态栏提示，不弹出对话框
             self._show_status_to_main_window(f"保存失败: {error_msg} {time_str}".strip())
     
     def _clear_modified_cell_styles(self):
@@ -2347,7 +2348,7 @@ class SingleResultTable(QWidget):
         self._update_save_cancel_buttons()
         
         # 提示用户
-        show_toast(f"已标记 {len(new_pending_deletes)} 行待删除，请点击'确认保存'按钮执行删除", parent=self, duration=3000)
+        show_toast(f"已标记 {len(new_pending_deletes)} 行待删除，请点击'保存'按钮执行删除", parent=self, duration=3000)
     
     def _generate_delete_sql(self, table_name: str, original_row_data: Dict, columns: List[str]) -> Optional[str]:
         """生成DELETE SQL语句"""
@@ -2547,7 +2548,8 @@ class SingleResultTable(QWidget):
             
         except Exception as e:
             logger.error(f"执行DELETE失败: {str(e)}")
-            QMessageBox.warning(self, "删除失败", f"删除数据失败: {str(e)}")
+            # 只显示状态栏提示，不弹出对话框
+            self._show_status_to_main_window(f"删除失败: {str(e)}")
     
     def _on_delete_finished(self, success: bool, error: Optional[str], affected_rows: Optional[int], selected_rows: List[int]):
         """DELETE执行完成回调（单条SQL）"""
@@ -2566,12 +2568,10 @@ class SingleResultTable(QWidget):
             # 更新状态到主窗口状态栏
             remaining_rows = len(self.raw_data)
             self._show_status_to_main_window(f"删除成功: 已删除 {len(selected_rows)} 行，剩余 {remaining_rows} 行")
-            
-            QMessageBox.information(self, "删除成功", f"已成功删除 {len(selected_rows)} 行数据")
         else:
             # 删除失败，不清除待删除标记，让用户可以重试
+            # 只显示状态栏提示，不弹出对话框
             self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行")
-            QMessageBox.warning(self, "删除失败", f"删除数据失败: {error}")
     
     def _on_multi_delete_finished(self, results: List[tuple], selected_rows: List[int]):
         """多条DELETE执行完成回调"""
@@ -2596,17 +2596,16 @@ class SingleResultTable(QWidget):
             # 更新状态到主窗口状态栏
             remaining_rows = len(self.raw_data)
             if error_count > 0:
+                # 只显示状态栏提示，不弹出对话框
                 self._show_status_to_main_window(f"删除完成: 成功 {success_count} 行，失败 {error_count} 行，剩余 {remaining_rows} 行")
-                QMessageBox.warning(self, "删除部分成功", f"成功删除 {success_count} 行，失败 {error_count} 行")
             else:
                 self._show_status_to_main_window(f"删除成功: 已删除 {success_count} 行，剩余 {remaining_rows} 行")
-                QMessageBox.information(self, "删除成功", f"已成功删除 {success_count} 行数据")
         else:
             # 全部失败
             error_messages = [r[3] for r in results if r[3]]
             error_msg = error_messages[0] if error_messages else "未知错误"
+            # 只显示状态栏提示，不弹出对话框
             self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行")
-            QMessageBox.warning(self, "删除失败", f"删除数据失败: {error_msg}")
     
     def _remove_rows_from_table(self, selected_rows: List[int]):
         """从表格中移除指定的行（从后往前删除，避免索引变化）"""

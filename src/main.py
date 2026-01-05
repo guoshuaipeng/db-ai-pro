@@ -218,14 +218,21 @@ def main():
     logger.info(f"翻译系统已初始化，当前语言: {translation_manager.get_current_language()}")
     
     # 创建主窗口
-    window = MainWindow(settings, translation_manager)
-    window.setWindowIcon(app_icon)
-    
-    # 最大化显示窗口
-    window.showMaximized()
-    
-    # 运行应用程序
-    sys.exit(app.exec())
+    try:
+        window = MainWindow(settings, translation_manager)
+        window.setWindowIcon(app_icon)
+        
+        # 最大化显示窗口
+        window.showMaximized()
+        logger.info("主窗口已显示")
+        
+        # 运行应用程序
+        exit_code = app.exec()
+        logger.info(f"应用程序退出，退出码: {exit_code}")
+        sys.exit(exit_code)
+    except Exception as e:
+        logger.error(f"启动应用程序时发生错误: {e}", exc_info=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

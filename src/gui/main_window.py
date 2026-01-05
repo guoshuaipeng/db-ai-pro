@@ -95,6 +95,7 @@ class MainWindow(QMainWindow):
         self.database_list_workers = {}  # 数据库列表工作线程字典 {connection_id: worker}
         self.table_list_worker_for_tree = None  # 表列表工作线程（用于树视图）
         self._query_table_timer = None  # 用于防抖的定时器
+        self._is_closing = False  # 标记窗口是否正在关闭
         
         # 初始化处理器
         from src.gui.handlers.connection_handler import ConnectionHandler
@@ -123,19 +124,27 @@ class MainWindow(QMainWindow):
         self.menu_handler = MenuHandler(self)
         self.settings_handler = SettingsHandler(self)
         
-        self.ui_handler.init_ui()
-        self.setup_connections()
-        
-        # 先显示UI，然后异步加载连接（避免数据库连接失败时阻塞UI显示）
-        from PyQt6.QtCore import QTimer
-        QTimer.singleShot(100, self.load_saved_connections)  # 延迟100ms加载连接，确保UI先显示
-        
-        # 延时启动预加载（避免阻塞启动）
-        QTimer.singleShot(1500, self.preload_handler.start_preload)  # 1.5秒后开始预加载
+        try:
+            self.ui_handler.init_ui()
+            self.setup_connections()
+            logger.info("UI初始化完成")
+            
+            # 先显示UI，然后异步加载连接（避免数据库连接失败时阻塞UI显示）
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(100, self.load_saved_connections)  # 延迟100ms加载连接，确保UI先显示
+            
+            # 延时启动预加载（避免阻塞启动）
+            QTimer.singleShot(1500, self.preload_handler.start_preload)  # 1.5秒后开始预加载
+        except Exception as e:
+            logger.error(f"初始化主窗口时发生错误: {e}", exc_info=True)
+            raise
     
     def closeEvent(self, event):
         """窗口关闭事件"""
         logger.info("开始关闭窗口，停止所有线程...")
+        
+        # 标记窗口正在关闭（防止延迟回调创建新的worker）
+        self._is_closing = True
         
         # 停止查询表的防抖定时器
         if hasattr(self, '_query_table_timer') and self._query_table_timer:
@@ -163,21 +172,37 @@ class MainWindow(QMainWindow):
             logger.warning(f"清理tab时出错: {str(e)}")
         
         # 停止所有数据库列表工作线程
-        for worker in list(self.database_list_workers.values()):
+        for connection_id, worker in list(self.database_list_workers.items()):
             try:
-                if worker and worker.isRunning():
-                    worker.stop()
-                    if not worker.wait(2000):
-                        worker.terminate()
-                        worker.wait(1000)
+                if worker:
+                    # 断开信号，避免回调执行
                     try:
                         worker.databases_ready.disconnect()
                         worker.error_occurred.disconnect()
                     except:
                         pass
+                    
+                    # 停止并等待线程结束
+                    if worker.isRunning():
+                        logger.debug(f"停止数据库列表worker: {connection_id}")
+                        worker.stop()
+                        # 等待线程结束，最多2秒
+                        if not worker.wait(2000):
+                            logger.warning(f"数据库列表worker {connection_id} 未能在2秒内结束，强制终止")
+                            worker.terminate()
+                            worker.wait(1000)
+                    
+                    # 确保线程已退出
+                    if worker.isRunning():
+                        worker.terminate()
+                        worker.wait(500)
+                    
                     worker.deleteLater()
             except RuntimeError:
+                # 对象已被删除，忽略
                 pass
+            except Exception as e:
+                logger.warning(f"停止数据库列表worker {connection_id} 时出错: {e}")
         self.database_list_workers.clear()
         
         # 停止所有正在运行的线程（使用统一的停止方法）
@@ -227,6 +252,12 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"关闭窗口时发生异常: {str(e)}", exc_info=True)
         
+        # 最后等待一小段时间，确保所有线程清理完成
+        from PyQt6.QtCore import QEventLoop, QTimer
+        loop = QEventLoop()
+        QTimer.singleShot(100, loop.quit)  # 等待100ms让所有线程清理完成
+        loop.processEvents()  # 处理剩余事件
+        
         event.accept()
     
     
@@ -248,30 +279,40 @@ class MainWindow(QMainWindow):
     
     def load_saved_connections(self):
         """加载保存的连接（从 SQLite 配置数据库）"""
-        from src.core.config_db import get_config_db
-        from pydantic import SecretStr
-        config_db = get_config_db()
+        # 检查窗口是否正在关闭
+        if self._is_closing:
+            logger.debug("窗口正在关闭，跳过加载连接")
+            return
         
-        # 从 SQLite 加载所有连接
-        connection_dicts = config_db.get_all_connections()
-        connections = []
-        for conn_dict in connection_dicts:
-            try:
-                # 处理密码字段：转换为 SecretStr
-                if 'password' in conn_dict and not isinstance(conn_dict['password'], SecretStr):
-                    conn_dict['password'] = SecretStr(conn_dict['password'])
-                
-                # 使用 Pydantic 的标准方式创建实例
-                conn = DatabaseConnection(**conn_dict)
-                connections.append(conn)
-                # 加载时不测试连接（因为密码可能已过期）
-                self.db_manager.add_connection(conn, test_connection=False)
-            except Exception as e:
-                logger.error(f"加载连接失败: {str(e)}", exc_info=True)
-        
-        if connections:
-            self.refresh_connections()
-            logger.info(f"已加载 {len(connections)} 个保存的连接")
+        try:
+            from src.core.config_db import get_config_db
+            from pydantic import SecretStr
+            config_db = get_config_db()
+            
+            # 从 SQLite 加载所有连接
+            connection_dicts = config_db.get_all_connections()
+            connections = []
+            for conn_dict in connection_dicts:
+                try:
+                    # 处理密码字段：转换为 SecretStr
+                    if 'password' in conn_dict and not isinstance(conn_dict['password'], SecretStr):
+                        conn_dict['password'] = SecretStr(conn_dict['password'])
+                    
+                    # 使用 Pydantic 的标准方式创建实例
+                    conn = DatabaseConnection(**conn_dict)
+                    connections.append(conn)
+                    # 加载时不测试连接（因为密码可能已过期）
+                    self.db_manager.add_connection(conn, test_connection=False)
+                except Exception as e:
+                    logger.error(f"加载连接失败: {str(e)}", exc_info=True)
+            
+            if connections:
+                logger.info(f"准备刷新连接列表，已加载 {len(connections)} 个连接")
+                self.refresh_connections()
+                logger.info(f"已加载 {len(connections)} 个保存的连接")
+        except Exception as e:
+            logger.error(f"加载保存的连接时发生错误: {e}", exc_info=True)
+            # 不抛出异常，避免程序崩溃
     
     def save_connections(self):
         """保存所有连接"""
@@ -688,6 +729,11 @@ class MainWindow(QMainWindow):
     
     def load_databases_for_combo(self, connection_id: str):
         """加载连接的数据库列表到下拉框（异步执行，不阻塞UI）"""
+        # 检查窗口是否正在关闭
+        if self._is_closing:
+            logger.debug("窗口正在关闭，跳过加载数据库列表")
+            return
+        
         if not connection_id:
             logger.debug("load_databases_for_combo: connection_id 为空")
             return
@@ -697,12 +743,11 @@ class MainWindow(QMainWindow):
             logger.warning(f"load_databases_for_combo: 找不到连接 {connection_id}")
             return
         
-        logger.info(f"正在加载连接 {connection.name} 的数据库列表...")
-        
-        # 停止之前可能正在运行的数据库列表worker（如果有）
+        # 如果已经有正在运行的worker，先停止它
         if connection_id in self.database_list_workers:
             old_worker = self.database_list_workers[connection_id]
             if old_worker and old_worker.isRunning():
+                logger.debug(f"已有worker正在运行，停止旧worker: {connection_id}")
                 try:
                     old_worker.databases_ready.disconnect()
                     old_worker.error_occurred.disconnect()
@@ -713,8 +758,7 @@ class MainWindow(QMainWindow):
                     old_worker.terminate()
                     old_worker.wait(100)
                 old_worker.deleteLater()
-            if connection_id in self.database_list_workers:
-                del self.database_list_workers[connection_id]
+            del self.database_list_workers[connection_id]
         
         # 断开信号避免触发
         try:
@@ -735,8 +779,23 @@ class MainWindow(QMainWindow):
             connection.db_type
         )
         
+        # 定义清理函数（当线程完全结束时调用）
+        def cleanup_worker():
+            """清理worker（在线程finished信号触发时调用）"""
+            try:
+                if connection_id in self.database_list_workers:
+                    del self.database_list_workers[connection_id]
+                worker.deleteLater()
+            except RuntimeError:
+                pass  # 对象已被删除，忽略
+        
         def on_databases_ready(databases: list):
             """数据库列表加载完成回调"""
+            # 检查窗口是否正在关闭
+            if self._is_closing:
+                logger.debug("窗口正在关闭，跳过更新数据库下拉框")
+                return
+            
             try:
                 logger.info(f"获取到 {len(databases)} 个数据库: {databases[:5] if len(databases) > 5 else databases}")
                 for db in databases:
@@ -785,30 +844,35 @@ class MainWindow(QMainWindow):
                 except:
                     pass
             finally:
-                # 清理worker引用
+                # 清理worker引用（线程可能还在运行，让finished信号处理最终清理）
                 if connection_id in self.database_list_workers:
                     del self.database_list_workers[connection_id]
-                worker.deleteLater()
         
         def on_error(error: str):
             """加载错误回调"""
+            # 检查窗口是否正在关闭
+            if self._is_closing:
+                logger.debug("窗口正在关闭，跳过处理错误")
+                return
+            
             logger.warning(f"获取数据库列表失败: {error}", exc_info=True)
             # 重新连接信号
             try:
                 self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
             except:
                 pass
-            # 清理worker引用
+            # 清理worker引用（线程可能还在运行，让finished信号处理最终清理）
             if connection_id in self.database_list_workers:
                 del self.database_list_workers[connection_id]
-            worker.deleteLater()
         
-        # 连接信号
+        # 先保存worker引用（在启动前），避免被垃圾回收，并便于后续停止
+        self.database_list_workers[connection_id] = worker
+        
+        # 连接信号（在保存引用之后）
         worker.databases_ready.connect(on_databases_ready)
         worker.error_occurred.connect(on_error)
-        
-        # 保存worker引用，避免被垃圾回收，并便于后续停止
-        self.database_list_workers[connection_id] = worker
+        # 连接finished信号，确保线程完全结束后才清理（优雅的方式，不阻塞）
+        worker.finished.connect(cleanup_worker)
         
         # 启动worker（在后台线程中执行）
         worker.start()
