@@ -1,7 +1,7 @@
 """
 数据库连接管理器
 """
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Union
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -9,6 +9,7 @@ import logging
 
 from src.core.database_connection import DatabaseConnection, DatabaseType
 from src.core.schema_cache import get_schema_cache
+from src.core.redis_client import RedisClient
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class DatabaseManager:
     
     def __init__(self):
         self.connections: Dict[str, DatabaseConnection] = {}
-        self.engines: Dict[str, Engine] = {}
+        self.engines: Dict[str, Union[Engine, RedisClient]] = {}  # Redis 使用 RedisClient
         self.connection_order: List[str] = []  # 维护连接ID的顺序
     
     def add_connection(self, connection: DatabaseConnection, test_connection: bool = True) -> bool:
@@ -46,6 +47,42 @@ class DatabaseManager:
                         self.connection_order.append(connection_id)
                     self.connections[connection_id] = connection
                     logger.info(f"添加数据库连接（缺少驱动，未测试）: {connection.name}")
+                    return True
+            
+            # Redis 特殊处理
+            if connection.db_type == DatabaseType.REDIS:
+                try:
+                    redis_client = RedisClient(connection)
+                    if test_connection:
+                        success, message = redis_client.test_connection()
+                        if not success:
+                            logger.error(f"Redis 连接测试失败: {message} - {connection.name}")
+                            return False
+                    # 保存 Redis 客户端
+                    self.engines[connection_id] = redis_client
+                    if connection_id not in self.connection_order:
+                        self.connection_order.append(connection_id)
+                    self.connections[connection_id] = connection
+                    logger.info(f"成功添加 Redis 连接: {connection.name}")
+                    return True
+                except ImportError as e:
+                    error_msg = "缺少 Redis 驱动 (redis)。请运行: pip install redis"
+                    logger.error(f"{error_msg} - {connection.name}")
+                    if test_connection:
+                        return False
+                    if connection_id not in self.connection_order:
+                        self.connection_order.append(connection_id)
+                    self.connections[connection_id] = connection
+                    logger.info(f"添加 Redis 连接（缺少驱动，未测试）: {connection.name}")
+                    return True
+                except Exception as e:
+                    logger.error(f"添加 Redis 连接失败: {str(e)}")
+                    if test_connection:
+                        return False
+                    if connection_id not in self.connection_order:
+                        self.connection_order.append(connection_id)
+                    self.connections[connection_id] = connection
+                    logger.info(f"添加 Redis 连接（测试失败）: {connection.name}")
                     return True
             
             # 获取连接参数
@@ -124,6 +161,8 @@ class DatabaseManager:
                 error_msg = "缺少 SQL Server 驱动 (pyodbc)。请运行: pip install pyodbc"
             elif "psycopg2" in str(e):
                 error_msg = "缺少 PostgreSQL 驱动 (psycopg2)。请运行: pip install psycopg2-binary"
+            elif "redis" in str(e):
+                error_msg = "缺少 Redis 驱动 (redis)。请运行: pip install redis"
             else:
                 error_msg = f"缺少必要的数据库驱动: {str(e)}"
             logger.error(f"{error_msg} - {connection.name}")
@@ -146,6 +185,9 @@ class DatabaseManager:
             elif "No module named" in str(e) and "psycopg2" in str(e):
                 error_msg = "缺少 PostgreSQL 驱动 (psycopg2)。请运行: pip install psycopg2-binary"
                 logger.error(f"{error_msg} - {connection.name}")
+            elif "No module named" in str(e) and "redis" in str(e):
+                error_msg = "缺少 Redis 驱动 (redis)。请运行: pip install redis"
+                logger.error(f"{error_msg} - {connection.name}")
             else:
                 logger.error(f"未知错误: {str(e)}")
             if test_connection:
@@ -161,7 +203,12 @@ class DatabaseManager:
         """移除数据库连接并清除相关缓存"""
         try:
             if connection_id in self.engines:
-                self.engines[connection_id].dispose()
+                engine = self.engines[connection_id]
+                # Redis 使用 close() 方法
+                if isinstance(engine, RedisClient):
+                    engine.close()
+                else:
+                    engine.dispose()
                 del self.engines[connection_id]
             
             if connection_id in self.connections:
@@ -186,8 +233,8 @@ class DatabaseManager:
         """获取连接配置"""
         return self.connections.get(connection_id)
     
-    def get_engine(self, connection_id: str) -> Optional[Engine]:
-        """获取数据库引擎（如果不存在则创建）"""
+    def get_engine(self, connection_id: str) -> Optional[Union[Engine, RedisClient]]:
+        """获取数据库引擎或Redis客户端（如果不存在则创建）"""
         # 如果引擎已存在，直接返回
         if connection_id in self.engines:
             return self.engines[connection_id]
@@ -196,6 +243,13 @@ class DatabaseManager:
         connection = self.connections.get(connection_id)
         if connection:
             try:
+                # Redis 特殊处理
+                if connection.db_type == DatabaseType.REDIS:
+                    redis_client = RedisClient(connection)
+                    self.engines[connection_id] = redis_client
+                    return redis_client
+                
+                # SQL 数据库
                 connect_args = connection.get_connect_args()
                 engine = create_engine(
                     connection.get_connection_string(),
@@ -284,10 +338,17 @@ class DatabaseManager:
             return False, "连接不存在"
         
         try:
+            # Redis 特殊处理
+            if isinstance(engine, RedisClient):
+                return engine.test_connection()
+            
+            # SQL 数据库
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             return True, "连接成功"
         except SQLAlchemyError as e:
+            return False, f"连接失败: {str(e)}"
+        except Exception as e:
             return False, f"连接失败: {str(e)}"
     
     def execute_query(
@@ -357,6 +418,27 @@ class DatabaseManager:
         if not connection:
             return []
         
+        # Redis 特殊处理：动态查询数据库数量
+        if connection.db_type == DatabaseType.REDIS:
+            try:
+                # 尝试查询数据库数量
+                redis_client = RedisClient(connection)
+                try:
+                    db_count = redis_client.get_database_count()
+                    logger.debug(f"查询到 Redis 数据库数量: {db_count}")
+                    return [str(i) for i in range(db_count)]
+                except Exception as e:
+                    logger.warning(f"查询 Redis 数据库数量失败: {e}，使用默认值 16")
+                    return [str(i) for i in range(16)]
+                finally:
+                    try:
+                        redis_client.close()
+                    except:
+                        pass
+            except Exception as e:
+                logger.warning(f"创建 Redis 客户端失败: {e}，使用默认值 16")
+                return [str(i) for i in range(16)]
+        
         # 获取引擎（如果不存在则创建）
         engine = self.get_engine(connection_id)
         if not engine:
@@ -400,6 +482,15 @@ class DatabaseManager:
     
     def get_tables(self, connection_id: str, database: Optional[str] = None) -> List[str]:
         """获取数据库表列表"""
+        # 获取连接信息
+        connection = self.get_connection(connection_id)
+        if not connection:
+            return []
+        
+        # Redis 特殊处理：Redis 不使用表的概念，返回空列表
+        if connection.db_type == DatabaseType.REDIS:
+            return []
+        
         # 获取引擎（如果不存在则创建）
         engine = self.get_engine(connection_id)
         if not engine:
@@ -407,11 +498,10 @@ class DatabaseManager:
             return []
         
         try:
-            connection = self.get_connection(connection_id)
             inspector = inspect(engine)
             
             # MySQL/MariaDB: 通过 schema 参数获取指定数据库的表列表，而不是执行 USE
-            if database and connection and connection.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
+            if database and connection.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
                 return inspector.get_table_names(schema=database)
             
             # 其他情况：使用默认数据库
@@ -424,6 +514,10 @@ class DatabaseManager:
         """获取表的列信息"""
         engine = self.engines.get(connection_id)
         if not engine:
+            return []
+        
+        # Redis 特殊处理：Redis 不使用表的概念，返回空列表
+        if isinstance(engine, RedisClient):
             return []
         
         try:
@@ -446,7 +540,11 @@ class DatabaseManager:
         """关闭所有连接"""
         for engine in self.engines.values():
             try:
-                engine.dispose()
+                # Redis 使用 close() 方法
+                if isinstance(engine, RedisClient):
+                    engine.close()
+                else:
+                    engine.dispose()
             except Exception as e:
                 logger.error(f"关闭连接失败: {str(e)}")
         

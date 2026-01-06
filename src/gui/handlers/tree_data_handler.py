@@ -12,6 +12,7 @@ from src.gui.utils.tree_item_types import TreeItemType, TreeItemData
 from src.utils.ui_helpers import (
     get_database_icon_simple,
     get_connection_icon,
+    get_database_icon,
     get_table_icon,
     get_category_icon
 )
@@ -28,6 +29,31 @@ class TreeDataHandler:
     def __init__(self, main_window: 'MainWindow'):
         self.main_window = main_window
         self.tree_cache = TreeCache()
+    
+    def _safe_delete_worker(self, worker):
+        """安全删除 worker（确保线程完全结束）"""
+        if worker is None:
+            return
+        try:
+            # 检查线程是否还在运行
+            if worker.isRunning():
+                logger.warning(f"尝试删除仍在运行的 worker: {worker.objectName()}")
+                return  # 如果还在运行，不删除
+            
+            # 断开所有信号连接
+            try:
+                worker.databases_ready.disconnect()
+                worker.error_occurred.disconnect()
+                worker.finished.disconnect()
+            except (RuntimeError, TypeError):
+                pass  # 信号可能已经断开
+            
+            # 删除对象
+            worker.deleteLater()
+        except RuntimeError:
+            pass  # 对象已被删除，忽略
+        except Exception as e:
+            logger.warning(f"安全删除 worker 时出错: {e}")
     
     def refresh_connections(self):
         """刷新连接列表"""
@@ -48,8 +74,8 @@ class TreeDataHandler:
             # 创建树项（使用根节点作为父项）
             item = QTreeWidgetItem(root_item)
             
-            # 设置图标（使用连接图标，蓝色服务器图标）
-            icon = get_connection_icon(18)
+            # 设置图标（根据数据库类型显示不同的图标）
+            icon = get_database_icon(conn.db_type, 18)
             item.setIcon(0, icon)
             
             # 设置主行文本（连接名称）
@@ -205,14 +231,19 @@ class TreeDataHandler:
                             pass
                         # 请求停止
                         old_worker.stop()
-                        # 等待线程停止（最多等待500ms，避免长时间阻塞）
-                        if not old_worker.wait(500):
+                        # 等待线程停止（最多等待1000ms，避免长时间阻塞）
+                        if not old_worker.wait(1000):
                             # 如果等待超时，强制终止
-                            logger.warning(f"数据库列表worker未能在500ms内停止，强制终止")
+                            logger.warning(f"数据库列表worker未能在1秒内停止，强制终止")
                             old_worker.terminate()
-                            old_worker.wait(200)
-                        # 线程已停止，安全删除
-                        old_worker.deleteLater()
+                            old_worker.wait(500)
+                        # 确保线程已完全结束
+                        if old_worker.isRunning():
+                            logger.warning(f"数据库列表worker仍在运行，再次终止")
+                            old_worker.terminate()
+                            old_worker.wait(500)
+                        # 延迟删除，确保线程完全结束
+                        QTimer.singleShot(200, lambda: self._safe_delete_worker(old_worker))
                 except RuntimeError:
                     # 对象已被删除，忽略
                     pass
@@ -228,7 +259,8 @@ class TreeDataHandler:
             worker = DatabaseListWorker(
                 connection.get_connection_string(),
                 connection.get_connect_args(),
-                connection.db_type
+                connection.db_type,
+                connection  # 传递 connection 对象，用于 Redis 查询数据库数量
             )
             
             # 保存引用以便在回调中使用
@@ -239,12 +271,31 @@ class TreeDataHandler:
             # 定义清理函数（当线程完全结束时调用）
             def cleanup_worker():
                 """清理worker（在线程finished信号触发时调用）"""
+                # 检查窗口是否正在关闭
+                if self.main_window._is_closing:
+                    logger.debug(f"窗口正在关闭，跳过清理 worker: {connection_id}")
+                    return
+                
                 try:
+                    # 确保线程已经完全结束
+                    if worker.isRunning():
+                        logger.warning(f"Worker {connection_id} 在 finished 信号触发时仍在运行，等待结束...")
+                        if not worker.wait(1000):  # 等待最多1秒
+                            logger.warning(f"Worker {connection_id} 未能在1秒内结束，强制终止")
+                            worker.terminate()
+                            worker.wait(500)
+                    
+                    # 从字典中移除
                     if connection_id in self.main_window.database_list_workers:
                         del self.main_window.database_list_workers[connection_id]
-                    worker.deleteLater()
+                    
+                    # 延迟删除，确保线程完全结束
+                    from PyQt6.QtCore import QTimer
+                    QTimer.singleShot(200, lambda: self._safe_delete_worker(worker))
                 except RuntimeError:
                     pass  # 对象已被删除，忽略
+                except Exception as e:
+                    logger.warning(f"清理 worker {connection_id} 时出错: {e}")
             
             # 明确使用QueuedConnection，确保信号在UI线程的事件循环中异步处理
             worker.databases_ready.connect(
@@ -263,10 +314,12 @@ class TreeDataHandler:
             worker.start()
         
         # 延迟1ms执行，确保展开事件处理函数立即返回
-        QTimer.singleShot(1, start_database_loading)
+        QTimer.singleShot(0, start_database_loading)
     
     def on_databases_loaded(self, connection_item: QTreeWidgetItem, loading_item: QTreeWidgetItem, databases: List[str], connection_id: str = None):
         """数据库列表加载完成回调"""
+        logger.info(f"✅ on_databases_loaded: connection_id={connection_id}, databases_count={len(databases)}")
+        
         # 检查窗口是否正在关闭
         if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
             # 清理worker引用
@@ -338,6 +391,8 @@ class TreeDataHandler:
             logger.warning(f"⚠️ connection_id 为空，无法保存数据库缓存")
         
         # 清理worker引用（线程会通过finished信号自动清理，这里只清理字典引用）
+        # 断开信号（但保留 worker 在字典中，让 cleanup_worker 通过 finished 信号来处理最终清理）
+        # 这样可以确保线程完全结束后才删除 worker
         if connection_id and connection_id in self.main_window.database_list_workers:
             try:
                 worker = self.main_window.database_list_workers[connection_id]
@@ -345,10 +400,10 @@ class TreeDataHandler:
                     try:
                         worker.databases_ready.disconnect()
                         worker.error_occurred.disconnect()
-                    except:
-                        pass
-                    # 断开信号后，不再需要立即删除，finished信号会处理清理
-                    del self.main_window.database_list_workers[connection_id]
+                    except (RuntimeError, TypeError):
+                        pass  # 信号可能已经断开
+                    # 不在这里删除 worker，让 cleanup_worker（通过 finished 信号）来处理
+                    # worker 会在 finished 信号触发时由 cleanup_worker 清理
             except RuntimeError:
                 pass
         
@@ -362,8 +417,16 @@ class TreeDataHandler:
                 if db_name and isinstance(db_name, str):
                     existing_databases.add(db_name)
         
-        # 添加数据库项（按字母顺序排序），只添加不存在的
-        for db_name in sorted(databases):
+        # 添加数据库项（排序），只添加不存在的
+        # 对于 Redis 连接，按数字排序；其他数据库按字母顺序排序
+        if connection and connection.db_type == DatabaseType.REDIS:
+            # Redis 数据库按数字排序
+            sorted_databases = sorted(databases, key=lambda x: int(x) if x.isdigit() else float('inf'))
+        else:
+            # 其他数据库按字母顺序排序
+            sorted_databases = sorted(databases)
+        
+        for db_name in sorted_databases:
             # 如果已存在，跳过
             if db_name in existing_databases:
                 logger.debug(f"数据库 {db_name} 已存在，跳过添加")
@@ -380,6 +443,79 @@ class TreeDataHandler:
                 font = db_item.font(0)
                 font.setBold(True)
                 db_item.setFont(0, font)
+        
+        # 如果是 Redis 连接，查询每个数据库的 key 数量并更新显示
+        if connection and connection.db_type == DatabaseType.REDIS:
+            logger.info(f"✅ Redis 连接，启动 key 数量查询")
+            self._query_redis_dbsizes(connection_item, connection_id, connection, databases)
+    
+    def _query_redis_dbsizes(self, connection_item: QTreeWidgetItem, connection_id: str, connection, databases: List[str]):
+        """查询 Redis 数据库的 key 数量并更新显示"""
+        try:
+            from src.gui.workers.redis_dbsize_worker import RedisDbsizeWorker
+            
+            # 创建 worker
+            worker = RedisDbsizeWorker(connection, databases)
+            
+            # 连接信号
+            def on_sizes_ready(db_sizes: dict):
+                """key 数量查询完成"""
+                try:
+                    if not connection_item or not hasattr(connection_item, 'childCount'):
+                        return
+                    
+                    # 更新每个数据库项的文本
+                    for i in range(connection_item.childCount()):
+                        child = connection_item.child(i)
+                        if TreeItemData.get_item_type(child) == TreeItemType.DATABASE:
+                            db_name = TreeItemData.get_item_data(child)
+                            if db_name in db_sizes:
+                                key_count = db_sizes[db_name]
+                                if key_count >= 0:
+                                    # 格式化显示
+                                    if key_count >= 1000000:
+                                        count_str = f"{key_count/1000000:.1f}M"
+                                    elif key_count >= 1000:
+                                        count_str = f"{key_count/1000:.1f}K"
+                                    else:
+                                        count_str = str(key_count)
+                                    
+                                    child.setText(0, f"{db_name} ({count_str} keys)")
+                                    child.setToolTip(0, f"Redis 数据库: {db_name}\n共有 {key_count:,} 个 key\n双击展开")
+                                    logger.info(f"✅ 更新 Redis 数据库显示: {db_name} ({key_count} keys)")
+                except RuntimeError:
+                    pass
+                except Exception as e:
+                    logger.warning(f"更新 Redis 数据库显示失败: {e}")
+            
+            def on_error(error: str):
+                """查询失败"""
+                logger.warning(f"查询 Redis 数据库大小失败: {error}")
+            
+            def on_finished():
+                """worker 完成，清理引用"""
+                try:
+                    # 从字典中移除 worker 引用
+                    if connection_id in self.main_window.redis_dbsize_workers:
+                        del self.main_window.redis_dbsize_workers[connection_id]
+                    worker.deleteLater()
+                except Exception as e:
+                    logger.debug(f"清理 Redis dbsize worker 失败: {e}")
+            
+            worker.sizes_ready.connect(on_sizes_ready, Qt.ConnectionType.QueuedConnection)
+            worker.error_occurred.connect(on_error, Qt.ConnectionType.QueuedConnection)
+            worker.finished.connect(on_finished, Qt.ConnectionType.QueuedConnection)
+            
+            # 保存 worker 引用，以便在应用关闭时可以停止它
+            if not hasattr(self.main_window, 'redis_dbsize_workers'):
+                self.main_window.redis_dbsize_workers = {}
+            self.main_window.redis_dbsize_workers[connection_id] = worker
+            
+            # 启动 worker
+            worker.start()
+            
+        except Exception as e:
+            logger.error(f"启动 Redis 数据库大小查询失败: {e}")
     
     def on_databases_load_error(self, connection_item: QTreeWidgetItem, loading_item: QTreeWidgetItem, error: str):
         """数据库列表加载错误回调"""
@@ -477,10 +613,89 @@ class TreeDataHandler:
                 pass
         
         # 延迟1ms执行，确保不阻塞主线程
-        QTimer.singleShot(1, update_ui)
+        QTimer.singleShot(0, update_ui)
     
     def load_tables_for_database(self, db_item: QTreeWidgetItem, connection_id: str, database: str, force_reload: bool = False):
         """为数据库加载表列表"""
+        # 获取连接信息，判断是否为 Redis
+        connection = self.main_window.db_manager.get_connection(connection_id)
+        is_redis = connection and connection.db_type == DatabaseType.REDIS
+        
+        logger.info(f"🔵 load_tables_for_database: connection_id={connection_id}, database={database}, "
+                   f"is_redis={is_redis}, force_reload={force_reload}")
+        
+        # Redis 特殊处理：在"表"分类下显示"所有数据"节点
+        if is_redis:
+            logger.info("✅ Redis 数据库，进入特殊处理逻辑")
+            # 检查是否已经加载过
+            has_tables_category = False
+            tables_category = None
+            for i in range(db_item.childCount()):
+                child = db_item.child(i)
+                child_type = TreeItemData.get_item_type(child)
+                if child_type == TreeItemType.TABLE_CATEGORY:
+                    has_tables_category = True
+                    tables_category = child
+                    break
+            
+            # 如果已经加载过且不强制重新加载，直接返回
+            if has_tables_category and not force_reload:
+                # 检查是否已有"所有数据"节点
+                has_all_data = False
+                for i in range(tables_category.childCount()):
+                    child = tables_category.child(i)
+                    if TreeItemData.get_item_type(child) == TreeItemType.REDIS_ALL_DATA:
+                        has_all_data = True
+                        break
+                if has_all_data:
+                    return
+            
+            # 创建或获取"表"分类项
+            if not tables_category:
+                tables_category = QTreeWidgetItem(db_item)
+                tables_category.setText(0, "表")
+                TreeItemData.set_item_type_and_data(tables_category, TreeItemType.TABLE_CATEGORY)
+                from src.utils.ui_helpers import get_category_icon
+                tables_category.setIcon(0, get_category_icon("表", 16))
+                tables_category.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            
+            # 如果强制重新加载，清理"表"分类下的所有子项
+            if force_reload:
+                for j in range(tables_category.childCount() - 1, -1, -1):
+                    tables_category.removeChild(tables_category.child(j))
+            
+            # 检查是否已有"所有数据"节点
+            has_all_data = False
+            for i in range(tables_category.childCount()):
+                child = tables_category.child(i)
+                if TreeItemData.get_item_type(child) == TreeItemType.REDIS_ALL_DATA:
+                    has_all_data = True
+                    break
+            
+            # 如果没有"所有数据"节点，创建它
+            if not has_all_data:
+                logger.info("✅ 创建 Redis '所有数据' 节点")
+                all_data_item = QTreeWidgetItem(tables_category)
+                all_data_item.setText(0, "所有数据")
+                TreeItemData.set_item_type_and_data(all_data_item, TreeItemType.REDIS_ALL_DATA, database)
+                from src.utils.ui_helpers import get_table_icon
+                all_data_item.setIcon(0, get_table_icon(16))
+                all_data_item.setToolTip(0, f"Redis 数据库: {database}\n点击查询前100条数据")
+                all_data_item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                )
+            else:
+                logger.info("✅ Redis '所有数据' 节点已存在，无需创建")
+            
+            # 自动展开"表"分类
+            if db_item.isExpanded():
+                tables_category.setExpanded(True)
+            
+            logger.info(f"✅ Redis 数据库处理完成，返回")
+            return
+        
+        # 非 Redis 数据库的原有逻辑
         # 检查是否已经加载过表
         has_tables = False
         loading_item = None
@@ -521,6 +736,13 @@ class TreeDataHandler:
             return
         
         # 尝试从缓存加载表列表（立即显示）
+        # 注意：Redis 数据库不应该使用缓存逻辑，因为它在 load_tables_for_database 开头就已经处理并返回了
+        # 但为了安全，再次检查是否为 Redis
+        if is_redis:
+            # Redis 数据库不应该走到这里，但如果走到了，直接返回
+            logger.warning(f"Redis 数据库不应该走到缓存逻辑，可能代码逻辑有问题")
+            return
+        
         from src.core.tree_cache import TreeCache
         tree_cache = TreeCache()
         cached_tables = tree_cache.get_tables(connection_id, database)
@@ -597,6 +819,37 @@ class TreeDataHandler:
                     pass
                 return
             
+            # 再次检查是否为 Redis（防止 Redis 数据库启动 worker）
+            if connection.db_type == DatabaseType.REDIS:
+                # Redis 数据库不应该启动 worker，直接创建"所有数据"节点
+                if loading_item:
+                    try:
+                        tables_category.removeChild(loading_item)
+                    except:
+                        pass
+                
+                # 检查是否已有"所有数据"节点
+                has_all_data = False
+                for i in range(tables_category.childCount()):
+                    child = tables_category.child(i)
+                    if TreeItemData.get_item_type(child) == TreeItemType.REDIS_ALL_DATA:
+                        has_all_data = True
+                        break
+                
+                if not has_all_data:
+                    # 创建"所有数据"节点
+                    all_data_item = QTreeWidgetItem(tables_category)
+                    all_data_item.setText(0, "所有数据")
+                    TreeItemData.set_item_type_and_data(all_data_item, TreeItemType.REDIS_ALL_DATA, database)
+                    from src.utils.ui_helpers import get_table_icon
+                    all_data_item.setIcon(0, get_table_icon(16))
+                    all_data_item.setToolTip(0, f"Redis 数据库: {database}\n点击查询前100条数据")
+                    all_data_item.setFlags(
+                        Qt.ItemFlag.ItemIsEnabled
+                        | Qt.ItemFlag.ItemIsSelectable
+                    )
+                return
+            
             # 停止之前的表列表工作线程（如果存在）
             if self.main_window.table_list_worker_for_tree:
                 try:
@@ -659,26 +912,7 @@ class TreeDataHandler:
         except RuntimeError:
             return
         
-        # 清理所有临时项（加载中、错误、无表等）
-        items_to_remove = []
-        try:
-            for i in range(tables_category.childCount()):
-                child = tables_category.child(i)
-                if child:
-                    child_type = TreeItemData.get_item_type(child)
-                    if child_type in (TreeItemType.LOADING, TreeItemType.ERROR, TreeItemType.EMPTY):
-                        items_to_remove.append(child)
-        except RuntimeError:
-            pass
-        
-        # 移除临时项
-        for item in items_to_remove:
-            try:
-                tables_category.removeChild(item)
-            except (RuntimeError, AttributeError):
-                pass
-        
-        # 获取连接ID和数据库名，用于缓存
+        # 获取连接ID和数据库名，用于缓存和判断数据库类型
         connection_id = None
         database = ""
         
@@ -692,7 +926,106 @@ class TreeDataHandler:
         else:
             logger.warning("worker 没有 database 属性")
         
+        # 如果从 worker 获取不到 connection_id，尝试从树节点获取
+        if not connection_id:
+            # 从数据库项的父节点（连接项）获取连接ID
+            connection_id = TreeItemData.get_connection_id(db_item)
+            if connection_id:
+                logger.info(f"从树节点获取到 connection_id: {connection_id}")
+            else:
+                logger.error("无法获取 connection_id，无法判断数据库类型")
+        
+        # 如果从 worker 获取不到 database，尝试从树节点获取
+        if not database:
+            database = TreeItemData.get_database_name(db_item)
+            if database:
+                logger.info(f"从树节点获取到 database: {database}")
+        
+        # 检查是否为 Redis 数据库（先检查，以便在清理时保留"所有数据"节点）
+        connection = None
+        is_redis = False
+        if connection_id:
+            connection = self.main_window.db_manager.get_connection(connection_id)
+            is_redis = connection and connection.db_type == DatabaseType.REDIS
+            logger.info(f"数据库类型判断: connection_id={connection_id}, db_type={connection.db_type if connection else 'None'}, is_redis={is_redis}")
+        else:
+            logger.error("connection_id 为空，无法判断是否为 Redis")
+        
+        # 清理所有临时项（加载中、错误、无表等）
+        # 注意：如果是 Redis，不要清理"所有数据"节点
+        items_to_remove = []
+        try:
+            for i in range(tables_category.childCount()):
+                child = tables_category.child(i)
+                if child:
+                    child_type = TreeItemData.get_item_type(child)
+                    if child_type in (TreeItemType.LOADING, TreeItemType.ERROR, TreeItemType.EMPTY):
+                        items_to_remove.append(child)
+                    # 如果是 Redis，也要清理表节点（Redis 不应该有表节点）
+                    elif is_redis and child_type == TreeItemType.TABLE:
+                        items_to_remove.append(child)
+        except RuntimeError:
+            pass
+        
+        # 移除临时项
+        for item in items_to_remove:
+            try:
+                tables_category.removeChild(item)
+            except (RuntimeError, AttributeError):
+                pass
+        
+        # 如果是 Redis 数据库，无论 tables 是否为空，都应该显示"所有数据"节点
+        if is_redis:
+            logger.info(f"✅ on_tables_loaded_for_tree: Redis 数据库处理逻辑")
+            # 清理所有非"所有数据"的节点（包括"无表"节点）
+            items_to_remove_redis = []
+            has_all_data = False
+            for i in range(tables_category.childCount()):
+                child = tables_category.child(i)
+                if child:
+                    child_type = TreeItemData.get_item_type(child)
+                    child_text = child.text(0)
+                    logger.debug(f"检查子节点: {child_text}, type={child_type}")
+                    if child_type == TreeItemType.REDIS_ALL_DATA:
+                        has_all_data = True
+                        logger.info(f"✅ 找到现有的'所有数据'节点")
+                    elif child_type in (TreeItemType.EMPTY, TreeItemType.TABLE):
+                        # 清理"无表"节点和表节点（Redis 不应该有表节点）
+                        logger.info(f"🗑️ 标记清理节点: {child_text}, type={child_type}")
+                        items_to_remove_redis.append(child)
+            
+            # 移除不需要的节点
+            for item in items_to_remove_redis:
+                try:
+                    logger.info(f"🗑️ 移除节点: {item.text(0)}")
+                    tables_category.removeChild(item)
+                except (RuntimeError, AttributeError):
+                    pass
+            
+            # 如果没有"所有数据"节点，创建它
+            if not has_all_data:
+                logger.info(f"✅ 创建新的'所有数据'节点")
+                all_data_item = QTreeWidgetItem(tables_category)
+                all_data_item.setText(0, "所有数据")
+                TreeItemData.set_item_type_and_data(all_data_item, TreeItemType.REDIS_ALL_DATA, database)
+                from src.utils.ui_helpers import get_table_icon
+                all_data_item.setIcon(0, get_table_icon(16))
+                all_data_item.setToolTip(0, f"Redis 数据库: {database}\n点击查询前100条数据")
+                all_data_item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                )
+            else:
+                logger.info(f"✅ '所有数据'节点已存在，无需创建")
+            
+            # Redis 数据库不需要保存表缓存，直接返回
+            logger.info(f"✅ Redis 数据库处理完成，返回")
+            return
+        
+        # 非 Redis 数据库的处理逻辑
         if not tables:
+            
+            # 非 Redis 数据库：显示"无表"
             # 没有表，保存空列表到缓存
             if connection_id and database:
                 logger.info(f"保存空表列表缓存: {connection_id}.{database}")
@@ -798,7 +1131,7 @@ class TreeDataHandler:
                 pass
         
         # 延迟1ms执行，确保不阻塞主线程
-        QTimer.singleShot(1, update_ui)
+        QTimer.singleShot(0, update_ui)
     
     def refresh_connection_databases(self, connection_id: str, connection_item: QTreeWidgetItem):
         """刷新连接下的数据库列表"""
@@ -859,8 +1192,16 @@ class TreeDataHandler:
         # 获取连接信息
         connection = self.main_window.db_manager.get_connection(connection_id)
         
-        # 添加数据库项
-        for db_name in sorted(cached_databases):
+        # 添加数据库项（排序）
+        # 对于 Redis 连接，按数字排序；其他数据库按字母顺序排序
+        if connection and connection.db_type == DatabaseType.REDIS:
+            # Redis 数据库按数字排序
+            sorted_databases = sorted(cached_databases, key=lambda x: int(x) if x.isdigit() else float('inf'))
+        else:
+            # 其他数据库按字母顺序排序
+            sorted_databases = sorted(cached_databases)
+        
+        for db_name in sorted_databases:
             db_item = QTreeWidgetItem(connection_item)
             db_item.setText(0, db_name)
             TreeItemData.set_item_type_and_data(db_item, TreeItemType.DATABASE, db_name)
@@ -876,12 +1217,48 @@ class TreeDataHandler:
             # 从缓存加载表列表（如果有）
             self._load_tables_from_cache(db_item, connection_id, db_name)
         
+        # 如果是 Redis 连接，查询每个数据库的 key 数量并更新显示
+        if connection and connection.db_type == DatabaseType.REDIS:
+            logger.info(f"✅ 从缓存加载 Redis 数据库，启动 key 数量查询")
+            self._query_redis_dbsizes(connection_item, connection_id, connection, cached_databases)
+        
         # 后台异步刷新数据库列表（无感更新）
-        QTimer.singleShot(100, lambda: self._async_refresh_databases(connection_item, connection_id))
+        def async_refresh():
+            if not (hasattr(self.main_window, '_is_closing') and self.main_window._is_closing):
+                self._async_refresh_databases(connection_item, connection_id)
+        QTimer.singleShot(100, async_refresh)
     
     def _load_tables_from_cache(self, db_item: QTreeWidgetItem, connection_id: str, database: str):
         """从缓存加载表列表（如果有缓存的话）"""
         logger.debug(f"尝试从缓存加载: connection_id={connection_id}, database={database}")
+        
+        # 检查是否为 Redis 数据库
+        connection = self.main_window.db_manager.get_connection(connection_id)
+        is_redis = connection and connection.db_type == DatabaseType.REDIS
+        
+        # Redis 数据库不应该从缓存加载表，而是应该创建"所有数据"节点
+        if is_redis:
+            logger.debug(f"✅ _load_tables_from_cache: Redis 数据库，创建'所有数据'节点")
+            # 创建"表"分类项
+            tables_category = QTreeWidgetItem(db_item)
+            tables_category.setText(0, "表")
+            TreeItemData.set_item_type_and_data(tables_category, TreeItemType.TABLE_CATEGORY)
+            tables_category.setIcon(0, get_category_icon("表", 16))
+            tables_category.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            
+            # 创建"所有数据"节点
+            all_data_item = QTreeWidgetItem(tables_category)
+            all_data_item.setText(0, "所有数据")
+            TreeItemData.set_item_type_and_data(all_data_item, TreeItemType.REDIS_ALL_DATA, database)
+            all_data_item.setIcon(0, get_table_icon(16))
+            all_data_item.setToolTip(0, f"Redis 数据库: {database}\n点击查询前100条数据")
+            all_data_item.setFlags(
+                Qt.ItemFlag.ItemIsEnabled
+                | Qt.ItemFlag.ItemIsSelectable
+            )
+            logger.debug(f"✅ Redis '所有数据' 节点已创建")
+            return
+        
         cached_tables = self.tree_cache.get_tables(connection_id, database)
         logger.debug(f"缓存结果: {cached_tables}")
         
@@ -921,6 +1298,11 @@ class TreeDataHandler:
     
     def _async_refresh_databases(self, connection_item: QTreeWidgetItem, connection_id: str):
         """后台异步刷新数据库列表（无感更新）"""
+        # 检查窗口是否正在关闭
+        if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
+            logger.debug(f"窗口正在关闭，跳过后台刷新数据库列表: {connection_id}")
+            return
+        
         # 这个方法会在后台更新数据库列表，不显示"加载中..."
         # 获取连接信息
         connection = self.main_window.db_manager.get_connection(connection_id)
@@ -938,10 +1320,16 @@ class TreeDataHandler:
                     except:
                         pass
                     old_worker.stop()
-                    if not old_worker.wait(200):
+                    if not old_worker.wait(1000):
                         old_worker.terminate()
-                        old_worker.wait(100)
-                    old_worker.deleteLater()
+                        old_worker.wait(500)
+                    # 确保线程已完全结束
+                    if old_worker.isRunning():
+                        logger.warning(f"数据库列表worker仍在运行，再次终止")
+                        old_worker.terminate()
+                        old_worker.wait(500)
+                    # 延迟删除，确保线程完全结束
+                    QTimer.singleShot(200, lambda: self._safe_delete_worker(old_worker))
             except RuntimeError:
                 pass
             except Exception as e:
@@ -955,7 +1343,8 @@ class TreeDataHandler:
         worker = DatabaseListWorker(
             connection.get_connection_string(),
             connection.get_connect_args(),
-            connection.db_type
+            connection.db_type,
+            connection  # 传递 connection 对象，用于 Redis 查询数据库数量
         )
         
         worker.connection_item = connection_item
@@ -977,6 +1366,11 @@ class TreeDataHandler:
     
     def _on_databases_refreshed(self, connection_item: QTreeWidgetItem, connection_id: str, databases: List[str]):
         """后台刷新数据库列表完成（静默更新）"""
+        # 检查窗口是否正在关闭
+        if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
+            logger.debug(f"窗口正在关闭，跳过后台刷新数据库列表回调: {connection_id}")
+            return
+        
         try:
             if not connection_item or not hasattr(connection_item, 'text'):
                 return
@@ -1000,8 +1394,16 @@ class TreeDataHandler:
         # 获取连接信息
         connection = self.main_window.db_manager.get_connection(connection_id)
         
-        # 添加新增的数据库
-        for db_name in sorted(databases):
+        # 添加新增的数据库（排序）
+        # 对于 Redis 连接，按数字排序；其他数据库按字母顺序排序
+        if connection and connection.db_type == DatabaseType.REDIS:
+            # Redis 数据库按数字排序
+            sorted_databases = sorted(databases, key=lambda x: int(x) if x.isdigit() else float('inf'))
+        else:
+            # 其他数据库按字母顺序排序
+            sorted_databases = sorted(databases)
+        
+        for db_name in sorted_databases:
             if db_name not in existing_databases:
                 logger.debug(f"发现新数据库: {db_name}")
                 db_item = QTreeWidgetItem(connection_item)
@@ -1028,19 +1430,8 @@ class TreeDataHandler:
                     pass
         
         # 清理worker引用（线程会通过finished信号自动清理，这里只清理字典引用）
-        if connection_id in self.main_window.database_list_workers:
-            try:
-                worker = self.main_window.database_list_workers[connection_id]
-                if worker:
-                    try:
-                        worker.databases_ready.disconnect()
-                        worker.error_occurred.disconnect()
-                    except:
-                        pass
-                    # 断开信号后，不再需要立即删除，finished信号会处理清理
-                    del self.main_window.database_list_workers[connection_id]
-            except RuntimeError:
-                pass
+        # 注意：不要在这里删除 worker，让 cleanup_async_worker（通过 finished 信号）来处理
+        # 这样可以确保线程完全结束后再清理
     
     def _async_refresh_tables(self, db_item: QTreeWidgetItem, connection_id: str, database: str):
         """后台异步刷新表列表（无感更新）"""
@@ -1059,6 +1450,11 @@ class TreeDataHandler:
         # 获取连接信息
         connection = self.main_window.db_manager.get_connection(connection_id)
         if not connection:
+            return
+        
+        # Redis 数据库不需要后台刷新表列表（Redis 使用"所有数据"节点）
+        if connection.db_type == DatabaseType.REDIS:
+            logger.debug(f"⏭️ Redis 数据库，跳过后台刷新表列表")
             return
         
         # 停止之前的表列表工作线程（如果存在）
@@ -1113,6 +1509,15 @@ class TreeDataHandler:
             if not db_item or not tables_category:
                 return
         except RuntimeError:
+            return
+        
+        # 检查是否为 Redis 数据库
+        connection = self.main_window.db_manager.get_connection(connection_id)
+        is_redis = connection and connection.db_type == DatabaseType.REDIS
+        
+        # Redis 数据库不应该走到这里，但如果走到了，直接返回，不更新缓存和节点
+        if is_redis:
+            logger.info(f"⚠️ _on_tables_refreshed: Redis 数据库不应该走到这里，跳过处理")
             return
         
         # 保存到缓存

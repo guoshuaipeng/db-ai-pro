@@ -131,6 +131,18 @@ class MenuHandler:
                 
                 menu.addSeparator()
                 
+                # 监控当前数据库
+                monitor_action = QAction(self._get_icon('query'), "监控当前数据库", self.main_window)
+                monitor_action.triggered.connect(lambda: self.main_window.show_process_monitor(connection_id, database))
+                menu.addAction(monitor_action)
+                
+                # 监控所有数据库
+                monitor_all_action = QAction(self._get_icon('query'), "监控所有数据库", self.main_window)
+                monitor_all_action.triggered.connect(lambda: self.main_window.show_process_monitor(connection_id, None))
+                menu.addAction(monitor_all_action)
+                
+                menu.addSeparator()
+                
                 # 删除数据库
                 delete_db_action = QAction(self._get_icon('delete'), "删除数据库", self.main_window)
                 delete_db_action.triggered.connect(lambda: self.main_window.delete_database(connection_id, database, item))
@@ -150,6 +162,13 @@ class MenuHandler:
             test_action = QAction(self._get_icon('test'), "测试连接", self.main_window)
             test_action.triggered.connect(lambda: self.main_window.connection_handler.test_connection(connection_id))
             menu.addAction(test_action)
+            
+            menu.addSeparator()
+            
+            # 监控所有数据库
+            monitor_action = QAction(self._get_icon('query'), "监控所有数据库", self.main_window)
+            monitor_action.triggered.connect(lambda: self.main_window.show_process_monitor(connection_id, None))
+            menu.addAction(monitor_action)
             
             menu.addSeparator()
             

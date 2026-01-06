@@ -704,66 +704,75 @@ class EditTableTab(QWidget):
         # 清空表格
         self.schema_table.setRowCount(0)
         
-        # 填充列数据
-        self.schema_table.setRowCount(len(columns))
+        # 禁用更新和信号，提高性能（批量更新模式）
+        self.schema_table.setUpdatesEnabled(False)
+        self.schema_table.blockSignals(True)
         
-        # 解析主键列表
-        primary_keys_str = table_info.get('primary_keys', '')
-        primary_keys = []
-        if primary_keys_str:
-            primary_keys = [pk.strip() for pk in primary_keys_str.split(',')]
-            logger.info(f"解析到的主键字段列表: {primary_keys}")
-        else:
-            logger.warning(f"表 {table_info.get('name', 'unknown')} 没有主键信息")
-        
-        for row, col in enumerate(columns):
-            # 字段名（蓝色加粗，如果是主键则添加标识）
-            col_name = col['name']
-            is_primary_key = col_name in primary_keys
-            if is_primary_key:
-                logger.debug(f"字段 {col_name} 是主键")
-            display_name = f"{col_name} 🔑" if is_primary_key else col_name
+        try:
+            # 填充列数据
+            self.schema_table.setRowCount(len(columns))
             
-            name_item = QTableWidgetItem(display_name)
-            name_item.setForeground(QColor("#1976d2"))
-            font = name_item.font()
-            font.setBold(True)
-            name_item.setFont(font)
+            # 解析主键列表
+            primary_keys_str = table_info.get('primary_keys', '')
+            primary_keys = []
+            if primary_keys_str:
+                primary_keys = [pk.strip() for pk in primary_keys_str.split(',')]
+                logger.info(f"解析到的主键字段列表: {primary_keys}")
+            else:
+                logger.warning(f"表 {table_info.get('name', 'unknown')} 没有主键信息")
             
-            # 如果是主键，使用特殊背景色
-            if is_primary_key:
-                name_item.setBackground(QColor("#fff3e0"))  # 浅橙色背景
-                name_item.setToolTip("主键字段")
-            
-            # 允许文本选择和复制
-            name_item.setFlags(name_item.flags() | Qt.ItemFlag.ItemIsSelectable)
-            
-            self.schema_table.setItem(row, 0, name_item)
-            
-            # 类型（绿色）
-            type_item = QTableWidgetItem(col['type'])
-            type_item.setForeground(QColor("#388e3c"))
-            type_item.setFlags(type_item.flags() | Qt.ItemFlag.ItemIsSelectable)
-            self.schema_table.setItem(row, 1, type_item)
-            
-            # 可空（橙色）
-            nullable_text = "是" if col['nullable'] == "可空" else "否"
-            nullable_item = QTableWidgetItem(nullable_text)
-            nullable_item.setForeground(QColor("#f57c00"))
-            nullable_item.setFlags(nullable_item.flags() | Qt.ItemFlag.ItemIsSelectable)
-            self.schema_table.setItem(row, 2, nullable_item)
-            
-            # 默认值
-            default_text = col['default'] if col['default'] else "-"
-            default_item = QTableWidgetItem(default_text)
-            default_item.setFlags(default_item.flags() | Qt.ItemFlag.ItemIsSelectable)
-            self.schema_table.setItem(row, 3, default_item)
-            
-            # 注释
-            comment_text = col['comment'] if col['comment'] else "-"
-            comment_item = QTableWidgetItem(comment_text)
-            comment_item.setFlags(comment_item.flags() | Qt.ItemFlag.ItemIsSelectable)
-            self.schema_table.setItem(row, 4, comment_item)
+            for row, col in enumerate(columns):
+                # 字段名（蓝色加粗，如果是主键则添加标识）
+                col_name = col['name']
+                is_primary_key = col_name in primary_keys
+                if is_primary_key:
+                    logger.debug(f"字段 {col_name} 是主键")
+                display_name = f"{col_name} 🔑" if is_primary_key else col_name
+                
+                name_item = QTableWidgetItem(display_name)
+                name_item.setForeground(QColor("#1976d2"))
+                font = name_item.font()
+                font.setBold(True)
+                name_item.setFont(font)
+                
+                # 如果是主键，使用特殊背景色
+                if is_primary_key:
+                    name_item.setBackground(QColor("#fff3e0"))  # 浅橙色背景
+                    name_item.setToolTip("主键字段")
+                
+                # 允许文本选择和复制
+                name_item.setFlags(name_item.flags() | Qt.ItemFlag.ItemIsSelectable)
+                
+                self.schema_table.setItem(row, 0, name_item)
+                
+                # 类型（绿色）
+                type_item = QTableWidgetItem(col['type'])
+                type_item.setForeground(QColor("#388e3c"))
+                type_item.setFlags(type_item.flags() | Qt.ItemFlag.ItemIsSelectable)
+                self.schema_table.setItem(row, 1, type_item)
+                
+                # 可空（橙色）
+                nullable_text = "是" if col['nullable'] == "可空" else "否"
+                nullable_item = QTableWidgetItem(nullable_text)
+                nullable_item.setForeground(QColor("#f57c00"))
+                nullable_item.setFlags(nullable_item.flags() | Qt.ItemFlag.ItemIsSelectable)
+                self.schema_table.setItem(row, 2, nullable_item)
+                
+                # 默认值
+                default_text = col['default'] if col['default'] else "-"
+                default_item = QTableWidgetItem(default_text)
+                default_item.setFlags(default_item.flags() | Qt.ItemFlag.ItemIsSelectable)
+                self.schema_table.setItem(row, 3, default_item)
+                
+                # 注释
+                comment_text = col['comment'] if col['comment'] else "-"
+                comment_item = QTableWidgetItem(comment_text)
+                comment_item.setFlags(comment_item.flags() | Qt.ItemFlag.ItemIsSelectable)
+                self.schema_table.setItem(row, 4, comment_item)
+        finally:
+            # 恢复更新和信号
+            self.schema_table.blockSignals(False)
+            self.schema_table.setUpdatesEnabled(True)
         
         # 调整列宽
         self.schema_table.resizeColumnsToContents()

@@ -15,6 +15,7 @@ class DatabaseType(str, Enum):
     SQLSERVER = "sqlserver"
     MARIADB = "mariadb"
     HIVE = "hive"
+    REDIS = "redis"
 
 
 class DatabaseConnection(BaseModel):
@@ -50,6 +51,19 @@ class DatabaseConnection(BaseModel):
         from urllib.parse import quote_plus
         
         password = self.password.get_secret_value()
+        
+        # Redis 使用特殊的连接字符串格式
+        if self.db_type == DatabaseType.REDIS:
+            # Redis 连接字符串格式: redis://[username]:[password]@host:port/[database]
+            if password:
+                encoded_password = quote_plus(password)
+                if self.username:
+                    encoded_username = quote_plus(self.username)
+                    return f"redis://{encoded_username}:{encoded_password}@{self.host}:{self.port}/{self.database or 0}"
+                else:
+                    return f"redis://:{encoded_password}@{self.host}:{self.port}/{self.database or 0}"
+            else:
+                return f"redis://{self.host}:{self.port}/{self.database or 0}"
         
         db_type_map = {
             DatabaseType.MYSQL: "mysql+pymysql",
@@ -131,6 +145,22 @@ class DatabaseConnection(BaseModel):
             # pyhive.hive.Connection 不接受额外的连接参数
             # 使用默认配置即可
             pass
+        elif self.db_type == DatabaseType.REDIS:
+            # Redis 连接参数
+            # redis-py 使用 socket_connect_timeout 和 socket_timeout
+            connect_args['socket_connect_timeout'] = self.timeout
+            connect_args['socket_timeout'] = self.timeout
+            # 如果指定了数据库，使用 db 参数（移除硬编码的范围限制）
+            if self.database:
+                try:
+                    db_num = int(self.database)
+                    if db_num >= 0:  # 只检查非负数
+                        connect_args['db'] = db_num
+                except ValueError:
+                    pass
+            # SSL 设置
+            if self.use_ssl:
+                connect_args['ssl'] = True
         
         return connect_args
     

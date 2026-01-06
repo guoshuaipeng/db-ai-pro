@@ -172,6 +172,9 @@ class TableStructureHandler:
         elif hasattr(tab_widget, 'cleanup') and hasattr(tab_widget, 'table_name'):
             # 编辑表tab
             tab_widget.cleanup()
+        elif hasattr(tab_widget, 'cleanup') and hasattr(tab_widget, '_monitor_key'):
+            # 进程监控tab
+            tab_widget.cleanup()
         elif hasattr(tab_widget, '_query_worker'):
             # 新的查询tab，停止查询worker
             try:

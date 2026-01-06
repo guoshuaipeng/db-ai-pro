@@ -18,6 +18,8 @@ class TreeItemType(Enum):
     LOADING = "loading"  # "加载中..."项
     ERROR = "error"  # 错误项
     EMPTY = "empty"  # "无数据库"、"无表"等空项
+    REDIS_DATA_CATEGORY = "redis_data_category"  # Redis "数据"分类项
+    REDIS_ALL_DATA = "redis_all_data"  # Redis "所有数据"项
 
 
 class TreeItemData:
@@ -77,6 +79,10 @@ class TreeItemData:
             return TreeItemType.ROOT
         elif text == "表":
             return TreeItemType.TABLE_CATEGORY
+        elif text == "数据":
+            return TreeItemType.REDIS_DATA_CATEGORY
+        elif text == "所有数据":
+            return TreeItemType.REDIS_ALL_DATA
         elif text == "加载中...":
             return TreeItemType.LOADING
         elif text.startswith("错误"):

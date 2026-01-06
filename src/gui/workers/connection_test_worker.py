@@ -6,7 +6,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 import logging
 
-from src.core.database_connection import DatabaseConnection
+from src.core.database_connection import DatabaseConnection, DatabaseType
+from src.core.redis_client import RedisClient
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,26 @@ class ConnectionTestWorker(QThread):
             if self.isInterruptionRequested() or self._should_stop:
                 return
             
+            # Redis 特殊处理
+            if self.connection.db_type == DatabaseType.REDIS:
+                try:
+                    redis_client = RedisClient(self.connection)
+                    success, message = redis_client.test_connection()
+                    redis_client.close()
+                    self.test_finished.emit(success, message)
+                    logger.info(f"Redis 连接测试完成: {self.connection.name} - {message}")
+                    return
+                except ImportError:
+                    error_msg = "缺少 Redis 驱动 (redis)。请运行: pip install redis"
+                    logger.error(f"{error_msg} - {self.connection.name}")
+                    self.test_finished.emit(False, error_msg)
+                    return
+                except Exception as e:
+                    error_msg = f"Redis 连接测试失败: {str(e)}"
+                    logger.error(f"{error_msg} - {self.connection.name}")
+                    self.test_finished.emit(False, error_msg)
+                    return
+            
             # 检查 Oracle 驱动是否已安装
             if self.connection.db_type.value == "oracle":
                 try:
@@ -50,7 +71,6 @@ class ConnectionTestWorker(QThread):
             connect_args = self.connection.get_connect_args().copy() if self.connection.get_connect_args() else {}
             
             # 限制连接超时时间（最多10秒），避免界面长时间卡住
-            from src.core.database_connection import DatabaseType
             if self.connection.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
                 connect_args['connect_timeout'] = min(connect_args.get('connect_timeout', 30), self._max_connect_timeout)
                 connect_args['read_timeout'] = min(connect_args.get('read_timeout', 30), self._max_connect_timeout)
@@ -113,6 +133,8 @@ class ConnectionTestWorker(QThread):
                 error_msg = "缺少 SQL Server 驱动 (pyodbc)。请运行: pip install pyodbc"
             elif "psycopg2" in str(e):
                 error_msg = "缺少 PostgreSQL 驱动 (psycopg2)。请运行: pip install psycopg2-binary"
+            elif "redis" in str(e):
+                error_msg = "缺少 Redis 驱动 (redis)。请运行: pip install redis"
             else:
                 error_msg = f"缺少必要的数据库驱动: {str(e)}"
             logger.error(f"{error_msg} - {self.connection.name}")
@@ -126,6 +148,8 @@ class ConnectionTestWorker(QThread):
                 error_msg = "缺少 SQL Server 驱动 (pyodbc)。请运行: pip install pyodbc"
             elif "No module named" in str(e) and "psycopg2" in str(e):
                 error_msg = "缺少 PostgreSQL 驱动 (psycopg2)。请运行: pip install psycopg2-binary"
+            elif "No module named" in str(e) and "redis" in str(e):
+                error_msg = "缺少 Redis 驱动 (redis)。请运行: pip install redis"
             logger.error(f"{error_msg} - {self.connection.name}")
             self.test_finished.emit(False, error_msg)
         finally:

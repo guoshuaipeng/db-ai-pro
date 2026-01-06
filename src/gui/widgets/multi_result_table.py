@@ -903,39 +903,49 @@ class SingleResultTable(QWidget):
         
         # 显示数据
         columns = list(data[0].keys())
-        self.table.setRowCount(len(page_data))
-        self.table.setColumnCount(len(columns))
         
-        self.table.setHorizontalHeaderLabels(columns)
+        # 禁用更新和信号，提高性能（批量更新模式）
+        self.table.setUpdatesEnabled(False)
+        self.table.blockSignals(True)
         
-        # 为每个表头添加提示（点击复制）
-        for col_idx in range(len(columns)):
-            header_item = self.table.horizontalHeaderItem(col_idx)
-            if header_item:
-                header_item.setToolTip("点击复制列名")
-        
-        # 填充数据
-        for row_idx, row_data in enumerate(page_data):
-            for col_idx, col_name in enumerate(columns):
-                value = row_data.get(col_name)
-                
-                # 处理None值
-                if value is None:
-                    display_value = "NULL"
-                else:
-                    display_value = str(value)
-                
-                item = QTableWidgetItem(display_value)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                
-                # NULL值特殊样式
-                if value is None:
-                    item.setForeground(Qt.GlobalColor.gray)
-                
-                # 设置单元格可编辑（包括NULL值）
-                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-                
-                self.table.setItem(row_idx, col_idx, item)
+        try:
+            self.table.setRowCount(len(page_data))
+            self.table.setColumnCount(len(columns))
+            
+            self.table.setHorizontalHeaderLabels(columns)
+            
+            # 为每个表头添加提示（点击复制）
+            for col_idx in range(len(columns)):
+                header_item = self.table.horizontalHeaderItem(col_idx)
+                if header_item:
+                    header_item.setToolTip("点击复制列名")
+            
+            # 填充数据
+            for row_idx, row_data in enumerate(page_data):
+                for col_idx, col_name in enumerate(columns):
+                    value = row_data.get(col_name)
+                    
+                    # 处理None值
+                    if value is None:
+                        display_value = "NULL"
+                    else:
+                        display_value = str(value)
+                    
+                    item = QTableWidgetItem(display_value)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                    
+                    # NULL值特殊样式
+                    if value is None:
+                        item.setForeground(Qt.GlobalColor.gray)
+                    
+                    # 设置单元格可编辑（包括NULL值）
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+                    
+                    self.table.setItem(row_idx, col_idx, item)
+        finally:
+            # 恢复更新和信号
+            self.table.blockSignals(False)
+            self.table.setUpdatesEnabled(True)
         
         # 只在第一次显示或列数变化时调整列宽
         if not hasattr(self, '_last_column_count') or self._last_column_count != len(columns):
@@ -964,7 +974,7 @@ class SingleResultTable(QWidget):
         QTimer.singleShot(200, self._restore_table_opacity)
     
     def _fill_table_with_pagination(self, page_data: List[Dict]):
-        """填充表格数据（用于分页切换）"""
+        """填充表格数据（用于分页切换，使用批量更新模式）"""
         if not page_data:
             return
         
@@ -972,30 +982,40 @@ class SingleResultTable(QWidget):
         self._updating_data = True
         
         columns = list(page_data[0].keys())
-        self.table.setRowCount(len(page_data))
         
-        # 填充数据
-        for row_idx, row_data in enumerate(page_data):
-            for col_idx, col_name in enumerate(columns):
-                value = row_data.get(col_name)
-                
-                # 处理None值
-                if value is None:
-                    display_value = "NULL"
-                else:
-                    display_value = str(value)
-                
-                item = QTableWidgetItem(display_value)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                
-                # NULL值特殊样式
-                if value is None:
-                    item.setForeground(Qt.GlobalColor.gray)
-                
-                # 设置单元格可编辑（包括NULL值）
-                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-                
-                self.table.setItem(row_idx, col_idx, item)
+        # 禁用更新和信号，提高性能（批量更新模式）
+        self.table.setUpdatesEnabled(False)
+        self.table.blockSignals(True)
+        
+        try:
+            self.table.setRowCount(len(page_data))
+            
+            # 填充数据
+            for row_idx, row_data in enumerate(page_data):
+                for col_idx, col_name in enumerate(columns):
+                    value = row_data.get(col_name)
+                    
+                    # 处理None值
+                    if value is None:
+                        display_value = "NULL"
+                    else:
+                        display_value = str(value)
+                    
+                    item = QTableWidgetItem(display_value)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                    
+                    # NULL值特殊样式
+                    if value is None:
+                        item.setForeground(Qt.GlobalColor.gray)
+                    
+                    # 设置单元格可编辑（包括NULL值）
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+                    
+                    self.table.setItem(row_idx, col_idx, item)
+        finally:
+            # 恢复更新和信号
+            self.table.blockSignals(False)
+            self.table.setUpdatesEnabled(True)
         
         # 分页切换时不调整列宽，保持用户设置的列宽
         # （列宽只在首次显示时调整）

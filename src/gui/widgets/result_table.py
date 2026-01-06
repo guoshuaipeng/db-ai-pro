@@ -361,36 +361,45 @@ class ResultTable(QWidget):
         # 获取列名
         columns = list(data[0].keys())
         
-        # 设置表格
-        self.table.setColumnCount(len(columns))
-        self.table.setRowCount(len(data))
-        self.table.setHorizontalHeaderLabels(columns)
+        # 禁用更新和信号，提高性能（批量更新模式）
+        self.table.setUpdatesEnabled(False)
+        self.table.blockSignals(True)
         
-        # 为每个表头添加提示（点击复制）
-        for col_idx in range(len(columns)):
-            header_item = self.table.horizontalHeaderItem(col_idx)
-            if header_item:
-                header_item.setToolTip("点击复制列名")
-        
-        # 填充数据
-        for row_idx, row_data in enumerate(data):
-            for col_idx, col_name in enumerate(columns):
-                value = row_data.get(col_name)
-                
-                # 处理None值
-                if value is None:
-                    display_value = "NULL"
-                else:
-                    display_value = str(value)
-                
-                item = QTableWidgetItem(display_value)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                
-                # NULL值特殊样式
-                if value is None:
-                    item.setForeground(Qt.GlobalColor.gray)
-                
-                self.table.setItem(row_idx, col_idx, item)
+        try:
+            # 设置表格
+            self.table.setColumnCount(len(columns))
+            self.table.setRowCount(len(data))
+            self.table.setHorizontalHeaderLabels(columns)
+            
+            # 为每个表头添加提示（点击复制）
+            for col_idx in range(len(columns)):
+                header_item = self.table.horizontalHeaderItem(col_idx)
+                if header_item:
+                    header_item.setToolTip("点击复制列名")
+            
+            # 填充数据
+            for row_idx, row_data in enumerate(data):
+                for col_idx, col_name in enumerate(columns):
+                    value = row_data.get(col_name)
+                    
+                    # 处理None值
+                    if value is None:
+                        display_value = "NULL"
+                    else:
+                        display_value = str(value)
+                    
+                    item = QTableWidgetItem(display_value)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                    
+                    # NULL值特殊样式
+                    if value is None:
+                        item.setForeground(Qt.GlobalColor.gray)
+                    
+                    self.table.setItem(row_idx, col_idx, item)
+        finally:
+            # 恢复更新和信号
+            self.table.blockSignals(False)
+            self.table.setUpdatesEnabled(True)
         
         # 调整列宽（带最大宽度限制）
         self._resize_columns_with_max_width()

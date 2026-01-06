@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional
 import logging
 
 from src.gui.utils.tree_item_types import TreeItemType, TreeItemData
+from src.core.database_connection import DatabaseType
 
 if TYPE_CHECKING:
     from src.gui.main_window import MainWindow
@@ -48,19 +49,27 @@ class TreeHandler:
             if database and isinstance(database, str):
                 def load_tables():
                     self.main_window.load_tables_for_database(item, connection_id, database, force_reload=False)
-                    # 如果表已经加载，自动展开"表"分类
+                    # 检查连接类型
+                    connection = self.main_window.db_manager.get_connection(connection_id)
+                    is_redis = connection and connection.db_type == DatabaseType.REDIS
+                    
+                    # 展开"表"分类（Redis 和其他数据库都使用"表"分类）
                     for i in range(item.childCount()):
                         child = item.child(i)
-                        if TreeItemData.get_item_type(child) == TreeItemType.TABLE_CATEGORY and child.childCount() > 0:
-                            # 检查是否有表项（不是"加载中..."或"无表"）
-                            has_tables = False
-                            for j in range(child.childCount()):
-                                table_child = child.child(j)
-                                if TreeItemData.get_item_type(table_child) == TreeItemType.TABLE:
-                                    has_tables = True
-                                    break
-                            if has_tables:
+                        if TreeItemData.get_item_type(child) == TreeItemType.TABLE_CATEGORY:
+                            if is_redis:
+                                # Redis: 直接展开"表"分类（显示"所有数据"节点）
                                 child.setExpanded(True)
+                            else:
+                                # 其他数据库: 检查是否有表项（不是"加载中..."或"无表"）
+                                has_tables = False
+                                for j in range(child.childCount()):
+                                    table_child = child.child(j)
+                                    if TreeItemData.get_item_type(table_child) == TreeItemType.TABLE:
+                                        has_tables = True
+                                        break
+                                if has_tables:
+                                    child.setExpanded(True)
                             break
                 QTimer.singleShot(0, load_tables)
     
@@ -120,7 +129,7 @@ class TreeHandler:
         item_type = TreeItemData.get_item_type(item)
         
         # 跳过根节点和其他不需要处理的节点类型
-        if item_type == TreeItemType.ROOT or item_type in (TreeItemType.TABLE_CATEGORY, TreeItemType.LOADING, TreeItemType.ERROR, TreeItemType.EMPTY):
+        if item_type == TreeItemType.ROOT or item_type in (TreeItemType.TABLE_CATEGORY, TreeItemType.REDIS_DATA_CATEGORY, TreeItemType.LOADING, TreeItemType.ERROR, TreeItemType.EMPTY):
             return
         
         # 获取连接ID（从当前项或其父项中）
@@ -142,16 +151,20 @@ class TreeHandler:
             # 双击数据库项，切换展开状态，并切换到该数据库
             database = TreeItemData.get_item_data(item)
             if database and isinstance(database, str):
+                # 检查连接类型
+                connection = self.main_window.db_manager.get_connection(connection_id)
+                is_redis = connection and connection.db_type == DatabaseType.REDIS
+                
                 # 切换到该连接和数据库（使用延迟执行，避免阻塞）
                 def switch_and_expand():
                     self.main_window.set_current_connection(connection_id, database=database, from_combo=True)
-                    # 如果表已经加载，自动展开"表"分类
+                    # 如果表已经加载，自动展开"表"分类（Redis 和其他数据库都使用"表"分类）
                     for i in range(item.childCount()):
                         child = item.child(i)
                         if TreeItemData.get_item_type(child) == TreeItemType.TABLE_CATEGORY:
                             child.setExpanded(True)
                             break
-                QTimer.singleShot(1, switch_and_expand)
+                QTimer.singleShot(0, switch_and_expand)
             
             # 切换展开状态（这个操作很快，可以直接执行）
             if item.isExpanded():
@@ -159,6 +172,7 @@ class TreeHandler:
             else:
                 item.setExpanded(True)
                 # 展开时会自动触发 on_item_expanded，加载表列表（已经在on_item_expanded中使用延迟执行）
+                # Redis 数据库会直接显示"所有数据"节点，不需要加载表列表
         elif item_type == TreeItemType.TABLE:
             # 双击表项，在新标签页中查询表数据
             table_info = TreeItemData.get_table_info(item)
@@ -170,15 +184,23 @@ class TreeHandler:
                     self.main_window.set_current_connection(connection_id, database=database, from_combo=True)
                     # 然后在新标签页中查询表数据
                     self.main_window.query_table_data_in_new_tab(connection_id, table_name, database)
-                QTimer.singleShot(1, query_data)
+                QTimer.singleShot(0, query_data)
+        elif item_type == TreeItemType.REDIS_ALL_DATA:
+            # 双击 Redis "所有数据"项，在新标签页中查询并显示数据
+            database = TreeItemData.get_item_data(item)
+            if database and isinstance(database, str):
+                def query_redis_data():
+                    # 直接在新标签页中查询 Redis 数据（不切换当前连接，避免切换到第一个 tab）
+                    self.main_window.query_redis_data_in_new_tab(connection_id, database)
+                QTimer.singleShot(0, query_redis_data)
     
     def on_item_clicked(self, item: QTreeWidgetItem, column: int):
         """单击项目（在UI线程中执行，确保快速返回，不阻塞）"""
         # 获取节点类型
         item_type = TreeItemData.get_item_type(item)
         
-        # 跳过根节点和分类项
-        if item_type in (TreeItemType.ROOT, TreeItemType.TABLE_CATEGORY, TreeItemType.LOADING, TreeItemType.ERROR, TreeItemType.EMPTY):
+        # 跳过根节点和分类项（但允许 REDIS_ALL_DATA）
+        if item_type in (TreeItemType.ROOT, TreeItemType.TABLE_CATEGORY, TreeItemType.REDIS_DATA_CATEGORY, TreeItemType.LOADING, TreeItemType.ERROR, TreeItemType.EMPTY):
             return
         
         # 获取连接ID（从当前项或其父项中）
@@ -195,33 +217,48 @@ class TreeHandler:
                 connection = self.main_window.db_manager.get_connection(connection_id)
                 default_db = connection.database if connection else None
                 self.main_window.set_current_connection(connection_id, database=default_db, from_combo=True)
-            QTimer.singleShot(1, switch_connection)
+            QTimer.singleShot(0, switch_connection)
         elif item_type == TreeItemType.DATABASE:
             # 点击数据库项，切换到该连接和数据库（使用延迟执行）
             database = TreeItemData.get_item_data(item)
             if database and isinstance(database, str):
                 def switch_database():
                     self.main_window.set_current_connection(connection_id, database=database, from_combo=True)
-                QTimer.singleShot(1, switch_database)
+                QTimer.singleShot(0, switch_database)
             
             # 单击时不自动展开，让用户通过双击或点击展开按钮来控制展开/折叠
             # 如果数据库项已经展开，且表已经加载，则展开"表"分类（这个操作很快，可以直接执行）
             if item.isExpanded():
+                # 检查连接类型
+                connection = self.main_window.db_manager.get_connection(connection_id)
+                is_redis = connection and connection.db_type == DatabaseType.REDIS
+                
                 for i in range(item.childCount()):
                     child = item.child(i)
                     if TreeItemData.get_item_type(child) == TreeItemType.TABLE_CATEGORY:
-                        # 检查是否有表项（不是"加载中..."或"无表"）
-                        has_tables = False
-                        for j in range(child.childCount()):
-                            table_child = child.child(j)
-                            if TreeItemData.get_item_type(table_child) == TreeItemType.TABLE:
-                                has_tables = True
-                                break
-                        if has_tables:
+                        if is_redis:
+                            # Redis: 直接展开"表"分类（显示"所有数据"节点）
                             child.setExpanded(True)
+                        else:
+                            # 其他数据库：检查是否有表项（不是"加载中..."或"无表"）
+                            has_tables = False
+                            for j in range(child.childCount()):
+                                table_child = child.child(j)
+                                if TreeItemData.get_item_type(table_child) == TreeItemType.TABLE:
+                                    has_tables = True
+                                    break
+                            if has_tables:
+                                child.setExpanded(True)
                         break
         elif item_type == TreeItemType.TABLE:
             # 单击表项，什么都不做
             # 只有双击才切换连接/数据库并查询数据
             pass
+        elif item_type == TreeItemType.REDIS_ALL_DATA:
+            # 单击 Redis "所有数据"项，查询并显示数据
+            database = TreeItemData.get_item_data(item)
+            if database and isinstance(database, str):
+                def query_redis_data():
+                    self.main_window.query_redis_data(connection_id, database)
+                QTimer.singleShot(0, query_redis_data)
 

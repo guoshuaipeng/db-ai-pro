@@ -34,6 +34,12 @@ class TableListWorkerForTree(QThread):
     
     def run(self):
         """获取表列表（在工作线程中运行）"""
+        # Redis 特殊处理：Redis 不使用 SQLAlchemy，直接返回空列表
+        if self.db_type == DatabaseType.REDIS:
+            # Redis 数据库在树结构中直接显示"所有数据"节点，不需要表列表
+            self.tables_ready.emit([])
+            return
+        
         engine = None
         try:
             if self.isInterruptionRequested() or self._should_stop:

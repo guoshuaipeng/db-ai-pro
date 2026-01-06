@@ -3,10 +3,10 @@
 """
 import logging
 from PyQt6.QtCore import QThread, pyqtSignal
-from typing import List
+from typing import List, Optional
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
-from src.core.database_connection import DatabaseType
+from src.core.database_connection import DatabaseType, DatabaseConnection
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +17,13 @@ class DatabaseListWorker(QThread):
     databases_ready = pyqtSignal(list)  # 数据库列表
     error_occurred = pyqtSignal(str)  # 错误信息
     
-    def __init__(self, connection_string: str, connect_args: dict, db_type: DatabaseType):
+    def __init__(self, connection_string: str, connect_args: dict, db_type: DatabaseType, connection: Optional[DatabaseConnection] = None):
         super().__init__()
         self.setObjectName(f"DatabaseListWorker-{id(self)}")  # 设置线程名称，便于调试
         self.connection_string = connection_string
         self.connect_args = connect_args
         self.db_type = db_type
+        self.connection = connection  # 可选的 connection 对象，用于 Redis 查询数据库数量
         self._should_stop = False
     
     def stop(self):
@@ -50,6 +51,40 @@ class DatabaseListWorker(QThread):
             # 这样即使默认数据库被删除，也不会影响连接
             import re
             connection_string = self.connection_string
+            
+            # Redis 特殊处理：Redis 不使用 SQLAlchemy，需要动态查询数据库数量
+            if self.db_type == DatabaseType.REDIS:
+                try:
+                    # 如果有 connection 对象，使用它来查询数据库数量
+                    if self.connection:
+                        from src.core.redis_client import RedisClient
+                        redis_client = RedisClient(self.connection)
+                        try:
+                            db_count = redis_client.get_database_count()
+                            logger.info(f"查询到 Redis 数据库数量: {db_count}")
+                            databases = [str(i) for i in range(db_count)]
+                        except Exception as e:
+                            logger.warning(f"查询 Redis 数据库数量失败: {e}，使用默认值 16")
+                            databases = [str(i) for i in range(16)]
+                        finally:
+                            try:
+                                redis_client.close()
+                            except:
+                                pass
+                    else:
+                        # 如果没有 connection 对象，使用默认值 16
+                        logger.warning("Redis 连接对象不可用，使用默认数据库数量 16")
+                        databases = [str(i) for i in range(16)]
+                    
+                    if not (self.isInterruptionRequested() or self._should_stop):
+                        self.databases_ready.emit(databases)
+                    return
+                except Exception as e:
+                    logger.error(f"处理 Redis 数据库列表失败: {e}，使用默认值 16")
+                    databases = [str(i) for i in range(16)]
+                    if not (self.isInterruptionRequested() or self._should_stop):
+                        self.databases_ready.emit(databases)
+                    return
             
             # 对于 MySQL/MariaDB/PostgreSQL，移除连接字符串中的数据库部分
             if self.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB, DatabaseType.POSTGRESQL):

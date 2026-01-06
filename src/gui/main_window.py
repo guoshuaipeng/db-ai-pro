@@ -94,6 +94,7 @@ class MainWindow(QMainWindow):
         self.connection_init_worker = None  # 连接初始化工作线程
         self.database_list_workers = {}  # 数据库列表工作线程字典 {connection_id: worker}
         self.table_list_worker_for_tree = None  # 表列表工作线程（用于树视图）
+        self.redis_data_worker = None  # Redis 数据查询工作线程
         self._query_table_timer = None  # 用于防抖的定时器
         self._is_closing = False  # 标记窗口是否正在关闭
         
@@ -179,8 +180,9 @@ class MainWindow(QMainWindow):
                     try:
                         worker.databases_ready.disconnect()
                         worker.error_occurred.disconnect()
-                    except:
-                        pass
+                        worker.finished.disconnect()  # 断开 finished 信号，避免 cleanup_worker 执行
+                    except (RuntimeError, TypeError):
+                        pass  # 信号可能已经断开
                     
                     # 停止并等待线程结束
                     if worker.isRunning():
@@ -194,16 +196,48 @@ class MainWindow(QMainWindow):
                     
                     # 确保线程已退出
                     if worker.isRunning():
+                        logger.warning(f"数据库列表worker {connection_id} 仍在运行，再次终止")
                         worker.terminate()
                         worker.wait(500)
                     
-                    worker.deleteLater()
+                    # 延迟删除，确保线程完全结束
+                    QTimer.singleShot(200, lambda w=worker: self._safe_delete_database_worker(w))
             except RuntimeError:
                 # 对象已被删除，忽略
                 pass
             except Exception as e:
                 logger.warning(f"停止数据库列表worker {connection_id} 时出错: {e}")
         self.database_list_workers.clear()
+        
+        # 停止所有 Redis dbsize 工作线程
+        if hasattr(self, 'redis_dbsize_workers'):
+            for connection_id, worker in list(self.redis_dbsize_workers.items()):
+                try:
+                    if worker:
+                        # 断开信号，避免回调执行
+                        try:
+                            worker.sizes_ready.disconnect()
+                            worker.error_occurred.disconnect()
+                        except:
+                            pass
+                        
+                        # 停止并等待线程结束
+                        if worker.isRunning():
+                            logger.debug(f"停止 Redis dbsize worker: {connection_id}")
+                            worker.stop()
+                            # 等待线程结束，最多1秒
+                            if not worker.wait(1000):
+                                logger.warning(f"Redis dbsize worker {connection_id} 未能在1秒内结束，强制终止")
+                                worker.terminate()
+                                worker.wait(500)
+                        
+                        worker.deleteLater()
+                except RuntimeError:
+                    # 对象已被删除，忽略
+                    pass
+                except Exception as e:
+                    logger.warning(f"停止 Redis dbsize worker {connection_id} 时出错: {e}")
+            self.redis_dbsize_workers.clear()
         
         # 停止所有正在运行的线程（使用统一的停止方法）
         workers = [
@@ -649,6 +683,45 @@ class MainWindow(QMainWindow):
             logger.error(f"删除数据库失败: {str(e)}", exc_info=True)
             QMessageBox.critical(self, "错误", f"删除数据库失败: {str(e)}")
     
+    def show_process_monitor(self, connection_id: str, database: Optional[str] = None):
+        """显示进程监控tab"""
+        if not connection_id:
+            return
+        
+        # 检查是否已经存在该连接的监控tab
+        monitor_key = f"process_monitor_{connection_id}_{database or 'all'}"
+        for i in range(self.right_tab_widget.count()):
+            tab_widget = self.right_tab_widget.widget(i)
+            if hasattr(tab_widget, '_monitor_key') and tab_widget._monitor_key == monitor_key:
+                # 已存在，切换到该tab
+                self.right_tab_widget.setCurrentIndex(i)
+                # 刷新数据
+                if hasattr(tab_widget, 'refresh_process_list'):
+                    tab_widget.refresh_process_list()
+                return
+        
+        # 创建新的监控tab
+        from src.gui.widgets.process_monitor_tab import ProcessMonitorTab
+        
+        monitor_tab = ProcessMonitorTab(
+            main_window=self,
+            connection_id=connection_id,
+            database=database
+        )
+        monitor_tab._monitor_key = monitor_key
+        
+        # 生成tab标题
+        connection = self.db_manager.get_connection(connection_id)
+        connection_name = connection.name if connection else connection_id
+        if database:
+            tab_title = f"进程监控-{connection_name}-{database}"
+        else:
+            tab_title = f"进程监控-{connection_name}(全部数据库)"
+        
+        # 添加到tab
+        tab_index = self.right_tab_widget.addTab(monitor_tab, tab_title)
+        self.right_tab_widget.setCurrentIndex(tab_index)
+    
     def close_query_tab(self, index: int):
         """关闭查询tab"""
         self.table_structure_handler.close_query_tab(index)
@@ -758,7 +831,8 @@ class MainWindow(QMainWindow):
                     old_worker.terminate()
                     old_worker.wait(100)
                 old_worker.deleteLater()
-            del self.database_list_workers[connection_id]
+            # 安全删除，避免KeyError（可能在其他地方已被删除）
+            self.database_list_workers.pop(connection_id, None)
         
         # 断开信号避免触发
         try:
@@ -776,18 +850,33 @@ class MainWindow(QMainWindow):
         worker = DatabaseListWorker(
             connection.get_connection_string(),
             connection.get_connect_args(),
-            connection.db_type
+            connection.db_type,
+            connection  # 传递 connection 对象，用于 Redis 查询数据库数量
         )
         
         # 定义清理函数（当线程完全结束时调用）
         def cleanup_worker():
             """清理worker（在线程finished信号触发时调用）"""
             try:
+                # 确保线程已经完全结束
+                if worker.isRunning():
+                    logger.warning(f"Worker {connection_id} 在 finished 信号触发时仍在运行，等待结束...")
+                    if not worker.wait(1000):  # 等待最多1秒
+                        logger.warning(f"Worker {connection_id} 未能在1秒内结束，强制终止")
+                        worker.terminate()
+                        worker.wait(500)
+                
+                # 从字典中移除
                 if connection_id in self.database_list_workers:
                     del self.database_list_workers[connection_id]
-                worker.deleteLater()
+                
+                # 延迟删除，确保线程完全结束
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(200, lambda: self._safe_delete_database_worker(worker))
             except RuntimeError:
                 pass  # 对象已被删除，忽略
+            except Exception as e:
+                logger.warning(f"清理 worker {connection_id} 时出错: {e}")
         
         def on_databases_ready(databases: list):
             """数据库列表加载完成回调"""
@@ -843,10 +932,7 @@ class MainWindow(QMainWindow):
                     self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
                 except:
                     pass
-            finally:
-                # 清理worker引用（线程可能还在运行，让finished信号处理最终清理）
-                if connection_id in self.database_list_workers:
-                    del self.database_list_workers[connection_id]
+            # 注意：不要在这里删除worker引用，让finished信号处理最终清理
         
         def on_error(error: str):
             """加载错误回调"""
@@ -861,9 +947,7 @@ class MainWindow(QMainWindow):
                 self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
             except:
                 pass
-            # 清理worker引用（线程可能还在运行，让finished信号处理最终清理）
-            if connection_id in self.database_list_workers:
-                del self.database_list_workers[connection_id]
+            # 注意：不要在这里删除worker引用，让finished信号处理最终清理
         
         # 先保存worker引用（在启动前），避免被垃圾回收，并便于后续停止
         self.database_list_workers[connection_id] = worker
@@ -1101,13 +1185,44 @@ class MainWindow(QMainWindow):
             worker = DatabaseListWorker(
                 connection.get_connection_string(),
                 connection.get_connect_args(),
-                connection.db_type
+                connection.db_type,
+                connection  # 传递 connection 对象，用于 Redis 查询数据库数量
             )
             
             # 保存引用以便在回调中使用
             worker.loading_item = loading_item
             worker.connection_item = connection_item
             worker.connection_id = connection_id
+            
+            # 定义清理函数（当线程完全结束时调用）
+            def cleanup_worker():
+                """清理worker（在线程finished信号触发时调用）"""
+                # 检查窗口是否正在关闭
+                if self._is_closing:
+                    logger.debug(f"窗口正在关闭，跳过清理 worker: {connection_id}")
+                    return
+                
+                try:
+                    # 确保线程已经完全结束
+                    if worker.isRunning():
+                        logger.warning(f"Worker {connection_id} 在 finished 信号触发时仍在运行，等待结束...")
+                        if not worker.wait(1000):  # 等待最多1秒
+                            logger.warning(f"Worker {connection_id} 未能在1秒内结束，强制终止")
+                            worker.terminate()
+                            worker.wait(500)
+                    
+                    # 从字典中移除
+                    if connection_id in self.database_list_workers:
+                        del self.database_list_workers[connection_id]
+                    
+                    # 延迟删除，确保线程完全结束
+                    from PyQt6.QtCore import QTimer
+                    QTimer.singleShot(200, lambda: self._safe_delete_database_worker(worker))
+                except RuntimeError:
+                    pass  # 对象已被删除，忽略
+                except Exception as e:
+                    logger.warning(f"清理 worker {connection_id} 时出错: {e}")
+            
             # 明确使用QueuedConnection，确保信号在UI线程的事件循环中异步处理
             from PyQt6.QtCore import Qt
             worker.databases_ready.connect(
@@ -1118,13 +1233,40 @@ class MainWindow(QMainWindow):
                 lambda error, conn_id=connection_id: self.on_databases_load_error(connection_item, loading_item, error),
                 Qt.ConnectionType.QueuedConnection
             )
+            # 连接finished信号，确保线程完全结束后才清理（优雅的方式，不阻塞）
+            worker.finished.connect(cleanup_worker)
             
             # 将worker存储到字典中
             self.database_list_workers[connection_id] = worker
             worker.start()
         
         # 延迟1ms执行，确保展开事件处理函数立即返回
-        QTimer.singleShot(1, start_database_loading)
+        QTimer.singleShot(0, start_database_loading)
+    
+    def _safe_delete_database_worker(self, worker):
+        """安全删除数据库列表 worker（确保线程完全结束）"""
+        if worker is None:
+            return
+        try:
+            # 检查线程是否还在运行
+            if worker.isRunning():
+                logger.warning(f"尝试删除仍在运行的 database worker: {worker.objectName()}")
+                return  # 如果还在运行，不删除
+            
+            # 断开所有信号连接
+            try:
+                worker.databases_ready.disconnect()
+                worker.error_occurred.disconnect()
+                worker.finished.disconnect()
+            except (RuntimeError, TypeError):
+                pass  # 信号可能已经断开
+            
+            # 删除对象
+            worker.deleteLater()
+        except RuntimeError:
+            pass  # 对象已被删除，忽略
+        except Exception as e:
+            logger.warning(f"安全删除 database worker 时出错: {e}")
     
     def load_tables_for_database(self, db_item: QTreeWidgetItem, connection_id: str, database: str, force_reload: bool = False):
         """为数据库加载表列表"""
@@ -1257,7 +1399,7 @@ class MainWindow(QMainWindow):
             self.table_list_worker_for_tree.start()
         
         # 延迟1ms执行，确保展开事件处理函数立即返回
-        QTimer.singleShot(1, start_table_loading)
+        QTimer.singleShot(0, start_table_loading)
     
     def on_databases_loaded(self, connection_item: QTreeWidgetItem, loading_item: QTreeWidgetItem, databases: List[str]):
         """数据库列表加载完成回调"""
@@ -1296,6 +1438,8 @@ class MainWindow(QMainWindow):
         connection = self.db_manager.get_connection(connection_id) if connection_id else None
         
         # 清理worker（加载完成后）
+        # 注意：不要在这里删除 worker，让 cleanup_worker（通过 finished 信号）来处理
+        # 这里只断开信号，避免重复回调
         if connection_id and connection_id in self.database_list_workers:
             try:
                 worker = self.database_list_workers[connection_id]
@@ -1303,10 +1447,10 @@ class MainWindow(QMainWindow):
                     try:
                         worker.databases_ready.disconnect()
                         worker.error_occurred.disconnect()
-                    except:
-                        pass
-                    worker.deleteLater()
-                del self.database_list_workers[connection_id]
+                    except (RuntimeError, TypeError):
+                        pass  # 信号可能已经断开
+                    # 不在这里删除 worker，让 cleanup_worker 处理
+                    # worker 会在 finished 信号触发时由 cleanup_worker 清理
             except RuntimeError:
                 pass
         
@@ -1320,8 +1464,17 @@ class MainWindow(QMainWindow):
                 if db_name and isinstance(db_name, str):
                     existing_databases.add(db_name)
         
-        # 添加数据库项（按字母顺序排序），只添加不存在的
-        for db_name in sorted(databases):
+        # 添加数据库项（排序），只添加不存在的
+        # 对于 Redis 连接，按数字排序；其他数据库按字母顺序排序
+        from src.core.database_connection import DatabaseType
+        if connection and connection.db_type == DatabaseType.REDIS:
+            # Redis 数据库按数字排序
+            sorted_databases = sorted(databases, key=lambda x: int(x) if x.isdigit() else float('inf'))
+        else:
+            # 其他数据库按字母顺序排序
+            sorted_databases = sorted(databases)
+        
+        for db_name in sorted_databases:
             # 如果已存在，跳过
             if db_name in existing_databases:
                 logger.debug(f"数据库 {db_name} 已存在，跳过添加")
@@ -1430,7 +1583,7 @@ class MainWindow(QMainWindow):
         
         # 延迟1ms执行，确保不阻塞主线程
         logger.info(f"[信号回调] 设置QTimer延迟UI更新，总耗时: {time.time() - start_time:.3f}秒")
-        QTimer.singleShot(1, update_ui)
+        QTimer.singleShot(0, update_ui)
         logger.info(f"[信号回调] on_databases_load_error 返回，总耗时: {time.time() - start_time:.3f}秒")
     
     def on_tables_loaded_for_tree(self, db_item: QTreeWidgetItem, tables_category: QTreeWidgetItem, loading_item: QTreeWidgetItem, tables: List[str]):
@@ -1451,8 +1604,20 @@ class MainWindow(QMainWindow):
                 # 对象已被删除，忽略
                 pass
         
+        # 检查是否为 Redis 数据库（Redis 不应该显示"无表"）
+        is_redis = False
+        if hasattr(self, 'table_list_worker_for_tree') and self.table_list_worker_for_tree:
+            connection_id = getattr(self.table_list_worker_for_tree, 'connection_id', None)
+            if connection_id:
+                connection = self.db_manager.get_connection(connection_id)
+                is_redis = connection and connection.db_type == DatabaseType.REDIS
+        
         if not tables:
-            # 没有表
+            # 如果是 Redis 数据库，不显示"无表"（Redis 使用"所有数据"节点）
+            if is_redis:
+                return
+            
+            # 非 Redis 数据库：显示"无表"
             no_table_item = QTreeWidgetItem(tables_category)
             no_table_item.setText(0, "无表")
             TreeItemData.set_item_type_and_data(no_table_item, TreeItemType.EMPTY)
@@ -1545,7 +1710,7 @@ class MainWindow(QMainWindow):
                 pass
         
         # 延迟1ms执行，确保不阻塞主线程
-        QTimer.singleShot(1, update_ui)
+        QTimer.singleShot(0, update_ui)
     
     def query_table_data_in_new_tab(self, connection_id: str, table_name: str, database: Optional[str] = None):
         """在新标签页中查询表数据"""
@@ -2006,6 +2171,327 @@ class MainWindow(QMainWindow):
         self._query_table_timer.setSingleShot(True)
         self._query_table_timer.timeout.connect(execute_query_async)
         self._query_table_timer.start(100)  # 100ms 防抖
+    
+    def query_redis_data(self, connection_id: str, database: str):
+        """查询 Redis 数据（在当前查询tab中显示）"""
+        if not connection_id:
+            QMessageBox.warning(self, "警告", "请先选择一个数据库连接")
+            return
+        
+        # 切换到第一个查询tab
+        if self.right_tab_widget.count() > 0:
+            self.right_tab_widget.setCurrentIndex(0)
+        
+        # 切换到该连接和数据库
+        self.set_current_connection(connection_id, database=database, from_combo=True)
+        
+        # 创建并启动 Redis 数据查询 worker
+        from src.gui.workers.redis_data_worker import RedisDataWorker
+        connection = self.db_manager.get_connection(connection_id)
+        if not connection:
+            QMessageBox.warning(self, "警告", "连接不存在")
+            return
+        
+        # 停止之前的 Redis 数据 worker（如果存在）
+        if hasattr(self, 'redis_data_worker') and self.redis_data_worker:
+            try:
+                if self.redis_data_worker.isRunning():
+                    self.redis_data_worker.stop()
+                    if not self.redis_data_worker.wait(1000):
+                        self.redis_data_worker.terminate()
+                        self.redis_data_worker.wait(500)
+                    try:
+                        self.redis_data_worker.data_ready.disconnect()
+                        self.redis_data_worker.error_occurred.disconnect()
+                    except:
+                        pass
+                    self.redis_data_worker.deleteLater()
+            except RuntimeError:
+                pass
+            self.redis_data_worker = None
+        
+        # 创建新的 worker
+        self.redis_data_worker = RedisDataWorker(connection, database, limit=100)
+        
+        # 连接信号
+        def on_redis_data_ready(data, columns):
+            # 使用专用的 Redis 数据查看器显示数据
+            from src.gui.widgets.redis_data_viewer import RedisDataViewer
+            
+            # 检查是否已有 Redis 数据查看器 tab
+            redis_tab_title = f"Redis: {database}"
+            existing_tab_index = None
+            for i in range(self.right_tab_widget.count()):
+                if self.right_tab_widget.tabText(i) == redis_tab_title:
+                    existing_tab_index = i
+                    break
+            
+            if existing_tab_index is not None:
+                # 如果已有，切换到该 tab 并更新数据
+                viewer = self.right_tab_widget.widget(existing_tab_index)
+                if isinstance(viewer, RedisDataViewer):
+                    viewer.display_data(data, columns, connection, database)
+                    self.right_tab_widget.setCurrentIndex(existing_tab_index)
+            else:
+                # 创建新的 Redis 数据查看器 tab
+                viewer = RedisDataViewer()
+                viewer.display_data(data, columns, connection, database)
+                tab_index = self.right_tab_widget.addTab(viewer, redis_tab_title)
+                self.right_tab_widget.setCurrentIndex(tab_index)
+            
+            self.sql_editor.set_status(f"查询完成: {len(data)} 个 key")
+        
+        def on_redis_error(error):
+            self.sql_editor.set_status(f"查询失败: {error}", is_error=True)
+            QMessageBox.warning(self, "错误", f"查询 Redis 数据失败: {error}")
+        
+        self.redis_data_worker.data_ready.connect(on_redis_data_ready)
+        self.redis_data_worker.error_occurred.connect(on_redis_error)
+        
+        # 启动 worker
+        self.redis_data_worker.start()
+        self.sql_editor.set_status("正在查询 Redis 数据...")
+    
+    def query_redis_data_in_new_tab(self, connection_id: str, database: str):
+        """在新标签页中查询 Redis 数据"""
+        if not connection_id:
+            QMessageBox.warning(self, "警告", "请先选择一个数据库连接")
+            return
+        
+        # 切换到该连接和数据库（但不切换 tab）
+        self.set_current_connection(connection_id, database=database, from_combo=True)
+        
+        # 创建并启动 Redis 数据查询 worker
+        from src.gui.workers.redis_data_worker import RedisDataWorker
+        connection = self.db_manager.get_connection(connection_id)
+        if not connection:
+            QMessageBox.warning(self, "警告", "连接不存在")
+            return
+        
+        # 停止之前的 Redis 数据 worker（如果存在）
+        if hasattr(self, 'redis_data_worker') and self.redis_data_worker:
+            try:
+                if self.redis_data_worker.isRunning():
+                    self.redis_data_worker.stop()
+                    if not self.redis_data_worker.wait(1000):
+                        self.redis_data_worker.terminate()
+                        self.redis_data_worker.wait(500)
+                    try:
+                        self.redis_data_worker.data_ready.disconnect()
+                        self.redis_data_worker.error_occurred.disconnect()
+                    except:
+                        pass
+                    self.redis_data_worker.deleteLater()
+            except RuntimeError:
+                pass
+            self.redis_data_worker = None
+        
+        # 创建新的 worker
+        self.redis_data_worker = RedisDataWorker(connection, database, limit=100)
+        
+        # 连接信号
+        def on_redis_data_ready(data, columns):
+            # 使用专用的 Redis 数据查看器显示数据
+            from src.gui.widgets.redis_data_viewer import RedisDataViewer
+            
+            # 检查是否已有 Redis 数据查看器 tab
+            redis_tab_title = f"Redis: {database}"
+            existing_tab_index = None
+            for i in range(self.right_tab_widget.count()):
+                if self.right_tab_widget.tabText(i) == redis_tab_title:
+                    existing_tab_index = i
+                    break
+            
+            if existing_tab_index is not None:
+                # 如果已有，切换到该 tab 并更新数据
+                viewer = self.right_tab_widget.widget(existing_tab_index)
+                if isinstance(viewer, RedisDataViewer):
+                    viewer.display_data(data, columns, connection, database)
+                    self.right_tab_widget.setCurrentIndex(existing_tab_index)
+            else:
+                # 创建新的 Redis 数据查看器 tab
+                viewer = RedisDataViewer()
+                viewer.display_data(data, columns, connection, database)
+                tab_index = self.right_tab_widget.addTab(viewer, redis_tab_title)
+                self.right_tab_widget.setCurrentIndex(tab_index)
+            
+            self.sql_editor.set_status(f"查询完成: {len(data)} 个 key")
+        
+        def on_redis_error(error):
+            self.sql_editor.set_status(f"查询失败: {error}", is_error=True)
+            QMessageBox.warning(self, "错误", f"查询 Redis 数据失败: {error}")
+        
+        self.redis_data_worker.data_ready.connect(on_redis_data_ready)
+        self.redis_data_worker.error_occurred.connect(on_redis_error)
+        
+        # 启动 worker
+        self.redis_data_worker.start()
+        self.sql_editor.set_status("正在查询 Redis 数据...")
+    
+    def update_sql_completion(self, connection_id: str):
+        from PyQt6.QtWidgets import QWidget, QVBoxLayout, QSplitter, QHBoxLayout, QGroupBox, QLabel, QComboBox
+        from PyQt6.QtCore import Qt
+        from src.gui.widgets.multi_result_table import MultiResultTable
+        
+        query_tab = QWidget()
+        query_layout = QVBoxLayout()
+        query_layout.setContentsMargins(5, 5, 5, 5)
+        query_layout.setSpacing(5)
+        query_tab.setLayout(query_layout)
+        
+        # 在查询tab顶部添加连接选择
+        connection_group = QGroupBox(self.tr("查询范围"))
+        connection_group.setStyleSheet("QGroupBox { font-weight: bold; padding-top: 10px; }")
+        connection_group_layout = QHBoxLayout()
+        connection_group_layout.setSpacing(10)
+        connection_group_layout.setContentsMargins(10, 15, 10, 10)
+        connection_group.setLayout(connection_group_layout)
+        
+        # 当前连接
+        connection_label = QLabel(self.tr("当前连接:"))
+        connection_group_layout.addWidget(connection_label)
+        
+        # 为这个tab创建独立的连接组合框
+        tab_connection_combo = QComboBox()
+        tab_connection_combo.setMinimumWidth(250)
+        # 加载所有连接
+        for conn in self.db_manager.get_all_connections():
+            tab_connection_combo.addItem(conn.name, conn.id)
+        # 设置当前选中的连接
+        for i in range(tab_connection_combo.count()):
+            if tab_connection_combo.itemData(i) == connection_id:
+                tab_connection_combo.setCurrentIndex(i)
+                break
+        connection_group_layout.addWidget(tab_connection_combo)
+        
+        # 当前数据库
+        database_label = QLabel(self.tr("当前数据库:"))
+        connection_group_layout.addWidget(database_label)
+        
+        # 为这个tab创建独立的数据库组合框
+        tab_database_combo = QComboBox()
+        tab_database_combo.setMinimumWidth(200)
+        # 加载数据库列表
+        try:
+            databases = self.db_manager.get_databases(connection_id)
+            for db in databases:
+                tab_database_combo.addItem(db, db)
+            # 设置当前选中的数据库
+            if database:
+                index = tab_database_combo.findData(database)
+                if index >= 0:
+                    tab_database_combo.setCurrentIndex(index)
+            elif databases:
+                tab_database_combo.setCurrentIndex(0)
+        except Exception as e:
+            logger.warning(f"加载数据库列表失败: {e}")
+        
+        connection_group_layout.addWidget(tab_database_combo)
+        connection_group_layout.addStretch()  # 添加弹性空间
+        
+        query_layout.addWidget(connection_group)
+        
+        # 创建结果表格
+        result_table = MultiResultTable()
+        result_table._main_window = self
+        query_layout.addWidget(result_table)
+        
+        # 保存引用
+        query_tab._result_table = result_table
+        query_tab._connection_id = connection_id
+        query_tab._database = database
+        query_tab._redis_query_connection_id = connection_id
+        query_tab._redis_query_database = database
+        query_tab._is_redis_query_tab = True
+        query_tab._connection_combo = tab_connection_combo
+        query_tab._database_combo = tab_database_combo
+        
+        # 为这个tab的连接组合框添加切换处理
+        def on_tab_connection_changed(text: str):
+            new_connection_id = tab_connection_combo.currentData()
+            if new_connection_id:
+                query_tab._redis_query_connection_id = new_connection_id
+                query_tab._connection_id = new_connection_id
+                # 加载该连接的数据库列表
+                tab_database_combo.clear()
+                try:
+                    databases = self.db_manager.get_databases(new_connection_id)
+                    for db in databases:
+                        tab_database_combo.addItem(db, db)
+                    if databases:
+                        tab_database_combo.setCurrentIndex(0)
+                        on_tab_database_changed(tab_database_combo.currentText())
+                except Exception as e:
+                    logger.warning(f"加载数据库列表失败: {e}")
+        
+        def on_tab_database_changed(text: str):
+            new_database = tab_database_combo.currentData()
+            if new_database and query_tab._connection_id:
+                query_tab._redis_query_database = new_database
+                query_tab._database = new_database
+        
+        tab_connection_combo.currentTextChanged.connect(on_tab_connection_changed)
+        tab_database_combo.currentTextChanged.connect(on_tab_database_changed)
+        
+        # 创建执行查询函数
+        def execute_redis_query():
+            """在当前tab中执行 Redis 查询"""
+            current_conn_id = tab_connection_combo.currentData() if hasattr(query_tab, '_connection_combo') else query_tab._connection_id
+            current_database = tab_database_combo.currentData() if hasattr(query_tab, '_database_combo') else query_tab._database
+            
+            if not current_conn_id or not current_database:
+                return
+            
+            connection = self.db_manager.get_connection(current_conn_id)
+            if not connection:
+                return
+            
+            # 创建并启动 Redis 数据查询 worker
+            from src.gui.workers.redis_data_worker import RedisDataWorker
+            
+            # 停止之前的 worker（如果存在）
+            if hasattr(query_tab, '_redis_worker') and query_tab._redis_worker:
+                try:
+                    if query_tab._redis_worker.isRunning():
+                        query_tab._redis_worker.stop()
+                        if not query_tab._redis_worker.wait(1000):
+                            query_tab._redis_worker.terminate()
+                            query_tab._redis_worker.wait(500)
+                        try:
+                            query_tab._redis_worker.data_ready.disconnect()
+                            query_tab._redis_worker.error_occurred.disconnect()
+                        except:
+                            pass
+                        query_tab._redis_worker.deleteLater()
+                except RuntimeError:
+                    pass
+                query_tab._redis_worker = None
+            
+            # 创建新的 worker
+            query_tab._redis_worker = RedisDataWorker(connection, current_database, limit=100)
+            
+            # 连接信号
+            def on_redis_data_ready(data, columns):
+                sql = f"Redis 数据查询 (数据库: {current_database}, 限制: 100条)"
+                result_table.add_result(sql, data, None, None, columns, connection_id=current_conn_id)
+            
+            def on_redis_error(error):
+                QMessageBox.warning(self, "错误", f"查询 Redis 数据失败: {error}")
+            
+            query_tab._redis_worker.data_ready.connect(on_redis_data_ready)
+            query_tab._redis_worker.error_occurred.connect(on_redis_error)
+            
+            # 启动 worker
+            query_tab._redis_worker.start()
+        
+        query_tab._execute_redis_query_func = execute_redis_query
+        
+        # 添加tab
+        tab_index = self.right_tab_widget.addTab(query_tab, f"Redis 数据 - {database}")
+        self.right_tab_widget.setCurrentIndex(tab_index)
+        
+        # 自动执行查询
+        execute_redis_query()
     
     def update_sql_completion(self, connection_id: str):
         """更新SQL编辑器的自动完成（在后台线程中执行，避免阻塞UI）"""

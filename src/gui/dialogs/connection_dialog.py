@@ -259,10 +259,10 @@ class ConnectionDialog(QDialog):
         self.database_label.setStyleSheet("font-weight: 500;")
         form_layout.addRow(self.database_label, database_layout)
         
-        # 用户名
+        # 用户名（非必填）
         self.username_edit = QLineEdit()
-        self.username_edit.setPlaceholderText("数据库用户名")
-        username_label = QLabel("用户名 *")
+        self.username_edit.setPlaceholderText("数据库用户名（可选）")
+        username_label = QLabel("用户名")
         username_label.setStyleSheet("font-weight: 500;")
         form_layout.addRow(username_label, self.username_edit)
         
@@ -465,6 +465,7 @@ class ConnectionDialog(QDialog):
             DatabaseType.ORACLE.value: 1521,
             DatabaseType.SQLSERVER.value: 1433,
             DatabaseType.HIVE.value: 10000,
+            DatabaseType.REDIS.value: 6379,
         }
         
         if db_type in default_ports:
@@ -498,6 +499,17 @@ class ConnectionDialog(QDialog):
                 self.host_edit.setText("localhost")
                 self.username_edit.setText("sqlite")
                 self.password_edit.setText("sqlite")
+        elif db_type == DatabaseType.REDIS.value:
+            # Redis特殊处理
+            # 修改数据库名标签和占位符（Redis使用数字，默认16个，但可配置）
+            self.database_label.setText("数据库编号 *")
+            self.database_edit.setPlaceholderText("数据库编号 (默认 0，数量取决于 Redis 配置)")
+            
+            # 隐藏字符集（Redis不使用字符集）
+            self.charset_edit.setVisible(False)
+            
+            # 用户名可选（Redis 6.0+ 支持 ACL）
+            self.username_edit.setPlaceholderText("可选（Redis 6.0+ ACL）")
         else:
             # 显示所有字段
             self.host_label.setVisible(True)
@@ -515,7 +527,10 @@ class ConnectionDialog(QDialog):
             
             # 恢复数据库名标签和占位符
             self.database_label.setText("数据库名 *")
-            self.database_edit.setPlaceholderText("数据库名称")
+            if db_type == DatabaseType.REDIS.value:
+                self.database_edit.setPlaceholderText("数据库编号 (默认 0，数量取决于 Redis 配置)")
+            else:
+                self.database_edit.setPlaceholderText("数据库名称")
             self.browse_btn.setVisible(False)  # 隐藏浏览按钮
     
     def on_browse_database_file(self):
@@ -677,9 +692,7 @@ class ConnectionDialog(QDialog):
             if not self.database_edit.text():
                 QMessageBox.warning(self, "警告", "请输入数据库名")
                 return
-            if not self.username_edit.text():
-                QMessageBox.warning(self, "警告", "请输入用户名")
-                return
+            # 用户名改为非必填（Redis等数据库可能不需要用户名）
         else:
             if not self.database_edit.text():
                 QMessageBox.warning(self, "警告", "请输入数据库文件路径")
@@ -743,6 +756,25 @@ class ConnectionDialog(QDialog):
         try:
             # 数据库类型
             db_type = result.get("db_type", "").lower()
+            
+            # 如果 AI 返回 unknown，尝试根据端口号和其他信息推断
+            if not db_type or db_type == "unknown":
+                port = result.get("port")
+                if port:
+                    port = int(port) if isinstance(port, (int, str)) and str(port).isdigit() else None
+                    if port == 6379:
+                        db_type = "redis"
+                    elif port == 3306:
+                        db_type = "mysql"
+                    elif port == 5432:
+                        db_type = "postgresql"
+                    elif port == 1521:
+                        db_type = "oracle"
+                    elif port == 1433:
+                        db_type = "sqlserver"
+                    elif port == 10000:
+                        db_type = "hive"
+            
             if db_type:
                 db_type_map = {
                     "mysql": DatabaseType.MYSQL.value,
@@ -751,6 +783,8 @@ class ConnectionDialog(QDialog):
                     "oracle": DatabaseType.ORACLE.value,
                     "sqlserver": DatabaseType.SQLSERVER.value,
                     "sqlite": DatabaseType.SQLITE.value,
+                    "redis": DatabaseType.REDIS.value,
+                    "hive": DatabaseType.HIVE.value,
                 }
                 if db_type in db_type_map:
                     index = self.db_type_combo.findText(db_type_map[db_type])

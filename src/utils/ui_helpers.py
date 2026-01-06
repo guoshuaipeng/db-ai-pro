@@ -178,6 +178,8 @@ def get_database_icon(db_type: DatabaseType, size: int = 16) -> QIcon:
         DatabaseType.SQLITE: QColor(0, 128, 128),  # SQLite 青色
         DatabaseType.ORACLE: QColor(244, 67, 54),  # Oracle 红色
         DatabaseType.SQLSERVER: QColor(0, 120, 215),  # SQL Server 蓝色
+        DatabaseType.HIVE: QColor(255, 140, 0),  # Hive 橙色
+        DatabaseType.REDIS: QColor(220, 20, 60),  # Redis 深红色
     }
     
     color = colors.get(db_type, QColor(100, 100, 100))
