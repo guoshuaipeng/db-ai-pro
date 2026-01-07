@@ -1350,6 +1350,35 @@ class TreeDataHandler:
         worker.connection_item = connection_item
         worker.connection_id = connection_id
         
+        # 定义清理函数（当线程完全结束时调用）
+        def cleanup_worker():
+            """清理worker（在线程finished信号触发时调用）"""
+            # 检查窗口是否正在关闭
+            if self.main_window._is_closing:
+                logger.debug(f"窗口正在关闭，跳过清理 worker: {connection_id}")
+                return
+            
+            try:
+                # 确保线程已经完全结束
+                if worker.isRunning():
+                    logger.warning(f"Worker {connection_id} 在 finished 信号触发时仍在运行，等待结束...")
+                    if not worker.wait(1000):  # 等待最多1秒
+                        logger.warning(f"Worker {connection_id} 未能在1秒内结束，强制终止")
+                        worker.terminate()
+                        worker.wait(500)
+                
+                # 从字典中移除
+                if connection_id in self.main_window.database_list_workers:
+                    del self.main_window.database_list_workers[connection_id]
+                
+                # 延迟删除，确保线程完全结束
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(200, lambda: self._safe_delete_worker(worker))
+            except RuntimeError:
+                pass  # 对象已被删除，忽略
+            except Exception as e:
+                logger.warning(f"清理 worker {connection_id} 时出错: {e}")
+        
         # 连接信号（静默更新）
         worker.databases_ready.connect(
             lambda databases: self._on_databases_refreshed(connection_item, connection_id, databases),
@@ -1359,6 +1388,8 @@ class TreeDataHandler:
             lambda error: logger.warning(f"后台刷新数据库列表失败: {error}"),
             Qt.ConnectionType.QueuedConnection
         )
+        # 连接finished信号，确保线程完全结束后才清理（优雅的方式，不阻塞）
+        worker.finished.connect(cleanup_worker)
         
         self.main_window.database_list_workers[connection_id] = worker
         worker.start()

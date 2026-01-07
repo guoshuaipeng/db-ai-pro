@@ -29,6 +29,7 @@ from src.gui.main_window import MainWindow
 from src.config.settings import Settings
 from src.core.i18n import TranslationManager
 from src.core.config_db import get_config_db
+from src.utils.exception_handler import ExceptionHandler
 import os
 
 
@@ -184,6 +185,9 @@ def init_config_database():
 
 def main():
     """主函数"""
+    # 安装全局异常处理器（必须在创建 QApplication 之前）
+    ExceptionHandler.install()
+    
     # 创建应用程序
     app = QApplication(sys.argv)
     app.setApplicationName("DataAI")

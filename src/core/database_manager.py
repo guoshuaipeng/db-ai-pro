@@ -316,7 +316,12 @@ class DatabaseManager:
         # 关闭并移除旧引擎，让后续按新数据库重新创建
         if connection_id in self.engines:
             try:
-                self.engines[connection_id].dispose()
+                engine = self.engines[connection_id]
+                # Redis 使用 close() 方法，SQL 数据库使用 dispose() 方法
+                if isinstance(engine, RedisClient):
+                    engine.close()
+                else:
+                    engine.dispose()
             except Exception as e:
                 logger.warning(f"关闭旧引擎时出错（可忽略）: {e}")
             finally:

@@ -10,8 +10,8 @@ from src.core.database_connection import DatabaseConnection
 logger = logging.getLogger(__name__)
 
 # 定义大 value 的阈值（字节）
-LARGE_VALUE_THRESHOLD = 1024 * 1024  # 1MB
-MAX_DISPLAY_LENGTH = 10 * 1024  # 最大显示长度 10KB
+LARGE_VALUE_THRESHOLD = 5 * 1024 * 1024  # 5MB - 超过此大小才截断显示
+MAX_DISPLAY_LENGTH = 200 * 1024  # 最大显示长度 200KB - 截断时显示前 200KB
 MAX_LIST_DISPLAY_COUNT = 1000  # 列表/集合最大显示元素数
 
 
