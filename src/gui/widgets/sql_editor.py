@@ -147,7 +147,7 @@ class SQLEditor(QWidget):
         
         # 使用QPlainTextEdit而不是QTextEdit，确保只支持纯文本，不支持格式
         self.ai_input = QPlainTextEdit()
-        self.ai_input.setPlaceholderText("在此输入中文描述，AI将自动生成SQL并执行查询...\n\n💡 提示：\n- 按 Enter 键直接查询\n- 按 Shift+Enter 换行\n- 优先使用右侧SQL输入框的表\n\n例如：\n- 查询所有用户信息\n- 统计每个部门的员工数量\n- 查找最近一周的订单")
+        self.ai_input.setPlaceholderText("在此输入中文描述，AI将自动生成SQL并执行查询...\n\n💡 提示：\n- 按 Enter 键直接查询\n- 按 Shift+Enter 换行\n\n例如：\n- 查询所有用户信息\n- 统计每个部门的员工数量\n- 查找最近一周的订单")
         self.ai_input.setFont(QFont("Microsoft YaHei", 10))
         self.ai_input.installEventFilter(self)  # 安装事件过滤器，用于处理回车键
         ai_layout.addWidget(self.ai_input)
@@ -595,11 +595,47 @@ class SQLEditor(QWidget):
         logger.info(f"保存了 {len(self._all_table_names)} 个表名: {self._all_table_names[:10]}...")
         
         user_query = self.ai_input.toPlainText().strip()
+        
+        # 优先检查：如果AI输入框中包含表名提示（如"查询 users 表"），优先使用这个表名
+        # 检查用户查询中是否包含表名（支持多种格式）
+        table_name_in_query = None
+        if user_query:
+            import re
+            # 检查用户查询是否包含表名（支持多种格式）
+            for table_info in table_info_list:
+                table_name = table_info.get("name", "") if isinstance(table_info, dict) else table_info
+                if table_name:
+                    # 格式1：用户查询就是表名
+                    if user_query.strip() == table_name:
+                        table_name_in_query = table_name
+                        logger.info(f"检测到AI输入框中的表名: {table_name_in_query}，优先使用此表")
+                        break
+                    
+                    # 格式2：用户查询以表名开头（后面可能有空格或其他查询条件）
+                    if user_query.strip().startswith(table_name + " ") or user_query.strip().startswith(table_name + "\n"):
+                        table_name_in_query = table_name
+                        logger.info(f"检测到AI输入框中的表名: {table_name_in_query}，优先使用此表")
+                        break
+                    
+                    # 格式3：用户查询包含"查询/操作/查看 表名 表"格式
+                    patterns = [
+                        rf'查询\s+{re.escape(table_name)}\s+表',
+                        rf'操作\s+{re.escape(table_name)}\s+表',
+                        rf'查看\s+{re.escape(table_name)}\s+表',
+                        rf'{re.escape(table_name)}\s+表',
+                    ]
+                    for pattern in patterns:
+                        if re.search(pattern, user_query.strip(), re.IGNORECASE):
+                            table_name_in_query = table_name
+                            logger.info(f"检测到AI输入框中的表名提示: {table_name_in_query}，优先使用此表")
+                            break
+                    
+                    if table_name_in_query:
+                        break
+        
         self.set_status(f"步骤2/4: AI正在选择相关表（从 {len(table_info_list)} 个表中）...", timeout=0)
         
-        # 获取当前SQL编辑器中的SQL（如果用户已经在查看某个表，AI可以优先选择该表）
-        current_sql = self.sql_edit.toPlainText().strip() if hasattr(self, 'sql_edit') else ""
-        
+        # 不再使用SQL框中的SQL来选择表，只使用AI输入框中的内容
         # 使用AI选择相关表（传递包含注释的表信息列表）
         from src.gui.workers.ai_table_selector_worker import AITableSelectorWorker
         
@@ -607,7 +643,7 @@ class SQLEditor(QWidget):
             self.ai_client,
             user_query,
             table_info_list,  # 传递包含表名和注释的列表
-            current_sql  # 传递当前SQL，让AI知道用户可能已经在查看某个表
+            None  # 不再传递当前SQL，只根据AI输入框中的内容选择表
         )
         self.ai_table_selector_worker.tables_selected.connect(self.on_tables_selected)
         self.ai_table_selector_worker.error_occurred.connect(self.on_ai_error)
@@ -851,7 +887,7 @@ class SQLEditor(QWidget):
                 db_type = connection.db_type.value
                 logger.info(f"数据库类型: {db_type}")
         
-        # 获取当前SQL编辑器中的SQL（如果用户已经在查看某个表，AI可以基于此SQL进行修改）
+        # 获取当前SQL编辑器中的SQL（已废弃，不再使用，但保留参数以保持兼容性）
         current_sql = self.sql_edit.toPlainText().strip() if hasattr(self, 'sql_edit') else ""
         
         # 如果没有传递所有表名，尝试使用保存的

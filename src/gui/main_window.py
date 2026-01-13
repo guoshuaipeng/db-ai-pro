@@ -2080,6 +2080,13 @@ class MainWindow(QMainWindow):
         # 在新的SQL编辑器中显示SQL
         sql_editor.set_sql(sql)
         
+        # 自动将提示文本填入AI智能查询框，让用户了解AI会优先使用这个表
+        if hasattr(sql_editor, 'ai_input'):
+            # 设置AI输入框的提示文本（如果用户不删除，AI查询时会优先使用这个表）
+            # 使用友好的提示文本，而不是仅表名
+            ai_hint_text = f"查询 {table_name} 表"
+            sql_editor.ai_input.setPlainText(ai_hint_text)
+        
         # 添加新tab（使用"连接名-库名-表名"格式，区分不同连接的相同数据库和表）
         connection_name = connection.name if connection else connection_id
         if database:

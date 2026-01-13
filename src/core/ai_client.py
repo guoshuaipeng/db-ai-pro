@@ -117,7 +117,7 @@ class AIClient:
         :param user_query: 用户的中文查询
         :param table_schema: 可选的表结构信息
         :param db_type: 可选的数据库类型（mysql, postgresql, oracle, sqlserver, sqlite, mariadb）
-        :param current_sql: 当前SQL编辑器中的SQL（可选，如果提供，AI会优先基于此SQL进行修改）
+        :param current_sql: 当前SQL编辑器中的SQL（可选，已废弃，不再使用）
         :param all_table_names: 所有表名列表（可选，用于让AI知道所有可用表）
         :return: 生成的SQL语句
         """
@@ -195,19 +195,8 @@ class AIClient:
                     db_type_name = db_type_name_map.get(db_type.lower(), db_type)
                     db_type_info = f"\n【数据库类型】\n当前数据库类型: {db_type_name}\n请使用 {db_type_name} 的SQL语法规范。\n"
                 
-                # 当前SQL部分（如果存在）- 仅作为参考，表名应该使用AI已选中的表
-                current_sql_section = ""
-                if current_sql and current_sql.strip():
-                    current_sql_section = f"""
-【当前SQL编辑器中的SQL（仅作为参考）】
-{current_sql}
-
-⚠️ 注意：
-- 如果用户输入只是修改查询条件（如添加WHERE条件、修改字段等），可以基于当前SQL的结构进行修改
-- **但是表名必须使用上述"可用表名列表"中AI已经为你选择的表**，不要使用当前SQL中的表（除非当前SQL中的表也在"可用表名列表"中）"""
-                
                 user_prompt = f"""【用户需求】
-{user_query}{db_type_info}{current_sql_section}
+{user_query}{db_type_info}
 【数据库表结构】
 当前数据库包含以下表和列信息：
 
@@ -228,8 +217,7 @@ class AIClient:
 【你的任务】
 根据用户需求"{user_query}"，执行以下步骤：
 1. **使用AI已选中的表**：上述"可用表名列表"中的表是AI根据你的需求已经选择的相关表，请直接使用这些表
-2. 如果当前SQL编辑器中有SQL语句，且用户输入只是修改查询条件（如添加WHERE条件、修改字段等），可以基于当前SQL修改，但表名必须使用"可用表名列表"中的表
-3. **仔细查看这些表的列信息**，找到匹配用户需求的列名（必须使用表结构中实际存在的列名）
+2. **仔细查看这些表的列信息**，找到匹配用户需求的列名（必须使用表结构中实际存在的列名）
 4. **识别枚举字段**：如果字段信息中包含"[字段值: ...]"，说明该字段可能是枚举类型，请根据字段值推断其含义
 5. **使用正确的枚举值**：在WHERE条件中使用枚举字段时，必须使用表结构中显示的字段值
 6. 理解用户的具体需求（查询、统计、筛选、排序等）
@@ -247,25 +235,15 @@ class AIClient:
                 # 表结构为空的情况
                 self.logger.warning("⚠️ 表结构为空，无法为AI提供数据库表信息")
                 
-                # 当前SQL部分（如果存在）
-                current_sql_section = ""
-                if current_sql and current_sql.strip():
-                    current_sql_section = f"""
-【当前SQL编辑器中的SQL（优先使用）】
-{current_sql}
-
-⚠️ 重要：如果当前SQL编辑器中有SQL语句，请优先基于此SQL进行修改和完善，而不是生成全新的SQL。"""
-                
                 user_prompt = f"""【用户需求】
-{user_query}{current_sql_section}
+{user_query}
 
 【任务】
 请生成对应的SQL查询语句。如果涉及表名或列名，请使用常见的命名（如users, orders, id, name, created_at等）。
 
 【注意事项】
 - 仔细理解用户意图，生成最符合需求的SQL
-- 确保SQL语法正确，可以直接执行
-- 如果当前SQL编辑器中有SQL，请基于该SQL进行修改"""
+- 确保SQL语法正确，可以直接执行"""
             
             # 记录发送给AI的完整内容（用于调试）
             self.logger.info("=" * 80)
@@ -449,25 +427,48 @@ class AIClient:
                     table_names_only.append(item)
                     table_list_items.append(f'  - {item}')
             
-            # 从当前SQL中提取表名（仅用于在提示词中提示AI，不作为直接返回的依据）
-            tables_in_current_sql = []
-            if current_sql and current_sql.strip():
-                tables_in_current_sql = self._extract_table_names_from_sql(current_sql, table_names_only)
-                self.logger.info(f"从当前SQL中提取到的表名: {tables_in_current_sql}")
-                
-                # 不再直接返回当前SQL中的表，而是让AI从所有表中选择
-                # 这样AI可以根据用户查询从所有表中选择最相关的表
-                # 例如用户查询"查询支付订单表的数量"时，AI应该选择"支付订单表"而不是当前SQL中的表
+            # 优先检查1：如果用户查询就是表名（AI输入框中只有表名的情况），直接返回
+            user_query_stripped = user_query.strip()
+            if user_query_stripped in table_names_only:
+                self.logger.info(f"用户查询就是表名，直接返回: {user_query_stripped}")
+                return [user_query_stripped]
             
-            # 格式化表名列表（将当前SQL中的表放在前面）
-            if tables_in_current_sql:
-                # 将当前SQL中的表放在列表最前面
-                priority_tables = []
-                other_tables = []
+            # 优先检查2：检查用户查询中是否包含表名（支持多种格式）
+            # 格式1：以表名开头，如 "users 查询所有数据"
+            # 格式2：包含"查询/操作/查看 表名 表"，如 "查询 users 表"
+            # 格式3：包含"表名 表"，如 "users 表"
+            table_name_in_query = None
+            for table_name in table_names_only:
+                # 检查1：用户查询是否以表名开头（后面可能有空格、换行或其他查询条件）
+                if user_query_stripped.startswith(table_name + " ") or user_query_stripped.startswith(table_name + "\n"):
+                    table_name_in_query = table_name
+                    self.logger.info(f"检测到用户查询以表名开头: {table_name_in_query}，直接返回此表")
+                    return [table_name_in_query]
+                
+                # 检查2：用户查询是否包含"查询/操作/查看 表名 表"格式
+                import re
+                patterns = [
+                    rf'查询\s+{re.escape(table_name)}\s+表',
+                    rf'操作\s+{re.escape(table_name)}\s+表',
+                    rf'查看\s+{re.escape(table_name)}\s+表',
+                    rf'{re.escape(table_name)}\s+表',
+                ]
+                for pattern in patterns:
+                    if re.search(pattern, user_query_stripped, re.IGNORECASE):
+                        table_name_in_query = table_name
+                        self.logger.info(f"检测到用户查询包含表名提示: {table_name_in_query}，直接返回此表")
+                        return [table_name_in_query]
+            
+            # 格式化表名列表（如果AI输入框中有表名，将其放在前面）
+            priority_tables = []
+            other_tables = []
+            
+            # 如果AI输入框中有表名，优先标记这个表
+            if table_name_in_query:
                 for item in table_list_items:
                     table_name = item.split('#')[0].strip().lstrip('- ').strip()
-                    if table_name in tables_in_current_sql:
-                        priority_tables.append(f'  - {table_name} 【当前SQL中的表】' + (f'  # {item.split("#")[1]}' if '#' in item else ''))
+                    if table_name == table_name_in_query:
+                        priority_tables.append(f'  - {table_name} 【AI输入框中的表，优先使用】' + (f'  # {item.split("#")[1]}' if '#' in item else ''))
                     else:
                         other_tables.append(item)
                 table_list_items = priority_tables + other_tables
@@ -475,17 +476,15 @@ class AIClient:
             table_list_formatted = '\n'.join(table_list_items)
             table_list_single = ', '.join(table_names_only)
             
-            # 如果有当前SQL，添加到提示词中
-            current_sql_section = ""
-            if current_sql and current_sql.strip():
-                current_sql_section = f"""
-【当前SQL编辑器中的SQL】
-{current_sql}
-
-**重要提示**：用户可能已经在查看某个表的数据，只是想添加一些查询条件或修改查询。请优先使用当前SQL中已经使用的表：{', '.join(tables_in_current_sql) if tables_in_current_sql else '(未检测到表名)'}"""
+            # 构建提示词部分
+            priority_section = ""
+            if table_name_in_query:
+                # 如果AI输入框中有表名，优先使用这个表名
+                priority_section = f"""
+**⚠️ 重要提示**：用户查询以表名"{table_name_in_query}"开头，这表示用户希望优先操作这个表。请优先选择表"{table_name_in_query}"，除非用户明确指定了其他表。"""
             
             user_prompt = f"""【用户需求】
-{user_query}{current_sql_section}
+{user_query}{priority_section}
 
 【可用表名列表】
 以下是数据库中所有可用的表名（共 {len(table_info_list)} 个）：
@@ -493,7 +492,7 @@ class AIClient:
 
 【你的任务】
 根据用户需求"{user_query}"，从上述表名列表中选择最相关的表（通常1-5个表）。
-{"**提示**：如果用户需求中明确提到了表名（如\"支付订单表\"、\"用户表\"等），应该优先选择用户需求中提到的表。当前SQL中的表已标记，但如果用户需求明确提到了其他表，应该选择用户需求中提到的表。" if tables_in_current_sql else ""}
+{"**⚠️ 重要**：用户查询以表名开头，请优先选择该表。" if table_name_in_query else "**提示**：如果用户需求中明确提到了表名（如\"支付订单表\"、\"用户表\"等），应该优先选择用户需求中提到的表。"}
 
 【输出要求】
 只返回选中的表名，每行一个，不要包含任何解释或注释。"""

@@ -709,7 +709,6 @@ class TreeDataHandler:
                 all_data_item = QTreeWidgetItem(tables_category)
                 all_data_item.setText(0, "所有数据")
                 TreeItemData.set_item_type_and_data(all_data_item, TreeItemType.REDIS_ALL_DATA, database)
-                from src.utils.ui_helpers import get_table_icon
                 all_data_item.setIcon(0, get_table_icon(16))
                 all_data_item.setToolTip(0, f"Redis 数据库: {database}\n点击查询前100条数据")
                 all_data_item.setFlags(
@@ -789,7 +788,6 @@ class TreeDataHandler:
                 tables_category.setFlags(Qt.ItemFlag.ItemIsEnabled)
             
             # 立即显示缓存的表
-            from src.utils.ui_helpers import get_table_icon
             for table_name in sorted(cached_tables):
                 table_item = QTreeWidgetItem(tables_category)
                 table_item.setText(0, table_name)
@@ -872,7 +870,6 @@ class TreeDataHandler:
                     all_data_item = QTreeWidgetItem(tables_category)
                     all_data_item.setText(0, "所有数据")
                     TreeItemData.set_item_type_and_data(all_data_item, TreeItemType.REDIS_ALL_DATA, database)
-                    from src.utils.ui_helpers import get_table_icon
                     all_data_item.setIcon(0, get_table_icon(16))
                     all_data_item.setToolTip(0, f"Redis 数据库: {database}\n点击查询前100条数据")
                     all_data_item.setFlags(
@@ -1039,7 +1036,6 @@ class TreeDataHandler:
                 all_data_item = QTreeWidgetItem(tables_category)
                 all_data_item.setText(0, "所有数据")
                 TreeItemData.set_item_type_and_data(all_data_item, TreeItemType.REDIS_ALL_DATA, database)
-                from src.utils.ui_helpers import get_table_icon
                 all_data_item.setIcon(0, get_table_icon(16))
                 all_data_item.setToolTip(0, f"Redis 数据库: {database}\n点击查询前100条数据")
                 all_data_item.setFlags(
