@@ -172,10 +172,10 @@ class UIHandler:
         self.main_window.result_table._main_window = self.main_window  # 传递主窗口引用
         query_splitter.addWidget(self.main_window.result_table)
         
-        # 设置拉伸因子（调整比例，让结果区域更大）
-        query_splitter.setStretchFactor(0, 2)
-        query_splitter.setStretchFactor(1, 3)
-        query_splitter.setSizes([450, 650])  # 增加初始高度
+        # 设置拉伸因子（数据展示区域更大，输入框更小）
+        query_splitter.setStretchFactor(0, 1)  # SQL编辑器占1份
+        query_splitter.setStretchFactor(1, 4)  # 结果表格占4份
+        query_splitter.setSizes([300, 900])  # SQL编辑器300像素，结果表格900像素
         
         query_layout.addWidget(query_splitter)
         self.main_window.right_tab_widget.addTab(query_tab, self.main_window.tr("查询"))

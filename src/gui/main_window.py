@@ -1833,10 +1833,10 @@ class MainWindow(QMainWindow):
         # 存储result_table引用，以便后面设置execute_query_func
         query_tab._result_table_widget = result_table
         
-        # 设置拉伸因子
-        query_splitter.setStretchFactor(0, 2)
-        query_splitter.setStretchFactor(1, 3)
-        query_splitter.setSizes([450, 650])
+        # 设置拉伸因子（数据展示区域更大，输入框更小）
+        query_splitter.setStretchFactor(0, 1)  # SQL编辑器占1份
+        query_splitter.setStretchFactor(1, 4)  # 结果表格占4份
+        query_splitter.setSizes([300, 900])  # SQL编辑器300像素，结果表格900像素
         
         query_layout.addWidget(query_splitter)
         
@@ -1873,6 +1873,18 @@ class MainWindow(QMainWindow):
                     logger.warning(f"加载数据库列表失败: {e}")
                 # 更新SQL编辑器的数据库信息
                 sql_editor.set_database_info(self.db_manager, new_connection_id, None)
+                # 更新tab标题以反映新的连接
+                new_connection = self.db_manager.get_connection(new_connection_id)
+                connection_name = new_connection.name if new_connection else new_connection_id
+                if query_tab._table_query_database:
+                    new_tab_title = f"{connection_name}-{query_tab._table_query_database}-{query_tab._table_query_table_name}"
+                else:
+                    new_tab_title = f"{connection_name}-{query_tab._table_query_table_name}"
+                # 找到当前tab的索引并更新标题
+                for i in range(self.right_tab_widget.count()):
+                    if self.right_tab_widget.widget(i) == query_tab:
+                        self.right_tab_widget.setTabText(i, new_tab_title)
+                        break
         
         def on_tab_database_changed(text: str):
             new_database = tab_database_combo.currentData()
@@ -1887,6 +1899,18 @@ class MainWindow(QMainWindow):
                     self.db_manager.switch_database(query_tab._connection_id, new_database)
                 except Exception as e:
                     logger.error(f"切换数据库失败: {e}")
+                # 更新tab标题以反映新的数据库
+                connection = self.db_manager.get_connection(query_tab._connection_id)
+                connection_name = connection.name if connection else query_tab._connection_id
+                if new_database:
+                    new_tab_title = f"{connection_name}-{new_database}-{query_tab._table_query_table_name}"
+                else:
+                    new_tab_title = f"{connection_name}-{query_tab._table_query_table_name}"
+                # 找到当前tab的索引并更新标题
+                for i in range(self.right_tab_widget.count()):
+                    if self.right_tab_widget.widget(i) == query_tab:
+                        self.right_tab_widget.setTabText(i, new_tab_title)
+                        break
         
         tab_connection_combo.currentTextChanged.connect(on_tab_connection_changed)
         tab_database_combo.currentTextChanged.connect(on_tab_database_changed)
@@ -2056,11 +2080,12 @@ class MainWindow(QMainWindow):
         # 在新的SQL编辑器中显示SQL
         sql_editor.set_sql(sql)
         
-        # 添加新tab（使用"库名-表名"格式，默认是查询所以不显示"查询"）
+        # 添加新tab（使用"连接名-库名-表名"格式，区分不同连接的相同数据库和表）
+        connection_name = connection.name if connection else connection_id
         if database:
-            tab_title = f"{database}-{table_name}"
+            tab_title = f"{connection_name}-{database}-{table_name}"
         else:
-            tab_title = f"{table_name}"
+            tab_title = f"{connection_name}-{table_name}"
         tab_index = self.right_tab_widget.addTab(query_tab, tab_title)
         
         # 切换到新tab

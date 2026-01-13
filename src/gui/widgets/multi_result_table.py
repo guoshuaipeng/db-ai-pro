@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QIcon
 from src.utils.toast import show_toast
-from PyQt6.QtCore import Qt, pyqtSignal, QEvent
+from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QTimer
 from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QSyntaxHighlighter, QClipboard, QMouseEvent, QKeyEvent, QKeySequence, QPainter, QTextBlock
 from PyQt6.QtCore import QRegularExpression, QRect, QPoint, QSize
 from typing import List, Dict, Optional
@@ -265,6 +265,9 @@ class SingleResultTable(QWidget):
         self.total_pages = 1  # 总页数
         self.total_rows = 0  # 总行数
         self.server_side_paging = False  # 是否使用服务器端分页
+        
+        # 主键缓存（避免重复查询，提高性能）
+        self._primary_keys_cache: Dict[str, List[str]] = {}
         
         self.init_ui()
     
@@ -1580,7 +1583,12 @@ class SingleResultTable(QWidget):
         return None
     
     def _get_primary_keys(self, table_name: str) -> List[str]:
-        """获取表的主键列名列表（优先使用主键过滤）"""
+        """获取表的主键列名列表（优先使用主键过滤，使用缓存避免重复查询）"""
+        # 检查缓存
+        cache_key = f"{table_name}"
+        if cache_key in self._primary_keys_cache:
+            return self._primary_keys_cache[cache_key]
+        
         if not self.main_window or not hasattr(self.main_window, 'db_manager'):
             return []
         
@@ -1612,19 +1620,32 @@ class SingleResultTable(QWidget):
                 schema_name = current_db
             
             # 使用 get_pk_constraint 兼容不同数据库/版本
-            if schema_name and db_type in ("mysql", "mariadb", "postgresql"):
-                pk_constraint = inspector.get_pk_constraint(actual_table, schema=schema_name)
-            else:
-                pk_constraint = inspector.get_pk_constraint(actual_table)
+            # 注意：这个操作可能会查询数据库，但通常很快，且只执行一次（因为有缓存）
+            try:
+                if schema_name and db_type in ("mysql", "mariadb", "postgresql"):
+                    pk_constraint = inspector.get_pk_constraint(actual_table, schema=schema_name)
+                else:
+                    pk_constraint = inspector.get_pk_constraint(actual_table)
+                
+                primary_keys = pk_constraint.get("constrained_columns", []) if pk_constraint else []
+            except Exception as e:
+                # 如果获取主键失败，记录日志但不抛出异常，返回空列表
+                logger.debug(f"获取表 {table_name} 的主键失败: {str(e)}")
+                primary_keys = []
             
-            primary_keys = pk_constraint.get("constrained_columns", []) if pk_constraint else []
+            # 缓存结果（即使为空也缓存，避免重复尝试）
+            self._primary_keys_cache[cache_key] = primary_keys
+            
             if not primary_keys:
-                logger.warning(f"未获取到主键: table={table_name}, schema={schema_name}")
+                logger.debug(f"未获取到主键: table={table_name}, schema={schema_name}，将使用所有列作为WHERE条件")
             else:
                 logger.info(f"主键列: {primary_keys} (table={table_name}, schema={schema_name})")
+            
             return primary_keys
         except Exception as e:
             logger.debug(f"获取表 {table_name} 的主键失败: {str(e)}")
+            # 缓存空结果，避免重复尝试
+            self._primary_keys_cache[cache_key] = []
             return []
     
     def _generate_update_sql(self, table_name: str, col_name: str, new_value, original_row_data: Dict, columns: List[str]) -> Optional[str]:
@@ -1830,7 +1851,7 @@ class SingleResultTable(QWidget):
         self._highlight_pending_deletes()
     
     def save_changes(self):
-        """保存所有暂存的修改和删除到数据库"""
+        """保存所有暂存的修改和删除到数据库（异步执行，不阻塞UI）"""
         has_modifications = len(self.modified_cells) > 0
         has_pending_deletes = len(self.pending_deletes) > 0
         
@@ -1853,46 +1874,50 @@ class SingleResultTable(QWidget):
             QMessageBox.warning(self, "警告", "无法从SQL中提取表名")
             return
         
-        # 直接保存，不再显示确认对话框
-        
-        # 记录开始时间（用于耗时统计）
-        self._save_start_time = time.time()
-        
-        # 先保存修改，再执行删除
-        if has_modifications:
-            # 按行分组修改，同一行的修改合并为一个UPDATE语句
-            updates_by_row: Dict[int, Dict[str, tuple]] = {}
-            columns = list(self.raw_data[0].keys()) if self.raw_data else []
+        # 使用QTimer延迟执行，确保UI立即响应，避免阻塞
+        def execute_save():
+            """异步执行保存操作"""
+            # 记录开始时间（用于耗时统计）
+            self._save_start_time = time.time()
             
-            for (row, col), (old_value, new_value, col_name) in self.modified_cells.items():
-                if row not in updates_by_row:
-                    updates_by_row[row] = {}
-                updates_by_row[row][col_name] = (old_value, new_value)
-            
-            # 生成UPDATE SQL语句列表
-            update_sqls = []
-            for row_idx, col_updates in updates_by_row.items():
-                if row_idx < 0 or row_idx >= len(self.original_data):
-                    continue
+            # 先保存修改，再执行删除
+            if has_modifications:
+                # 按行分组修改，同一行的修改合并为一个UPDATE语句
+                updates_by_row: Dict[int, Dict[str, tuple]] = {}
+                columns = list(self.raw_data[0].keys()) if self.raw_data else []
                 
-                original_row_data = self.original_data[row_idx]
+                for (row, col), (old_value, new_value, col_name) in self.modified_cells.items():
+                    if row not in updates_by_row:
+                        updates_by_row[row] = {}
+                    updates_by_row[row][col_name] = (old_value, new_value)
                 
-                # 为这一行的所有修改生成一个UPDATE语句
-                update_sql = self._generate_update_sql_for_row(
-                    table_name, col_updates, original_row_data, columns
-                )
-                if update_sql:
-                    update_sqls.append(update_sql)
-            
-            if update_sqls:
-                # 执行所有UPDATE语句（完成后会继续执行删除）
-                self._execute_batch_updates(update_sqls, continue_with_deletes=has_pending_deletes)
-            elif has_pending_deletes:
-                # 没有修改，直接执行删除
+                # 生成UPDATE SQL语句列表
+                update_sqls = []
+                for row_idx, col_updates in updates_by_row.items():
+                    if row_idx < 0 or row_idx >= len(self.original_data):
+                        continue
+                    
+                    original_row_data = self.original_data[row_idx]
+                    
+                    # 为这一行的所有修改生成一个UPDATE语句
+                    update_sql = self._generate_update_sql_for_row(
+                        table_name, col_updates, original_row_data, columns
+                    )
+                    if update_sql:
+                        update_sqls.append(update_sql)
+                
+                if update_sqls:
+                    # 执行所有UPDATE语句（完成后会继续执行删除）
+                    self._execute_batch_updates(update_sqls, continue_with_deletes=has_pending_deletes)
+                elif has_pending_deletes:
+                    # 没有修改，直接执行删除
+                    self._execute_pending_deletes()
+            else:
+                # 只有删除，直接执行
                 self._execute_pending_deletes()
-        else:
-            # 只有删除，直接执行
-            self._execute_pending_deletes()
+        
+        # 延迟0ms执行，确保UI立即响应
+        QTimer.singleShot(0, execute_save)
     
     def cancel_changes(self):
         """取消所有暂存的修改和删除，恢复原始值"""
@@ -2077,19 +2102,16 @@ class SingleResultTable(QWidget):
             # 停止之前的UPDATE worker（如果存在）
             if self.update_worker and self.update_worker.isRunning():
                 self.update_worker.stop()
-                try:
-                    self.update_worker.wait(1000)
-                    if self.update_worker.isRunning():
-                        self.update_worker.terminate()
-                        self.update_worker.wait(500)
-                except KeyboardInterrupt:
-                    logger.warning("用户中断了等待，继续执行")
-                    pass
+                # 不等待worker停止，避免阻塞UI线程
+                # 断开信号连接，避免旧worker的回调影响新操作
                 try:
                     self.update_worker.query_finished.disconnect()
+                    self.update_worker.multi_query_finished.disconnect()
                 except:
                     pass
-                self.update_worker.deleteLater()
+                # 延迟删除，确保线程完全结束
+                QTimer.singleShot(200, lambda: self._safe_delete_update_worker(self.update_worker))
+                self.update_worker = None
             
             from src.gui.workers.query_worker import QueryWorker
             
@@ -2129,6 +2151,30 @@ class SingleResultTable(QWidget):
             logger.error(f"执行批量UPDATE失败: {str(e)}")
             # 只显示状态栏提示，不弹出对话框
             self._show_status_to_main_window(f"保存失败: {str(e)}")
+    
+    def _safe_delete_update_worker(self, worker):
+        """安全删除UPDATE worker（确保线程完全结束）"""
+        if worker is None:
+            return
+        try:
+            # 检查线程是否还在运行
+            if worker.isRunning():
+                logger.warning(f"尝试删除仍在运行的 update worker")
+                return  # 如果还在运行，不删除
+            
+            # 断开所有信号连接
+            try:
+                worker.query_finished.disconnect()
+                worker.multi_query_finished.disconnect()
+            except (RuntimeError, TypeError):
+                pass  # 信号可能已经断开
+            
+            # 删除对象
+            worker.deleteLater()
+        except RuntimeError:
+            pass  # 对象已被删除，忽略
+        except Exception as e:
+            logger.warning(f"安全删除 update worker 时出错: {e}")
     
     def _on_batch_update_finished(self, success: bool, error: Optional[str], affected_rows: Optional[int]):
         """批量UPDATE执行完成回调（单条SQL）"""

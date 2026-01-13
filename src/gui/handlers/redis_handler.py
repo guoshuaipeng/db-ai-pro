@@ -37,11 +37,17 @@ class RedisHandler:
             QMessageBox.warning(self.main_window, "警告", "连接不存在")
             return
         
-        # 先检查是否已有对应的 Redis tab
-        redis_tab_title = f"Redis: {database}"
+        # 先检查是否已有对应的 Redis tab（需要检查连接ID，避免不同连接的相同数据库混淆）
+        connection_name = connection.name if connection else connection_id
+        redis_tab_title = f"Redis: {connection_name}-{database}"
         existing_tab_index = None
         for i in range(self.main_window.right_tab_widget.count()):
-            if self.main_window.right_tab_widget.tabText(i) == redis_tab_title:
+            tab_widget = self.main_window.right_tab_widget.widget(i)
+            # 检查tab标题和连接ID是否匹配
+            if (self.main_window.right_tab_widget.tabText(i) == redis_tab_title and
+                isinstance(tab_widget, RedisDataViewer) and
+                hasattr(tab_widget, '_redis_connection_id') and
+                tab_widget._redis_connection_id == connection_id):
                 existing_tab_index = i
                 break
         
@@ -50,6 +56,8 @@ class RedisHandler:
         if existing_tab_index is None:
             # 创建新的 Redis 数据查看器 tab（立即显示，不等待数据）
             viewer = RedisDataViewer()
+            # 保存连接ID，用于区分不同连接的相同数据库
+            viewer._redis_connection_id = connection_id
             tab_index = self.main_window.right_tab_widget.addTab(viewer, redis_tab_title)
             self.main_window.right_tab_widget.setCurrentIndex(tab_index)
             # 显示加载状态
@@ -116,10 +124,15 @@ class RedisHandler:
             # 连接信号
             def on_redis_data_ready(data, columns):
                 # 查找对应的 Redis 数据查看器 tab（应该已经存在）
-                redis_tab_title = f"Redis: {db_name}"
+                connection_name = connection.name if connection else connection_id
+                redis_tab_title = f"Redis: {connection_name}-{db_name}"
                 existing_tab_index = None
                 for i in range(self.main_window.right_tab_widget.count()):
-                    if self.main_window.right_tab_widget.tabText(i) == redis_tab_title:
+                    tab_widget = self.main_window.right_tab_widget.widget(i)
+                    if (self.main_window.right_tab_widget.tabText(i) == redis_tab_title and
+                        isinstance(tab_widget, RedisDataViewer) and
+                        hasattr(tab_widget, '_redis_connection_id') and
+                        tab_widget._redis_connection_id == connection_id):
                         existing_tab_index = i
                         break
                 
@@ -132,6 +145,7 @@ class RedisHandler:
                     # 如果 tab 不存在（不应该发生），创建新的
                     logger.warning(f"Redis tab 不存在，创建新的: {redis_tab_title}")
                     viewer = RedisDataViewer()
+                    viewer._redis_connection_id = connection_id
                     viewer.display_data(data, columns, connection, db_name)
                     tab_index = self.main_window.right_tab_widget.addTab(viewer, redis_tab_title)
                     self.main_window.right_tab_widget.setCurrentIndex(tab_index)
@@ -167,11 +181,17 @@ class RedisHandler:
             QMessageBox.warning(self.main_window, "警告", "连接不存在")
             return
         
-        # 先检查是否已有对应的 Redis tab
-        redis_tab_title = f"Redis: {database}"
+        # 先检查是否已有对应的 Redis tab（需要检查连接ID，避免不同连接的相同数据库混淆）
+        connection_name = connection.name if connection else connection_id
+        redis_tab_title = f"Redis: {connection_name}-{database}"
         existing_tab_index = None
         for i in range(self.main_window.right_tab_widget.count()):
-            if self.main_window.right_tab_widget.tabText(i) == redis_tab_title:
+            tab_widget = self.main_window.right_tab_widget.widget(i)
+            # 检查tab标题和连接ID是否匹配
+            if (self.main_window.right_tab_widget.tabText(i) == redis_tab_title and
+                isinstance(tab_widget, RedisDataViewer) and
+                hasattr(tab_widget, '_redis_connection_id') and
+                tab_widget._redis_connection_id == connection_id):
                 existing_tab_index = i
                 break
         
@@ -180,6 +200,8 @@ class RedisHandler:
         if existing_tab_index is None:
             # 创建新的 Redis 数据查看器 tab（立即显示，不等待数据）
             viewer = RedisDataViewer()
+            # 保存连接ID，用于区分不同连接的相同数据库
+            viewer._redis_connection_id = connection_id
             tab_index = self.main_window.right_tab_widget.addTab(viewer, redis_tab_title)
             self.main_window.right_tab_widget.setCurrentIndex(tab_index)
             # 显示加载状态
@@ -238,10 +260,15 @@ class RedisHandler:
             # 连接信号
             def on_redis_data_ready(data, columns):
                 # 查找对应的 Redis 数据查看器 tab（应该已经存在）
-                redis_tab_title = f"Redis: {db_name}"
+                connection_name = connection.name if connection else connection_id
+                redis_tab_title = f"Redis: {connection_name}-{db_name}"
                 existing_tab_index = None
                 for i in range(self.main_window.right_tab_widget.count()):
-                    if self.main_window.right_tab_widget.tabText(i) == redis_tab_title:
+                    tab_widget = self.main_window.right_tab_widget.widget(i)
+                    if (self.main_window.right_tab_widget.tabText(i) == redis_tab_title and
+                        isinstance(tab_widget, RedisDataViewer) and
+                        hasattr(tab_widget, '_redis_connection_id') and
+                        tab_widget._redis_connection_id == connection_id):
                         existing_tab_index = i
                         break
                 
@@ -256,6 +283,7 @@ class RedisHandler:
                     # 如果 tab 不存在（不应该发生），创建新的
                     logger.warning(f"Redis tab 不存在，创建新的: {redis_tab_title}")
                     viewer = RedisDataViewer()
+                    viewer._redis_connection_id = connection_id
                     viewer.display_data(data, columns, connection, db_name)
                     tab_index = self.main_window.right_tab_widget.addTab(viewer, redis_tab_title)
                     self.main_window.right_tab_widget.setCurrentIndex(tab_index)

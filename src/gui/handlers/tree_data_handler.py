@@ -450,9 +450,29 @@ class TreeDataHandler:
             self._query_redis_dbsizes(connection_item, connection_id, connection, databases)
     
     def _query_redis_dbsizes(self, connection_item: QTreeWidgetItem, connection_id: str, connection, databases: List[str]):
-        """查询 Redis 数据库的 key 数量并更新显示"""
+        """查询 Redis 数据库的 key 数量并更新显示（异步，不阻塞界面）"""
         try:
             from src.gui.workers.redis_dbsize_worker import RedisDbsizeWorker
+            
+            # 检查窗口是否正在关闭
+            if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
+                return
+            
+            # 停止之前的 worker（如果存在）
+            if hasattr(self.main_window, 'redis_dbsize_workers'):
+                if connection_id in self.main_window.redis_dbsize_workers:
+                    old_worker = self.main_window.redis_dbsize_workers[connection_id]
+                    try:
+                        if old_worker and old_worker.isRunning():
+                            old_worker.stop()
+                            if not old_worker.wait(200):  # 最多等待200ms
+                                old_worker.terminate()
+                                old_worker.wait(100)
+                            old_worker.deleteLater()
+                    except Exception as e:
+                        logger.debug(f"停止旧的 Redis dbsize worker 失败: {e}")
+                    finally:
+                        del self.main_window.redis_dbsize_workers[connection_id]
             
             # 创建 worker
             worker = RedisDbsizeWorker(connection, databases)
@@ -461,10 +481,14 @@ class TreeDataHandler:
             def on_sizes_ready(db_sizes: dict):
                 """key 数量查询完成"""
                 try:
+                    # 检查窗口是否正在关闭
+                    if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
+                        return
+                    
                     if not connection_item or not hasattr(connection_item, 'childCount'):
                         return
                     
-                    # 更新每个数据库项的文本
+                    # 更新每个数据库项的文本（只更新成功查询到的）
                     for i in range(connection_item.childCount()):
                         child = connection_item.child(i)
                         if TreeItemData.get_item_type(child) == TreeItemType.DATABASE:
@@ -482,22 +506,28 @@ class TreeDataHandler:
                                     
                                     child.setText(0, f"{db_name} ({count_str} keys)")
                                     child.setToolTip(0, f"Redis 数据库: {db_name}\n共有 {key_count:,} 个 key\n双击展开")
-                                    logger.info(f"✅ 更新 Redis 数据库显示: {db_name} ({key_count} keys)")
+                                    logger.debug(f"✅ 更新 Redis 数据库显示: {db_name} ({key_count} keys)")
+                                # 如果 key_count == -1，表示查询失败，保持原样，不更新
                 except RuntimeError:
                     pass
                 except Exception as e:
                     logger.warning(f"更新 Redis 数据库显示失败: {e}")
             
             def on_error(error: str):
-                """查询失败"""
-                logger.warning(f"查询 Redis 数据库大小失败: {error}")
+                """查询失败（不影响界面，只记录日志）"""
+                logger.debug(f"查询 Redis 数据库大小失败: {error}（不影响界面显示）")
             
             def on_finished():
                 """worker 完成，清理引用"""
                 try:
+                    # 检查窗口是否正在关闭
+                    if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
+                        return
+                    
                     # 从字典中移除 worker 引用
-                    if connection_id in self.main_window.redis_dbsize_workers:
-                        del self.main_window.redis_dbsize_workers[connection_id]
+                    if hasattr(self.main_window, 'redis_dbsize_workers'):
+                        if connection_id in self.main_window.redis_dbsize_workers:
+                            del self.main_window.redis_dbsize_workers[connection_id]
                     worker.deleteLater()
                 except Exception as e:
                     logger.debug(f"清理 Redis dbsize worker 失败: {e}")
@@ -511,11 +541,12 @@ class TreeDataHandler:
                 self.main_window.redis_dbsize_workers = {}
             self.main_window.redis_dbsize_workers[connection_id] = worker
             
-            # 启动 worker
+            # 启动 worker（在后台线程中运行，不阻塞界面）
             worker.start()
             
         except Exception as e:
-            logger.error(f"启动 Redis 数据库大小查询失败: {e}")
+            # 如果创建 worker 失败，只记录日志，不影响界面
+            logger.debug(f"启动 Redis 数据库大小查询失败: {e}（不影响界面显示）")
     
     def on_databases_load_error(self, connection_item: QTreeWidgetItem, loading_item: QTreeWidgetItem, error: str):
         """数据库列表加载错误回调"""

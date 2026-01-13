@@ -120,10 +120,18 @@ class TableStructureHandler:
     
     def edit_table_structure(self, connection_id: str, database: str, table_name: str):
         """编辑表结构"""
-        # 检查是否已经存在该表的编辑tab（使用"编辑表-库名-表名"格式）
-        tab_title = f"编辑表-{database}-{table_name}"
+        # 获取连接信息，用于生成tab标题
+        connection = self.main_window.db_manager.get_connection(connection_id)
+        connection_name = connection.name if connection else connection_id
+        
+        # 检查是否已经存在该表的编辑tab（使用"编辑表-连接名-库名-表名"格式，区分不同连接）
+        tab_title = f"编辑表-{connection_name}-{database}-{table_name}"
         for i in range(self.main_window.right_tab_widget.count()):
-            if self.main_window.right_tab_widget.tabText(i) == tab_title:
+            tab_widget = self.main_window.right_tab_widget.widget(i)
+            # 检查tab标题和连接ID是否匹配
+            if (self.main_window.right_tab_widget.tabText(i) == tab_title and
+                hasattr(tab_widget, 'connection_id') and
+                tab_widget.connection_id == connection_id):
                 # 如果已存在，切换到该tab
                 self.main_window.right_tab_widget.setCurrentIndex(i)
                 return
@@ -138,7 +146,9 @@ class TableStructureHandler:
             database=database,
             table_name=table_name
         )
-        edit_table_tab.execute_sql_signal.connect(self.main_window.execute_query)
+        # 注意：EditTableTab有自己的execute_sql方法，使用自己的connection_id和database
+        # 不需要连接到main_window.execute_query，避免使用主窗口的当前连接
+        # edit_table_tab.execute_sql_signal.connect(self.main_window.execute_query)
         
         # 添加到tab控件
         tab_index = self.main_window.right_tab_widget.addTab(edit_table_tab, tab_title)

@@ -388,6 +388,19 @@ class EditTableTab(QWidget):
         if not connection:
             return
         
+        # 确保使用当前tab的数据库（如果数据库与连接配置中的不同，先切换）
+        # 这样可以避免用户在树上切换数据库后，编辑表tab加载到错误的表结构
+        if self.database and self.database != connection.database:
+            try:
+                self.db_manager.switch_database(self.connection_id, self.database)
+                # 重新获取连接（因为 switch_database 可能更新了连接配置）
+                connection = self.db_manager.get_connection(self.connection_id)
+                if not connection:
+                    return
+            except Exception as e:
+                logger.error(f"切换数据库失败: {e}")
+                return
+        
         # 停止之前的schema worker
         if self.schema_worker:
             try:
@@ -938,6 +951,23 @@ class EditTableTab(QWidget):
             QMessageBox.warning(self, "警告", "连接不存在")
             return
         
+        # 确保使用当前tab的数据库（如果数据库与连接配置中的不同，先切换）
+        # 这样可以避免用户在树上切换数据库后，编辑表tab执行到错误的数据库
+        if self.database and self.database != connection.database:
+            try:
+                self.db_manager.switch_database(self.connection_id, self.database)
+                # 重新获取连接（因为 switch_database 可能更新了连接配置）
+                connection = self.db_manager.get_connection(self.connection_id)
+                if not connection:
+                    from PyQt6.QtWidgets import QMessageBox
+                    QMessageBox.warning(self, "警告", "连接不存在")
+                    return
+            except Exception as e:
+                logger.error(f"切换数据库失败: {e}")
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "警告", f"切换数据库失败: {e}")
+                return
+        
         # 使用当前tab的连接和数据库执行SQL
         from src.gui.workers.query_worker import QueryWorker
         
@@ -959,7 +989,7 @@ class EditTableTab(QWidget):
                 pass
             self._execute_worker = None
         
-        # 创建worker执行SQL
+        # 创建worker执行SQL（使用切换后的连接字符串，确保使用正确的数据库）
         self._execute_worker = QueryWorker(
             connection.get_connection_string(),
             connection.get_connect_args(),
