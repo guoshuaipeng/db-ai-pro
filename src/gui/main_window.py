@@ -136,8 +136,9 @@ class MainWindow(QMainWindow):
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(100, self.load_saved_connections)  # 延迟100ms加载连接，确保UI先显示
             
-            # 延时启动预加载（避免阻塞启动）
-            QTimer.singleShot(1500, self.preload_handler.start_preload)  # 1.5秒后开始预加载
+            # 预加载功能已禁用，不再预加载数据库和表列表
+            # 只显示连接列表，数据库和表列表在用户展开时才加载，避免启动时卡顿
+            # QTimer.singleShot(1500, self.preload_handler.start_preload)  # 已禁用
         except Exception as e:
             logger.error(f"初始化主窗口时发生错误: {e}", exc_info=True)
             raise
@@ -829,10 +830,10 @@ class MainWindow(QMainWindow):
                 except:
                     pass
                 old_worker.stop()
-                if not old_worker.wait(200):
-                    old_worker.terminate()
-                    old_worker.wait(100)
-                old_worker.deleteLater()
+                # 不等待，让线程自己结束，避免阻塞UI
+                # 使用QTimer延迟删除，确保线程完全结束
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(300, lambda: self._safe_delete_database_worker(old_worker))
             # 安全删除，避免KeyError（可能在其他地方已被删除）
             self.database_list_workers.pop(connection_id, None)
         
@@ -860,21 +861,19 @@ class MainWindow(QMainWindow):
         def cleanup_worker():
             """清理worker（在线程finished信号触发时调用）"""
             try:
-                # 确保线程已经完全结束
+                # 如果线程仍在运行，请求停止但不等待（避免阻塞UI）
                 if worker.isRunning():
-                    logger.warning(f"Worker {connection_id} 在 finished 信号触发时仍在运行，等待结束...")
-                    if not worker.wait(1000):  # 等待最多1秒
-                        logger.warning(f"Worker {connection_id} 未能在1秒内结束，强制终止")
-                        worker.terminate()
-                        worker.wait(500)
+                    logger.warning(f"Worker {connection_id} 在 finished 信号触发时仍在运行，请求停止...")
+                    worker.stop()
+                    # 不等待，让线程自己结束，稍后自动清理
                 
                 # 从字典中移除
                 if connection_id in self.database_list_workers:
                     del self.database_list_workers[connection_id]
                 
-                # 延迟删除，确保线程完全结束
+                # 延迟删除，确保线程完全结束（不阻塞UI）
                 from PyQt6.QtCore import QTimer
-                QTimer.singleShot(200, lambda: self._safe_delete_database_worker(worker))
+                QTimer.singleShot(500, lambda: self._safe_delete_database_worker(worker))
             except RuntimeError:
                 pass  # 对象已被删除，忽略
             except Exception as e:
@@ -1794,20 +1793,54 @@ class MainWindow(QMainWindow):
         # 为这个tab创建独立的数据库组合框
         tab_database_combo = QComboBox()
         tab_database_combo.setMinimumWidth(200)
-        # 加载数据库列表
-        try:
-            databases = self.db_manager.get_databases(connection_id)
-            for db in databases:
-                tab_database_combo.addItem(db, db)
-            # 设置当前选中的数据库
-            if database:
-                index = tab_database_combo.findData(database)
-                if index >= 0:
-                    tab_database_combo.setCurrentIndex(index)
-            elif databases:
-                tab_database_combo.setCurrentIndex(0)
-        except Exception as e:
-            logger.warning(f"加载数据库列表失败: {e}")
+        # 异步加载数据库列表（避免阻塞UI）
+        tab_database_combo.addItem("加载中...", None)
+        tab_database_combo.setEnabled(False)
+        
+        def load_databases_for_tab():
+            """异步加载数据库列表"""
+            connection = self.db_manager.get_connection(connection_id)
+            if not connection:
+                tab_database_combo.clear()
+                tab_database_combo.setEnabled(True)
+                return
+            
+            from src.gui.workers.database_list_worker import DatabaseListWorker
+            worker = DatabaseListWorker(
+                connection.get_connection_string(),
+                connection.get_connect_args(),
+                connection.db_type,
+                connection
+            )
+            
+            def on_databases_ready(databases):
+                tab_database_combo.clear()
+                for db in databases:
+                    tab_database_combo.addItem(db, db)
+                # 设置当前选中的数据库
+                if database:
+                    index = tab_database_combo.findData(database)
+                    if index >= 0:
+                        tab_database_combo.setCurrentIndex(index)
+                elif databases:
+                    tab_database_combo.setCurrentIndex(0)
+                tab_database_combo.setEnabled(True)
+                worker.deleteLater()
+            
+            def on_error(error_msg):
+                tab_database_combo.clear()
+                tab_database_combo.addItem("加载失败", None)
+                tab_database_combo.setEnabled(True)
+                logger.warning(f"加载数据库列表失败: {error_msg}")
+                worker.deleteLater()
+            
+            worker.databases_ready.connect(on_databases_ready)
+            worker.error_occurred.connect(on_error)
+            worker.finished.connect(lambda: worker.deleteLater())
+            worker.start()
+        
+        # 延迟执行，避免阻塞UI初始化
+        QTimer.singleShot(0, load_databases_for_tab)
         
         connection_group_layout.addWidget(tab_database_combo)
         
@@ -1859,18 +1892,47 @@ class MainWindow(QMainWindow):
                 # 更新tab的连接ID
                 query_tab._table_query_connection_id = new_connection_id
                 query_tab._connection_id = new_connection_id
-                # 加载该连接的数据库列表
+                # 异步加载该连接的数据库列表（避免阻塞UI）
                 tab_database_combo.clear()
-                try:
-                    databases = self.db_manager.get_databases(new_connection_id)
+                tab_database_combo.addItem("加载中...", None)
+                tab_database_combo.setEnabled(False)
+                
+                new_connection = self.db_manager.get_connection(new_connection_id)
+                if not new_connection:
+                    tab_database_combo.clear()
+                    tab_database_combo.setEnabled(True)
+                    return
+                
+                from src.gui.workers.database_list_worker import DatabaseListWorker
+                worker = DatabaseListWorker(
+                    new_connection.get_connection_string(),
+                    new_connection.get_connect_args(),
+                    new_connection.db_type,
+                    new_connection
+                )
+                
+                def on_databases_ready(databases):
+                    tab_database_combo.clear()
                     for db in databases:
                         tab_database_combo.addItem(db, db)
                     if databases:
                         tab_database_combo.setCurrentIndex(0)
                         # 更新数据库
                         on_tab_database_changed(tab_database_combo.currentText())
-                except Exception as e:
-                    logger.warning(f"加载数据库列表失败: {e}")
+                    tab_database_combo.setEnabled(True)
+                    worker.deleteLater()
+                
+                def on_error(error_msg):
+                    tab_database_combo.clear()
+                    tab_database_combo.addItem("加载失败", None)
+                    tab_database_combo.setEnabled(True)
+                    logger.warning(f"加载数据库列表失败: {error_msg}")
+                    worker.deleteLater()
+                
+                worker.databases_ready.connect(on_databases_ready)
+                worker.error_occurred.connect(on_error)
+                worker.finished.connect(lambda: worker.deleteLater())
+                worker.start()
                 # 更新SQL编辑器的数据库信息
                 sql_editor.set_database_info(self.db_manager, new_connection_id, None)
                 # 更新tab标题以反映新的连接

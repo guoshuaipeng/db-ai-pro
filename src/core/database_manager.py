@@ -234,7 +234,11 @@ class DatabaseManager:
         return self.connections.get(connection_id)
     
     def get_engine(self, connection_id: str) -> Optional[Union[Engine, RedisClient]]:
-        """获取数据库引擎或Redis客户端（如果不存在则创建）"""
+        """获取数据库引擎或Redis客户端（如果不存在则创建）
+        
+        注意：此方法只创建引擎对象，不会立即连接数据库，避免阻塞UI线程。
+        实际连接会在第一次使用时进行。
+        """
         # 如果引擎已存在，直接返回
         if connection_id in self.engines:
             return self.engines[connection_id]
@@ -250,11 +254,13 @@ class DatabaseManager:
                     return redis_client
                 
                 # SQL 数据库
+                # 注意：不使用 pool_pre_ping=True，避免创建引擎时立即连接数据库
+                # 实际连接会在第一次使用时进行，并且会在后台线程中执行
                 connect_args = connection.get_connect_args()
                 engine = create_engine(
                     connection.get_connection_string(),
                     connect_args=connect_args,
-                    pool_pre_ping=True,
+                    pool_pre_ping=False,  # 不立即测试连接，避免阻塞UI
                     echo=False
                 )
                 self.engines[connection_id] = engine
@@ -452,6 +458,7 @@ class DatabaseManager:
         
         try:
             # 根据数据库类型使用不同的SQL查询
+            # 注意：如果连接失败，会立即抛出异常，不会等待超时（因为超时设置在 connect_args 中）
             if connection.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
                 # MySQL/MariaDB: 查询所有数据库
                 with engine.connect() as conn:
@@ -481,6 +488,14 @@ class DatabaseManager:
             else:
                 # 其他数据库类型，返回当前数据库
                 return [connection.database] if connection.database else []
+        except SQLAlchemyError as e:
+            # 数据库连接错误，记录日志并返回空列表
+            error_str = str(e).lower()
+            if 'timeout' in error_str or 'timed out' in error_str or 'connection' in error_str:
+                logger.warning(f"获取数据库列表时连接失败: {str(e)}，返回空列表")
+            else:
+                logger.error(f"获取数据库列表失败: {str(e)}")
+            return []
         except Exception as e:
             logger.error(f"获取数据库列表失败: {str(e)}")
             return []
@@ -506,11 +521,20 @@ class DatabaseManager:
             inspector = inspect(engine)
             
             # MySQL/MariaDB: 通过 schema 参数获取指定数据库的表列表，而不是执行 USE
+            # 注意：如果连接失败，会立即抛出异常，不会等待超时（因为超时设置在 connect_args 中）
             if database and connection.db_type in (DatabaseType.MYSQL, DatabaseType.MARIADB):
                 return inspector.get_table_names(schema=database)
             
             # 其他情况：使用默认数据库
             return inspector.get_table_names()
+        except SQLAlchemyError as e:
+            # 数据库连接错误，记录日志并返回空列表
+            error_str = str(e).lower()
+            if 'timeout' in error_str or 'timed out' in error_str or 'connection' in error_str:
+                logger.warning(f"获取表列表时连接失败: {str(e)}，返回空列表")
+            else:
+                logger.error(f"获取表列表失败: {str(e)}")
+            return []
         except Exception as e:
             logger.error(f"获取表列表失败: {str(e)}")
             return []

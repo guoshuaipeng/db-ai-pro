@@ -108,8 +108,9 @@ class TreeDataHandler:
             # 不自动展开，让用户手动展开
             item.setExpanded(False)
             
-            # 从缓存加载数据库列表（如果有缓存）
-            self._load_databases_from_cache(item, conn.id)
+            # 不再自动从缓存加载数据库列表，避免启动时尝试连接数据库
+            # 数据库列表只在用户手动展开连接时才加载
+            # self._load_databases_from_cache(item, conn.id)  # 已禁用
             
             # 添加到下拉框（只显示连接名，不包含数据库）
             display_name = f"{conn.name} ({conn.db_type.value})"
@@ -143,13 +144,11 @@ class TreeDataHandler:
                         worker.error_occurred.disconnect()
                     except:
                         pass
-                    # 停止worker
+                    # 停止worker（不等待，避免阻塞UI）
                     worker.stop()
-                    # 等待停止（最多200ms，避免阻塞太久）
-                    if not worker.wait(200):
-                        worker.terminate()
-                        worker.wait(100)
-                    worker.deleteLater()
+                    # 不等待，让线程自己结束，稍后自动清理
+                    # 使用QTimer延迟删除，确保线程完全结束
+                    QTimer.singleShot(300, lambda: self._safe_delete_worker(worker))
                 except Exception as e:
                     logger.warning(f"停止旧worker时出错: {str(e)}")
                 finally:
@@ -229,21 +228,11 @@ class TreeDataHandler:
                             old_worker.error_occurred.disconnect()
                         except:
                             pass
-                        # 请求停止
+                        # 请求停止（不等待，避免阻塞UI）
                         old_worker.stop()
-                        # 等待线程停止（最多等待1000ms，避免长时间阻塞）
-                        if not old_worker.wait(1000):
-                            # 如果等待超时，强制终止
-                            logger.warning(f"数据库列表worker未能在1秒内停止，强制终止")
-                            old_worker.terminate()
-                            old_worker.wait(500)
-                        # 确保线程已完全结束
-                        if old_worker.isRunning():
-                            logger.warning(f"数据库列表worker仍在运行，再次终止")
-                            old_worker.terminate()
-                            old_worker.wait(500)
-                        # 延迟删除，确保线程完全结束
-                        QTimer.singleShot(200, lambda: self._safe_delete_worker(old_worker))
+                        # 不等待，让线程自己结束，稍后自动清理
+                        # 使用QTimer延迟删除，确保线程完全结束
+                        QTimer.singleShot(300, lambda: self._safe_delete_worker(old_worker))
                 except RuntimeError:
                     # 对象已被删除，忽略
                     pass
@@ -270,32 +259,34 @@ class TreeDataHandler:
             
             # 定义清理函数（当线程完全结束时调用）
             def cleanup_worker():
-                """清理worker（在线程finished信号触发时调用）"""
+                """清理worker（在线程finished信号触发时调用，异步执行，不阻塞UI）"""
                 # 检查窗口是否正在关闭
                 if self.main_window._is_closing:
                     logger.debug(f"窗口正在关闭，跳过清理 worker: {connection_id}")
                     return
                 
-                try:
-                    # 确保线程已经完全结束
-                    if worker.isRunning():
-                        logger.warning(f"Worker {connection_id} 在 finished 信号触发时仍在运行，等待结束...")
-                        if not worker.wait(1000):  # 等待最多1秒
-                            logger.warning(f"Worker {connection_id} 未能在1秒内结束，强制终止")
-                            worker.terminate()
-                            worker.wait(500)
-                    
-                    # 从字典中移除
-                    if connection_id in self.main_window.database_list_workers:
-                        del self.main_window.database_list_workers[connection_id]
-                    
-                    # 延迟删除，确保线程完全结束
-                    from PyQt6.QtCore import QTimer
-                    QTimer.singleShot(200, lambda: self._safe_delete_worker(worker))
-                except RuntimeError:
-                    pass  # 对象已被删除，忽略
-                except Exception as e:
-                    logger.warning(f"清理 worker {connection_id} 时出错: {e}")
+                # 使用QTimer异步执行清理，避免阻塞UI线程
+                def async_cleanup():
+                    try:
+                        # 如果线程仍在运行，请求停止但不等待（避免阻塞）
+                        if worker.isRunning():
+                            logger.warning(f"Worker {connection_id} 在 finished 信号触发时仍在运行，请求停止...")
+                            worker.stop()
+                            # 不等待，让线程自己结束，稍后自动清理
+                        
+                        # 从字典中移除
+                        if connection_id in self.main_window.database_list_workers:
+                            del self.main_window.database_list_workers[connection_id]
+                        
+                        # 延迟删除，确保线程完全结束
+                        QTimer.singleShot(500, lambda: self._safe_delete_worker(worker))
+                    except RuntimeError:
+                        pass  # 对象已被删除，忽略
+                    except Exception as e:
+                        logger.warning(f"清理 worker {connection_id} 时出错: {e}")
+                
+                # 延迟执行，避免在信号回调中阻塞UI
+                QTimer.singleShot(0, async_cleanup)
             
             # 明确使用QueuedConnection，确保信号在UI线程的事件循环中异步处理
             worker.databases_ready.connect(
@@ -332,12 +323,9 @@ class TreeDataHandler:
                             worker.error_occurred.disconnect()
                         except:
                             pass
-                        # 等待线程退出后再删除
-                        if worker.isRunning():
-                            if not worker.wait(500):
-                                worker.terminate()
-                                worker.wait(200)
-                        worker.deleteLater()
+                        # 不等待，让线程自己结束，稍后自动清理
+                        # 使用QTimer延迟删除，确保线程完全结束
+                        QTimer.singleShot(500, lambda: self._safe_delete_worker(worker))
                     del self.main_window.database_list_workers[connection_id]
                 except:
                     pass
@@ -465,10 +453,9 @@ class TreeDataHandler:
                     try:
                         if old_worker and old_worker.isRunning():
                             old_worker.stop()
-                            if not old_worker.wait(200):  # 最多等待200ms
-                                old_worker.terminate()
-                                old_worker.wait(100)
-                            old_worker.deleteLater()
+                            # 不等待，让线程自己结束，稍后自动清理
+                            # 使用QTimer延迟删除，确保线程完全结束
+                            QTimer.singleShot(300, lambda: self._safe_delete_worker(old_worker))
                     except Exception as e:
                         logger.debug(f"停止旧的 Redis dbsize worker 失败: {e}")
                     finally:
@@ -1347,16 +1334,9 @@ class TreeDataHandler:
                     except:
                         pass
                     old_worker.stop()
-                    if not old_worker.wait(1000):
-                        old_worker.terminate()
-                        old_worker.wait(500)
-                    # 确保线程已完全结束
-                    if old_worker.isRunning():
-                        logger.warning(f"数据库列表worker仍在运行，再次终止")
-                        old_worker.terminate()
-                        old_worker.wait(500)
-                    # 延迟删除，确保线程完全结束
-                    QTimer.singleShot(200, lambda: self._safe_delete_worker(old_worker))
+                    # 不等待，让线程自己结束，稍后自动清理
+                    # 使用QTimer延迟删除，确保线程完全结束
+                    QTimer.singleShot(300, lambda: self._safe_delete_worker(old_worker))
             except RuntimeError:
                 pass
             except Exception as e:
@@ -1386,20 +1366,17 @@ class TreeDataHandler:
                 return
             
             try:
-                # 确保线程已经完全结束
+                # 如果线程仍在运行，请求停止但不等待（避免阻塞UI）
                 if worker.isRunning():
-                    logger.warning(f"Worker {connection_id} 在 finished 信号触发时仍在运行，等待结束...")
-                    if not worker.wait(1000):  # 等待最多1秒
-                        logger.warning(f"Worker {connection_id} 未能在1秒内结束，强制终止")
-                        worker.terminate()
-                        worker.wait(500)
+                    logger.warning(f"Worker {connection_id} 在 finished 信号触发时仍在运行，请求停止...")
+                    worker.stop()
+                    # 不等待，让线程自己结束，稍后自动清理
                 
                 # 从字典中移除
                 if connection_id in self.main_window.database_list_workers:
                     del self.main_window.database_list_workers[connection_id]
                 
                 # 延迟删除，确保线程完全结束
-                from PyQt6.QtCore import QTimer
                 QTimer.singleShot(200, lambda: self._safe_delete_worker(worker))
             except RuntimeError:
                 pass  # 对象已被删除，忽略

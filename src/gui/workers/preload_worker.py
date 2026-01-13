@@ -1,20 +1,23 @@
 """
-预加载工作线程 - 在后台加载所有连接的所有数据库的所有表
+预加载工作线程 - 已禁用，不再预加载数据库和表
+现在只加载连接列表，数据库和表列表在用户展开时才加载
 """
 from PyQt6.QtCore import QThread, pyqtSignal
 from typing import List, Dict, Optional
-from sqlalchemy import create_engine, text, inspect
-from sqlalchemy.exc import SQLAlchemyError
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 class PreloadWorker(QThread):
-    """预加载工作线程 - 加载所有连接的所有数据库的所有表"""
+    """预加载工作线程 - 已禁用预加载功能
     
-    # 定义信号
-    databases_loaded = pyqtSignal(str, list)  # connection_id, databases (新增)
+    现在启动时只显示连接列表，不预加载数据库和表列表。
+    数据库列表和表列表只在用户手动展开时才加载，避免启动时卡顿。
+    """
+    
+    # 定义信号（保留以兼容现有代码，但不再使用）
+    databases_loaded = pyqtSignal(str, list)  # connection_id, databases
     connection_loaded = pyqtSignal(str, str, list)  # connection_id, database, tables
     progress = pyqtSignal(str)  # 进度消息
     finished_all = pyqtSignal()  # 所有加载完成
@@ -30,67 +33,11 @@ class PreloadWorker(QThread):
         self.requestInterruption()
     
     def run(self):
-        """执行预加载（在工作线程中运行）"""
-        try:
-            # 获取所有连接
-            connections = self.db_manager.get_all_connections()
-            if not connections:
-                self.finished_all.emit()
-                return
-            
-            total_connections = len(connections)
-            self.progress.emit(f"开始预加载 {total_connections} 个连接...")
-            
-            for idx, connection in enumerate(connections):
-                if self.isInterruptionRequested() or self._should_stop:
-                    logger.info("预加载被中断")
-                    return
-                
-                connection_id = connection.id
-                self.progress.emit(f"正在加载连接: {connection.name} ({idx + 1}/{total_connections})")
-                
-                try:
-                    # 获取该连接的所有数据库
-                    databases = self.db_manager.get_databases(connection_id)
-                    
-                    if not databases:
-                        logger.debug(f"连接 {connection.name} 没有数据库")
-                        continue
-                    
-                    # 发送数据库列表信号（用于缓存）
-                    self.databases_loaded.emit(connection_id, databases)
-                    logger.debug(f"预加载获取到 {connection.name} 的 {len(databases)} 个数据库")
-                    
-                    # 遍历每个数据库
-                    for database in databases:
-                        if self.isInterruptionRequested() or self._should_stop:
-                            return
-                        
-                        try:
-                            # 获取该数据库的所有表
-                            tables = self.db_manager.get_tables(connection_id, database)
-                            
-                            if tables:
-                                # 发送信号，通知主线程更新树结构
-                                self.connection_loaded.emit(connection_id, database, tables)
-                                logger.debug(f"预加载完成: {connection.name} -> {database} ({len(tables)} 个表)")
-                        
-                        except Exception as e:
-                            logger.warning(f"预加载数据库 {database} 失败: {str(e)}", exc_info=True)
-                            continue
-                
-                except Exception as e:
-                    logger.error(f"预加载连接 {connection.name} 失败: {str(e)}", exc_info=True)
-                    logger.error(f"连接类型: {connection.db_type.value}, 详细错误信息请查看上方堆栈跟踪")
-                    continue
-            
-            self.progress.emit("预加载完成")
-            self.finished_all.emit()
-            
-        except Exception as e:
-            logger.error(f"预加载过程中发生错误: {str(e)}")
-            self.finished_all.emit()
-        finally:
-            # 确保线程正确退出
-            self.quit()
+        """执行预加载（已禁用，立即完成）"""
+        # 预加载功能已禁用，只加载连接列表
+        # 数据库和表列表在用户展开时才加载，避免启动时卡顿
+        logger.info("预加载功能已禁用，只显示连接列表")
+        self.progress.emit("预加载完成（已禁用预加载）")
+        self.finished_all.emit()
+        self.quit()
 

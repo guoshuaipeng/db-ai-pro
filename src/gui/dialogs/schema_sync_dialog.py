@@ -401,7 +401,7 @@ class Step1SelectDatabasesPage(QWizardPage):
         self.load_databases(self.target_conn_combo, self.target_db_combo)
     
     def load_databases(self, conn_combo: QComboBox, db_combo: QComboBox):
-        """加载数据库列表"""
+        """异步加载数据库列表（避免阻塞UI）"""
         if not self.db_manager:
             return
         
@@ -410,14 +410,44 @@ class Step1SelectDatabasesPage(QWizardPage):
             db_combo.clear()
             return
         
-        try:
-            databases = self.db_manager.get_databases(conn_id)
+        # 显示加载状态
+        db_combo.clear()
+        db_combo.addItem("加载中...", None)
+        db_combo.setEnabled(False)
+        
+        connection = self.db_manager.get_connection(conn_id)
+        if not connection:
+            db_combo.clear()
+            db_combo.setEnabled(True)
+            return
+        
+        # 使用异步worker加载数据库列表
+        from src.gui.workers.database_list_worker import DatabaseListWorker
+        worker = DatabaseListWorker(
+            connection.get_connection_string(),
+            connection.get_connect_args(),
+            connection.db_type,
+            connection
+        )
+        
+        def on_databases_ready(databases):
             db_combo.clear()
             for db in databases:
                 db_combo.addItem(db, db)
-        except Exception as e:
-            logger.error(f"加载数据库列表失败: {e}")
+            db_combo.setEnabled(True)
+            worker.deleteLater()
+        
+        def on_error(error_msg):
             db_combo.clear()
+            db_combo.addItem("加载失败", None)
+            db_combo.setEnabled(True)
+            logger.error(f"加载数据库列表失败: {error_msg}")
+            worker.deleteLater()
+        
+        worker.databases_ready.connect(on_databases_ready)
+        worker.error_occurred.connect(on_error)
+        worker.finished.connect(lambda: worker.deleteLater())
+        worker.start()
     
     def validatePage(self) -> bool:
         """验证页面"""

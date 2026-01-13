@@ -1583,7 +1583,10 @@ class SingleResultTable(QWidget):
         return None
     
     def _get_primary_keys(self, table_name: str) -> List[str]:
-        """获取表的主键列名列表（优先使用主键过滤，使用缓存避免重复查询）"""
+        """获取表的主键列名列表（优先使用主键过滤，使用缓存避免重复查询）
+        
+        注意：此方法在主线程中执行，如果数据库连接失败，会立即返回空列表，不会阻塞UI。
+        """
         # 检查缓存
         cache_key = f"{table_name}"
         if cache_key in self._primary_keys_cache:
@@ -1607,7 +1610,7 @@ class SingleResultTable(QWidget):
             db_type = connection.db_type.value if connection and connection.db_type else ""
             
             from sqlalchemy import inspect
-            inspector = inspect(engine)
+            from sqlalchemy.exc import SQLAlchemyError
             
             # 解析表名和 schema
             actual_table = table_name.strip().strip('`')
@@ -1620,16 +1623,27 @@ class SingleResultTable(QWidget):
                 schema_name = current_db
             
             # 使用 get_pk_constraint 兼容不同数据库/版本
-            # 注意：这个操作可能会查询数据库，但通常很快，且只执行一次（因为有缓存）
+            # 注意：这个操作可能会查询数据库，如果连接失败会立即抛出异常，不会阻塞
             try:
+                inspector = inspect(engine)
+                
+                # 尝试获取主键，如果连接失败会立即抛出异常
                 if schema_name and db_type in ("mysql", "mariadb", "postgresql"):
                     pk_constraint = inspector.get_pk_constraint(actual_table, schema=schema_name)
                 else:
                     pk_constraint = inspector.get_pk_constraint(actual_table)
                 
                 primary_keys = pk_constraint.get("constrained_columns", []) if pk_constraint else []
+            except SQLAlchemyError as e:
+                # 数据库连接错误，立即返回空列表，不阻塞UI
+                error_str = str(e).lower()
+                if 'timeout' in error_str or 'timed out' in error_str or 'connection' in error_str:
+                    logger.warning(f"获取表 {table_name} 的主键时连接失败: {str(e)}，返回空列表（不阻塞UI）")
+                else:
+                    logger.debug(f"获取表 {table_name} 的主键失败: {str(e)}")
+                primary_keys = []
             except Exception as e:
-                # 如果获取主键失败，记录日志但不抛出异常，返回空列表
+                # 其他错误，记录日志但不抛出异常，返回空列表
                 logger.debug(f"获取表 {table_name} 的主键失败: {str(e)}")
                 primary_keys = []
             
@@ -1642,6 +1656,16 @@ class SingleResultTable(QWidget):
                 logger.info(f"主键列: {primary_keys} (table={table_name}, schema={schema_name})")
             
             return primary_keys
+        except SQLAlchemyError as e:
+            # 数据库连接错误，立即返回空列表，不阻塞UI
+            error_str = str(e).lower()
+            if 'timeout' in error_str or 'timed out' in error_str or 'connection' in error_str:
+                logger.warning(f"获取表 {table_name} 的主键时连接失败: {str(e)}，返回空列表（不阻塞UI）")
+            else:
+                logger.debug(f"获取表 {table_name} 的主键失败: {str(e)}")
+            # 缓存空结果，避免重复尝试
+            self._primary_keys_cache[cache_key] = []
+            return []
         except Exception as e:
             logger.debug(f"获取表 {table_name} 的主键失败: {str(e)}")
             # 缓存空结果，避免重复尝试
@@ -2877,48 +2901,14 @@ class SingleResultTable(QWidget):
             self.export_worker.stop()
     
     def _fetch_all_data(self) -> List[Dict]:
-        """重新执行查询获取全部数据（不带LIMIT）"""
-        if not self.original_sql or not self.main_window:
-            logger.warning(f"无法获取全部数据: original_sql={bool(self.original_sql)}, main_window={bool(self.main_window)}")
-            return []
+        """重新执行查询获取全部数据（不带LIMIT）
         
-        try:
-            from sqlalchemy import create_engine, text
-            
-            # 获取连接信息
-            connection_id = getattr(self.main_window, 'current_connection_id', None)
-            if not connection_id:
-                logger.warning("无法获取 connection_id")
-                return []
-            
-            connection = self.main_window.db_manager.get_connection(connection_id)
-            if not connection:
-                logger.warning(f"无法获取连接: {connection_id}")
-                return []
-            
-            # 创建引擎并执行查询
-            engine = self.main_window.db_manager.get_engine(connection_id)
-            if not engine:
-                logger.warning(f"无法获取引擎: {connection_id}")
-                return []
-            
-            # 移除 LIMIT 子句（使用正则表达式，处理各种情况）
-            import re
-            sql_no_limit = re.sub(r'\s+LIMIT\s+\d+(\s+OFFSET\s+\d+)?', '', self.original_sql, flags=re.IGNORECASE).strip().rstrip(';')
-            
-            logger.info(f"开始获取全部数据，原始SQL: {self.original_sql[:100]}")
-            logger.info(f"移除LIMIT后的SQL: {sql_no_limit[:100]}")
-            
-            with engine.connect() as conn:
-                result = conn.execute(text(sql_no_limit))
-                # 转换为字典列表
-                columns = result.keys()
-                data = [dict(zip(columns, row)) for row in result.fetchall()]
-                logger.info(f"成功获取 {len(data)} 行数据")
-                return data
-        except Exception as e:
-            logger.error(f"获取全部数据失败: {str(e)}", exc_info=True)
-            return []
+        注意：此方法不应在主线程中调用，如果被调用会立即返回空列表，避免阻塞UI。
+        实际的数据获取应该在后台线程中进行。
+        """
+        # 此方法不应在主线程中调用，如果被调用，记录警告并返回空列表
+        logger.warning("_fetch_all_data 不应在主线程中调用，返回空列表以避免阻塞UI")
+        return []
     
     def export_to_excel(self):
         """导出为Excel"""

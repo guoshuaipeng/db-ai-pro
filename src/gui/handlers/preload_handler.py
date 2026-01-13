@@ -28,37 +28,14 @@ class PreloadHandler:
         self.tree_cache = TreeCache()
     
     def start_preload(self):
-        """启动预加载所有连接的表"""
-        # 检查窗口是否正在关闭
-        if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
-            logger.debug("窗口正在关闭，跳过预加载")
-            return
+        """启动预加载（已禁用，不再预加载数据库和表）
         
-        connections = self.main_window.db_manager.get_all_connections()
-        if not connections:
-            return
-        
-        # 如果已有预加载线程在运行，先停止
-        if self.main_window.preload_worker and self.main_window.preload_worker.isRunning():
-            self.main_window.preload_worker.stop()
-            self.main_window.preload_worker.wait(1000)
-            if self.main_window.preload_worker.isRunning():
-                self.main_window.preload_worker.terminate()
-                self.main_window.preload_worker.wait(500)
-        
-        # 创建并启动预加载线程
-        from src.gui.workers.preload_worker import PreloadWorker
-        self.main_window.preload_worker = PreloadWorker(self.main_window.db_manager)
-        
-        # 连接信号
-        self.main_window.preload_worker.databases_loaded.connect(self.on_preload_databases_loaded)
-        self.main_window.preload_worker.connection_loaded.connect(self.on_preload_connection_loaded)
-        self.main_window.preload_worker.progress.connect(self.on_preload_progress)
-        self.main_window.preload_worker.finished_all.connect(self.on_preload_finished)
-        
-        # 启动线程
-        self.main_window.preload_worker.start()
-        logger.info("开始后台预加载所有连接的表...")
+        现在只加载连接列表，数据库和表列表在用户展开时才加载，避免启动时卡顿。
+        """
+        # 预加载功能已禁用，不再预加载数据库和表
+        # 只显示连接列表，数据库和表列表在用户展开时才加载
+        logger.info("预加载功能已禁用，只显示连接列表")
+        return
     
     def on_preload_databases_loaded(self, connection_id: str, databases: List[str]):
         """预加载获取到数据库列表的回调 - 保存到缓存"""
