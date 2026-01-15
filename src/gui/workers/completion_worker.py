@@ -88,8 +88,7 @@ class CompletionWorker(QThread):
                 try:
                     engine.dispose()
                 except Exception as e:
-                    logger.debug(f"清理引擎时出错: {str(e)}")
-            
-            # 确保线程正确结束
-            self.quit()
+                    logger.debug(f"清理引擎时出错: {str(e)}")            # 注意：QThread 的 run() 方法返回时，线程会自动结束，finished 信号会自动触发
+            # 不需要调用 quit()，因为 QThread.run() 默认没有事件循环
+            pass
 

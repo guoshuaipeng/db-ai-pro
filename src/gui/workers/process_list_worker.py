@@ -174,7 +174,6 @@ class ProcessListWorker(QThread):
                 try:
                     engine.dispose()
                 except Exception as e:
-                    logger.warning(f"清理数据库引擎失败: {str(e)}")
-            
-            # 确保线程正确退出
-            self.quit()
+                    logger.warning(f"清理数据库引擎失败: {str(e)}")            # 注意：QThread 的 run() 方法返回时，线程会自动结束，finished 信号会自动触发
+            # 不需要调用 quit()，因为 QThread.run() 默认没有事件循环
+            pass

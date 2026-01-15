@@ -47,7 +47,11 @@ class ExportWorker(QThread):
             logger.error(f"导出失败: {str(e)}", exc_info=True)
             self.export_finished.emit(False, f"导出失败: {str(e)}")
         finally:
-            self.quit()
+            # 注意：QThread 的 run() 方法返回时，线程会自动结束，finished 信号会自动触发
+
+            # 不需要调用 quit()，因为 QThread.run() 默认没有事件循环
+
+            pass
     
     def _export_to_csv(self):
         """导出为CSV（流式写入）"""

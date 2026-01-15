@@ -47,6 +47,7 @@ from src.utils.ui_helpers import (
     get_category_icon,
     format_connection_display
 )
+from src.utils.thread_manager import get_thread_manager
 import logging
 
 logger = logging.getLogger(__name__)
@@ -96,7 +97,9 @@ class MainWindow(QMainWindow):
         self.table_list_worker_for_tree = None  # 表列表工作线程（用于树视图）
         self.redis_data_worker = None  # Redis 数据查询工作线程
         self._query_table_timer = None  # 用于防抖的定时器
-        self._is_closing = False  # 标记窗口是否正在关闭
+        self._is_closing = False
+        # 获取线程管理器
+        self.thread_manager = get_thread_manager()  # 标记窗口是否正在关闭
         
         # 初始化处理器
         from src.gui.handlers.connection_handler import ConnectionHandler
@@ -174,74 +177,39 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.warning(f"清理tab时出错: {str(e)}")
         
-        # 停止所有数据库列表工作线程
+        # 停止所有数据库列表工作线程（使用线程管理器）
         for connection_id, worker in list(self.database_list_workers.items()):
-            try:
-                if worker:
+            if worker:
+                try:
                     # 断开信号，避免回调执行
                     try:
                         worker.databases_ready.disconnect()
                         worker.error_occurred.disconnect()
-                        worker.finished.disconnect()  # 断开 finished 信号，避免 cleanup_worker 执行
+                        worker.finished.disconnect()
                     except (RuntimeError, TypeError):
-                        pass  # 信号可能已经断开
-                    
-                    # 停止并等待线程结束
-                    if worker.isRunning():
-                        logger.debug(f"停止数据库列表worker: {connection_id}")
-                        worker.stop()
-                        # 等待线程结束，最多2秒
-                        if not worker.wait(2000):
-                            logger.warning(f"数据库列表worker {connection_id} 未能在2秒内结束，强制终止")
-                            worker.terminate()
-                            worker.wait(1000)
-                    
-                    # 确保线程已退出
-                    if worker.isRunning():
-                        logger.warning(f"数据库列表worker {connection_id} 仍在运行，再次终止")
-                        worker.terminate()
-                        worker.wait(500)
-                    
-                    # 延迟删除，确保线程完全结束
-                    QTimer.singleShot(200, lambda w=worker: self._safe_delete_database_worker(w))
-            except RuntimeError:
-                # 对象已被删除，忽略
-                pass
-            except Exception as e:
-                logger.warning(f"停止数据库列表worker {connection_id} 时出错: {e}")
+                        pass
+                    # 使用线程管理器停止线程
+                    self.thread_manager.stop_thread(worker, timeout=2000, force=True)
+                except Exception as e:
+                    logger.warning(f"停止数据库列表worker {connection_id} 时出错: {e}")
         self.database_list_workers.clear()
         
         # 停止所有 Redis dbsize 工作线程
         if hasattr(self, 'redis_dbsize_workers'):
             for connection_id, worker in list(self.redis_dbsize_workers.items()):
-                try:
-                    if worker:
-                        # 断开信号，避免回调执行
+                if worker:
+                    try:
                         try:
                             worker.sizes_ready.disconnect()
                             worker.error_occurred.disconnect()
                         except:
                             pass
-                        
-                        # 停止并等待线程结束
-                        if worker.isRunning():
-                            logger.debug(f"停止 Redis dbsize worker: {connection_id}")
-                            worker.stop()
-                            # 等待线程结束，最多1秒
-                            if not worker.wait(1000):
-                                logger.warning(f"Redis dbsize worker {connection_id} 未能在1秒内结束，强制终止")
-                                worker.terminate()
-                                worker.wait(500)
-                        
-                        worker.deleteLater()
-                except RuntimeError:
-                    # 对象已被删除，忽略
-                    pass
-                except Exception as e:
-                    logger.warning(f"停止 Redis dbsize worker {connection_id} 时出错: {e}")
+                        self.thread_manager.stop_thread(worker, timeout=1000, force=True)
+                    except Exception as e:
+                        logger.warning(f"停止 Redis dbsize worker {connection_id} 时出错: {e}")
             self.redis_dbsize_workers.clear()
         
-        # 停止所有正在运行的线程（使用统一的停止方法）
+        # 停止所有正在运行的线程（使用线程管理器）
         workers = [
             ('query_worker', self.query_worker, 5000),
             ('completion_worker', self.completion_worker, 2000),
@@ -254,18 +222,7 @@ class MainWindow(QMainWindow):
         for name, worker, timeout in workers:
             if worker:
                 try:
-                    if worker.isRunning():
-                        logger.debug(f"停止线程: {name}")
-                        worker.stop()
-                        if not worker.wait(timeout):
-                            logger.warning(f"{name} 未能在 {timeout}ms 内结束，强制终止")
-                            worker.terminate()
-                            worker.wait(1000)
-                        worker.deleteLater()
-                        setattr(self, name, None)
-                except RuntimeError:
-                    # 对象已被删除，忽略
-                    logger.debug(f"{name} 已被删除，跳过")
+                    self.thread_manager.stop_thread(worker, timeout=timeout, force=True)
                     setattr(self, name, None)
                 except Exception as e:
                     logger.warning(f"停止 {name} 时出错: {str(e)}")
@@ -273,6 +230,9 @@ class MainWindow(QMainWindow):
                         setattr(self, name, None)
                     except:
                         pass
+        
+        # 使用线程管理器清理所有注册的线程
+        self.thread_manager.cleanup()
         
         # 保存连接配置
         try:
@@ -1152,33 +1112,23 @@ class MainWindow(QMainWindow):
             # 停止该连接之前的数据库列表工作线程（如果存在）
             if connection_id in self.database_list_workers:
                 old_worker = self.database_list_workers[connection_id]
-                try:
-                    if old_worker and old_worker.isRunning():
+                if old_worker:
+                    try:
                         # 断开信号连接，避免旧worker的回调影响新操作
                         try:
                             old_worker.databases_ready.disconnect()
                             old_worker.error_occurred.disconnect()
+                            old_worker.finished.disconnect()
                         except:
                             pass
-                        # 请求停止
-                        old_worker.stop()
-                        # 等待线程停止（最多等待500ms，避免长时间阻塞）
-                        if not old_worker.wait(500):
-                            # 如果等待超时，强制终止
-                            logger.warning(f"数据库列表worker未能在500ms内停止，强制终止")
-                            old_worker.terminate()
-                            old_worker.wait(200)
-                        # 线程已停止，安全删除
-                        old_worker.deleteLater()
-                except RuntimeError:
-                    # 对象已被删除，忽略
-                    pass
-                except Exception as e:
-                    logger.warning(f"停止旧worker时出错: {str(e)}")
-                finally:
-                    # 确保从字典中移除
-                    if connection_id in self.database_list_workers:
-                        del self.database_list_workers[connection_id]
+                        # 使用线程管理器停止线程
+                        self.thread_manager.stop_thread(old_worker, timeout=500, force=True)
+                    except Exception as e:
+                        logger.warning(f"停止旧worker时出错: {str(e)}")
+                    finally:
+                        # 确保从字典中移除
+                        if connection_id in self.database_list_workers:
+                            del self.database_list_workers[connection_id]
             
             # 创建并启动数据库列表工作线程（在后台线程中连接数据库）
             from src.gui.workers.database_list_worker import DatabaseListWorker
@@ -1202,26 +1152,9 @@ class MainWindow(QMainWindow):
                     logger.debug(f"窗口正在关闭，跳过清理 worker: {connection_id}")
                     return
                 
-                try:
-                    # 确保线程已经完全结束
-                    if worker.isRunning():
-                        logger.warning(f"Worker {connection_id} 在 finished 信号触发时仍在运行，等待结束...")
-                        if not worker.wait(1000):  # 等待最多1秒
-                            logger.warning(f"Worker {connection_id} 未能在1秒内结束，强制终止")
-                            worker.terminate()
-                            worker.wait(500)
-                    
-                    # 从字典中移除
-                    if connection_id in self.database_list_workers:
-                        del self.database_list_workers[connection_id]
-                    
-                    # 延迟删除，确保线程完全结束
-                    from PyQt6.QtCore import QTimer
-                    QTimer.singleShot(200, lambda: self._safe_delete_database_worker(worker))
-                except RuntimeError:
-                    pass  # 对象已被删除，忽略
-                except Exception as e:
-                    logger.warning(f"清理 worker {connection_id} 时出错: {e}")
+                # 从字典中移除
+                if connection_id in self.database_list_workers:
+                    del self.database_list_workers[connection_id]
             
             # 明确使用QueuedConnection，确保信号在UI线程的事件循环中异步处理
             from PyQt6.QtCore import Qt
@@ -1233,8 +1166,9 @@ class MainWindow(QMainWindow):
                 lambda error, conn_id=connection_id: self.on_databases_load_error(connection_item, loading_item, error),
                 Qt.ConnectionType.QueuedConnection
             )
-            # 连接finished信号，确保线程完全结束后才清理（优雅的方式，不阻塞）
-            worker.finished.connect(cleanup_worker)
+            
+            # 注册线程到线程管理器，自动处理清理
+            self.thread_manager.register_thread(worker, cleanup_worker)
             
             # 将worker存储到字典中
             self.database_list_workers[connection_id] = worker
@@ -1244,29 +1178,11 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, start_database_loading)
     
     def _safe_delete_database_worker(self, worker):
-        """安全删除数据库列表 worker（确保线程完全结束）"""
-        if worker is None:
-            return
-        try:
-            # 检查线程是否还在运行
-            if worker.isRunning():
-                logger.warning(f"尝试删除仍在运行的 database worker: {worker.objectName()}")
-                return  # 如果还在运行，不删除
-            
-            # 断开所有信号连接
-            try:
-                worker.databases_ready.disconnect()
-                worker.error_occurred.disconnect()
-                worker.finished.disconnect()
-            except (RuntimeError, TypeError):
-                pass  # 信号可能已经断开
-            
-            # 删除对象
-            worker.deleteLater()
-        except RuntimeError:
-            pass  # 对象已被删除，忽略
-        except Exception as e:
-            logger.warning(f"安全删除 database worker 时出错: {e}")
+        """安全删除数据库列表 worker（已废弃，使用 ThreadManager 管理）"""
+        # 此方法已废弃，线程管理由 ThreadManager 统一处理
+        # 保留此方法以保持向后兼容性
+        if worker:
+            self.thread_manager.stop_thread(worker, timeout=1000, force=True)
     
     def _safe_delete_redis_worker(self, worker):
         """安全删除 Redis 数据 worker（确保线程完全结束）"""

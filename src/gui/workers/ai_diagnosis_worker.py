@@ -68,9 +68,9 @@ class AIDiagnosisWorker(QThread):
             logger.error(error_msg, exc_info=True)
             if not (self.isInterruptionRequested() or self._should_stop):
                 self.error_occurred.emit(error_msg)
-        finally:
-            # 确保线程正确退出
-            self.quit()
+        finally:            # 注意：QThread 的 run() 方法返回时，线程会自动结束，finished 信号会自动触发
+            # 不需要调用 quit()，因为 QThread.run() 默认没有事件循环
+            pass
     
     def _get_system_prompt(self) -> str:
         """获取系统提示词"""

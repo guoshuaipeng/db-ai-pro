@@ -72,9 +72,9 @@ class AITableSelectorWorker(QThread):
                 logger.error(f"降级处理也失败: {str(fallback_error)}", exc_info=True)
                 # 最后的降级：发送空列表
                 self.tables_selected.emit([])
-        finally:
-            # 确保线程正确结束
-            self.quit()
+        finally:            # 注意：QThread 的 run() 方法返回时，线程会自动结束，finished 信号会自动触发
+            # 不需要调用 quit()，因为 QThread.run() 默认没有事件循环
+            pass
     
     def _extract_table_names(self, table_info_list: list) -> list:
         """从表信息列表中提取表名（兼容字符串和字典格式）
