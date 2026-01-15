@@ -136,9 +136,8 @@ class MainWindow(QMainWindow):
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(100, self.load_saved_connections)  # 延迟100ms加载连接，确保UI先显示
             
-            # 预加载功能已禁用，不再预加载数据库和表列表
-            # 只显示连接列表，数据库和表列表在用户展开时才加载，避免启动时卡顿
-            # QTimer.singleShot(1500, self.preload_handler.start_preload)  # 已禁用
+            # 预加载功能：在后台线程中自动加载所有数据库和表列表（不阻塞UI）
+            QTimer.singleShot(1500, self.preload_handler.start_preload)  # 延迟1.5秒开始预加载，确保UI先显示
         except Exception as e:
             logger.error(f"初始化主窗口时发生错误: {e}", exc_info=True)
             raise
@@ -2018,7 +2017,7 @@ class MainWindow(QMainWindow):
         if hasattr(sql_editor, 'ai_input'):
             # 设置AI输入框的提示文本（如果用户不删除，AI查询时会优先使用这个表）
             # 使用友好的提示文本，而不是仅表名
-            ai_hint_text = f"查询 {table_name} 表"
+            ai_hint_text = f"目标表 : {table_name}\n"
             sql_editor.ai_input.setPlainText(ai_hint_text)
         
         # 添加新tab（使用"连接名-库名-表名"格式，区分不同连接的相同数据库和表）

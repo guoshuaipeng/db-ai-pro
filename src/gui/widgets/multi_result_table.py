@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QIcon
 from src.utils.toast import show_toast
+from src.utils.toast_manager import show_info
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QTimer
 from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QSyntaxHighlighter, QClipboard, QMouseEvent, QKeyEvent, QKeySequence, QPainter, QTextBlock
 from PyQt6.QtCore import QRegularExpression, QRect, QPoint, QSize
@@ -93,7 +94,7 @@ class FoldableJSONEditor(QWidget):
             font.setStyleHint(QFont.StyleHint.Monospace)
             editor.setFont(font)
             
-            # 设置为只读
+            # 默认设置为只读，可以通过set_read_only方法修改
             editor.setReadOnly(True)
             
             # 设置横向滚动：禁用自动换行，启用横向滚动条
@@ -142,7 +143,7 @@ class FoldableJSONEditor(QWidget):
         font.setStyleHint(QFont.StyleHint.Monospace)
         editor.setFont(font)
         
-        # 设置只读
+        # 默认设置为只读，可以通过set_read_only方法修改
         editor.setReadOnly(True)
         
         # 设置横向滚动：禁用自动换行，启用横向滚动条
@@ -206,6 +207,30 @@ class FoldableJSONEditor(QWidget):
                 self._editor._analyze_foldable_blocks()
             if hasattr(self._editor, '_update_display'):
                 self._editor._update_display()
+    
+    def get_json_text(self) -> str:
+        """获取JSON文本"""
+        if self._use_qscintilla:
+            # QScintilla
+            return self._editor.text()
+        else:
+            # 自定义编辑器（回退方案）
+            if hasattr(self._editor, 'toPlainText'):
+                return self._editor.toPlainText()
+            elif hasattr(self._editor, 'text'):
+                return self._editor.text()
+            return ""
+    
+    def set_read_only(self, read_only: bool):
+        """设置是否只读"""
+        if self._editor:
+            if self._use_qscintilla:
+                # QScintilla
+                self._editor.setReadOnly(read_only)
+            else:
+                # 自定义编辑器（回退方案）
+                if hasattr(self._editor, 'setReadOnly'):
+                    self._editor.setReadOnly(read_only)
 
 
 class JSONHighlighter(QSyntaxHighlighter):
@@ -1303,7 +1328,7 @@ class SingleResultTable(QWidget):
             return str_value
     
     def query_by_json_row(self, row: int):
-        """以JSON查询行数据：显示整行数据的JSON格式（可折叠代码编辑器样式）"""
+        """以JSON查询行数据：显示整行数据的JSON格式（可折叠代码编辑器样式，可编辑）"""
         if not self.raw_data:
             return
         
@@ -1312,10 +1337,11 @@ class SingleResultTable(QWidget):
         
         # 获取该行的数据
         row_data = self.raw_data[row]
+        original_row_data = self.original_data[row] if self.original_data and row < len(self.original_data) else row_data.copy()
         
         # 创建JSON显示对话框
         dialog = QDialog(self)
-        dialog.setWindowTitle(f"行 {row + 1} 的JSON数据")
+        dialog.setWindowTitle(f"行 {row + 1} 的JSON数据（可编辑）")
         dialog.setMinimumSize(800, 600)
         
         layout = QVBoxLayout()
@@ -1325,6 +1351,7 @@ class SingleResultTable(QWidget):
         # 可折叠的JSON编辑器
         json_editor = FoldableJSONEditor()
         json_editor.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        json_editor.set_read_only(False)  # 设置为可编辑
         
         # 处理datetime等特殊类型
         try:
@@ -1351,14 +1378,92 @@ class SingleResultTable(QWidget):
         layout.addWidget(json_editor)
         
         # 按钮
-        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        button_box.accepted.connect(dialog.accept)
+        button_box = QDialogButtonBox()
+        save_button = button_box.addButton("保存", QDialogButtonBox.ButtonRole.AcceptRole)
+        cancel_button = button_box.addButton("取消", QDialogButtonBox.ButtonRole.RejectRole)
+        
+        def save_changes():
+            """保存修改"""
+            try:
+                # 获取编辑后的JSON文本
+                edited_json_text = json_editor.get_json_text().strip()
+                
+                # 解析JSON
+                try:
+                    edited_data = json.loads(edited_json_text)
+                except json.JSONDecodeError as e:
+                    QMessageBox.warning(dialog, "JSON格式错误", f"JSON格式不正确：\n{str(e)}\n\n请检查JSON语法。")
+                    return
+                
+                # 验证数据是否为字典
+                if not isinstance(edited_data, dict):
+                    QMessageBox.warning(dialog, "数据格式错误", "JSON数据必须是对象（字典）格式。")
+                    return
+                
+                # 更新raw_data和表格显示
+                columns = list(self.raw_data[0].keys())
+                for col_idx, col_name in enumerate(columns):
+                    if col_name in edited_data:
+                        new_value = edited_data[col_name]
+                        old_value = row_data.get(col_name)
+                        
+                        # 更新raw_data
+                        self.raw_data[row][col_name] = new_value
+                        
+                        # 更新表格显示
+                        display_value = "NULL" if new_value is None else str(new_value)
+                        item = self.table.item(row, col_idx)
+                        if item:
+                            item.setText(display_value)
+                            if new_value is None:
+                                item.setForeground(Qt.GlobalColor.gray)
+                            else:
+                                item.setForeground(Qt.GlobalColor.black)
+                        
+                        # 记录修改
+                        if old_value != new_value:
+                            self.modified_cells[(row, col_idx)] = (old_value, new_value, col_name)
+                            # 标记单元格为已修改
+                            if row in self.pending_deletes:
+                                if item:
+                                    item.setBackground(QColor(255, 150, 150, 180))
+                            else:
+                                if item:
+                                    item.setBackground(QColor(255, 255, 200))
+                        else:
+                            # 如果值没有改变，移除修改记录
+                            if (row, col_idx) in self.modified_cells:
+                                del self.modified_cells[(row, col_idx)]
+                                if item:
+                                    if row in self.pending_deletes:
+                                        item.setBackground(QColor(255, 200, 200, 150))
+                                    else:
+                                        item.setBackground(QColor(255, 255, 255, 0))
+                
+                # 更新按钮状态
+                self._update_save_cancel_buttons()
+                
+                # 更新状态
+                if self.modified_cells:
+                    self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行, {len(columns)} 列 (已暂存 {len(self.modified_cells)} 个修改，请点击保存)")
+                else:
+                    self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行, {len(columns)} 列")
+                
+                show_info("修改已暂存，请点击表格上方的'保存'按钮保存到数据库。")
+                dialog.accept()
+                
+            except Exception as e:
+                QMessageBox.critical(dialog, "保存失败", f"保存时发生错误：\n{str(e)}")
+        
+        save_button.clicked.connect(save_changes)
+        cancel_button.clicked.connect(dialog.reject)
+        
         layout.addWidget(button_box)
         
         dialog.exec()
     
     def query_by_json_field(self, row: int, col: int):
-        """以JSON查询字段数据：显示字段的JSON数据（可折叠代码编辑器样式）"""
+        """以JSON查询字段数据：显示字段的JSON数据（可折叠代码编辑器样式，可编辑）"""
         if not self.raw_data:
             return
         
@@ -1372,10 +1477,11 @@ class SingleResultTable(QWidget):
         
         col_name = columns[col]
         field_value = self.raw_data[row].get(col_name)
+        old_value = self.original_data[row].get(col_name) if self.original_data and row < len(self.original_data) else field_value
         
         # 创建JSON显示对话框
         dialog = QDialog(self)
-        dialog.setWindowTitle(f"字段 '{col_name}' 的JSON数据 (行 {row + 1})")
+        dialog.setWindowTitle(f"字段 '{col_name}' 的JSON数据 (行 {row + 1})（可编辑）")
         dialog.setMinimumSize(800, 600)
         
         layout = QVBoxLayout()
@@ -1385,6 +1491,7 @@ class SingleResultTable(QWidget):
         # 可折叠的JSON编辑器
         json_editor = FoldableJSONEditor()
         json_editor.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        json_editor.set_read_only(False)  # 设置为可编辑
         
         # 处理字段值
         if field_value is None:
@@ -1422,8 +1529,81 @@ class SingleResultTable(QWidget):
         layout.addWidget(json_editor)
         
         # 按钮
-        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        button_box.accepted.connect(dialog.accept)
+        button_box = QDialogButtonBox()
+        save_button = button_box.addButton("保存", QDialogButtonBox.ButtonRole.AcceptRole)
+        cancel_button = button_box.addButton("取消", QDialogButtonBox.ButtonRole.RejectRole)
+        
+        def save_changes():
+            """保存修改"""
+            try:
+                # 获取编辑后的JSON文本
+                edited_json_text = json_editor.get_json_text().strip()
+                
+                # 处理null值
+                if edited_json_text.lower() == "null" or edited_json_text == "":
+                    new_value = None
+                else:
+                    # 尝试解析JSON
+                    try:
+                        new_value = json.loads(edited_json_text)
+                        # 如果是JSON对象或数组，转换为字符串保存（因为数据库字段可能是JSON类型）
+                        if isinstance(new_value, (dict, list)):
+                            new_value = json.dumps(new_value, ensure_ascii=False)
+                    except json.JSONDecodeError:
+                        # 如果不是有效的JSON，作为普通字符串保存
+                        new_value = edited_json_text
+                
+                # 更新raw_data
+                self.raw_data[row][col_name] = new_value
+                
+                # 更新表格显示
+                display_value = "NULL" if new_value is None else str(new_value)
+                item = self.table.item(row, col)
+                if item:
+                    item.setText(display_value)
+                    if new_value is None:
+                        item.setForeground(Qt.GlobalColor.gray)
+                    else:
+                        item.setForeground(Qt.GlobalColor.black)
+                
+                # 记录修改
+                if old_value != new_value:
+                    self.modified_cells[(row, col)] = (old_value, new_value, col_name)
+                    # 标记单元格为已修改
+                    if row in self.pending_deletes:
+                        if item:
+                            item.setBackground(QColor(255, 150, 150, 180))
+                    else:
+                        if item:
+                            item.setBackground(QColor(255, 255, 200))
+                else:
+                    # 如果值没有改变，移除修改记录
+                    if (row, col) in self.modified_cells:
+                        del self.modified_cells[(row, col)]
+                        if item:
+                            if row in self.pending_deletes:
+                                item.setBackground(QColor(255, 200, 200, 150))
+                            else:
+                                item.setBackground(QColor(255, 255, 255, 0))
+                
+                # 更新按钮状态
+                self._update_save_cancel_buttons()
+                
+                # 更新状态
+                if self.modified_cells:
+                    self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行, {len(columns)} 列 (已暂存 {len(self.modified_cells)} 个修改，请点击保存)")
+                else:
+                    self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行, {len(columns)} 列")
+                
+                show_info("修改已暂存，请点击表格上方的'保存'按钮保存到数据库。")
+                dialog.accept()
+                
+            except Exception as e:
+                QMessageBox.critical(dialog, "保存失败", f"保存时发生错误：\n{str(e)}")
+        
+        save_button.clicked.connect(save_changes)
+        cancel_button.clicked.connect(dialog.reject)
+        
         layout.addWidget(button_box)
         
         dialog.exec()
@@ -1735,7 +1915,9 @@ class SingleResultTable(QWidget):
                 escaped = value.replace("\\", "\\\\")
                 # 2. 转义单引号
                 escaped = escaped.replace("'", "''")
-                # 3. 转义换行符、回车符、制表符等控制字符
+                # 3. 转义百分号（防止SQLAlchemy误认为是参数占位符，必须在最后转义）
+                escaped = escaped.replace("%", "%%")
+                # 4. 转义换行符、回车符、制表符等控制字符
                 escaped = escaped.replace("\n", "\\n")
                 escaped = escaped.replace("\r", "\\r")
                 escaped = escaped.replace("\t", "\\t")
@@ -1751,6 +1933,8 @@ class SingleResultTable(QWidget):
                 # 转义特殊字符
                 escaped = str_value.replace("\\", "\\\\")
                 escaped = escaped.replace("'", "''")
+                # 转义百分号（防止SQLAlchemy误认为是参数占位符，必须在最后转义）
+                escaped = escaped.replace("%", "%%")
                 escaped = escaped.replace("\n", "\\n")
                 escaped = escaped.replace("\r", "\\r")
                 escaped = escaped.replace("\t", "\\t")
@@ -2043,6 +2227,8 @@ class SingleResultTable(QWidget):
             elif isinstance(value, str):
                 escaped = value.replace("\\", "\\\\")
                 escaped = escaped.replace("'", "''")
+                # 转义百分号（防止SQLAlchemy误认为是参数占位符，必须在最后转义）
+                escaped = escaped.replace("%", "%%")
                 escaped = escaped.replace("\n", "\\n")
                 escaped = escaped.replace("\r", "\\r")
                 escaped = escaped.replace("\t", "\\t")
@@ -2056,6 +2242,8 @@ class SingleResultTable(QWidget):
                 str_value = str(value)
                 escaped = str_value.replace("\\", "\\\\")
                 escaped = escaped.replace("'", "''")
+                # 转义百分号（防止SQLAlchemy误认为是参数占位符，必须在最后转义）
+                escaped = escaped.replace("%", "%%")
                 escaped = escaped.replace("\n", "\\n")
                 escaped = escaped.replace("\r", "\\r")
                 escaped = escaped.replace("\t", "\\t")
@@ -2503,7 +2691,9 @@ class SingleResultTable(QWidget):
                 escaped = value.replace("\\", "\\\\")
                 # 2. 转义单引号
                 escaped = escaped.replace("'", "''")
-                # 3. 转义换行符、回车符、制表符等控制字符
+                # 3. 转义百分号（防止SQLAlchemy误认为是参数占位符，必须在最后转义）
+                escaped = escaped.replace("%", "%%")
+                # 4. 转义换行符、回车符、制表符等控制字符
                 escaped = escaped.replace("\n", "\\n")
                 escaped = escaped.replace("\r", "\\r")
                 escaped = escaped.replace("\t", "\\t")
@@ -2519,6 +2709,8 @@ class SingleResultTable(QWidget):
                 # 转义特殊字符
                 escaped = str_value.replace("\\", "\\\\")
                 escaped = escaped.replace("'", "''")
+                # 转义百分号（防止SQLAlchemy误认为是参数占位符，必须在最后转义）
+                escaped = escaped.replace("%", "%%")
                 escaped = escaped.replace("\n", "\\n")
                 escaped = escaped.replace("\r", "\\r")
                 escaped = escaped.replace("\t", "\\t")
