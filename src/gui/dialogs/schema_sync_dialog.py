@@ -435,18 +435,27 @@ class Step1SelectDatabasesPage(QWizardPage):
             for db in databases:
                 db_combo.addItem(db, db)
             db_combo.setEnabled(True)
-            worker.deleteLater()
+            # 不在这里删除，等待线程完全结束后再删除
         
         def on_error(error_msg):
             db_combo.clear()
             db_combo.addItem("加载失败", None)
             db_combo.setEnabled(True)
             logger.error(f"加载数据库列表失败: {error_msg}")
-            worker.deleteLater()
+            # 不在这里删除，等待线程完全结束后再删除
+        
+        def cleanup_worker():
+            """清理worker（在线程finished信号触发时调用）"""
+            try:
+                # 延迟删除，确保线程完全结束
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(200, lambda: worker.deleteLater())
+            except RuntimeError:
+                pass  # 对象已被删除，忽略
         
         worker.databases_ready.connect(on_databases_ready)
         worker.error_occurred.connect(on_error)
-        worker.finished.connect(lambda: worker.deleteLater())
+        worker.finished.connect(cleanup_worker)
         worker.start()
     
     def validatePage(self) -> bool:
