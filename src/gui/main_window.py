@@ -181,14 +181,8 @@ class MainWindow(QMainWindow):
         for connection_id, worker in list(self.database_list_workers.items()):
             if worker:
                 try:
-                    # 断开信号，避免回调执行
-                    try:
-                        worker.databases_ready.disconnect()
-                        worker.error_occurred.disconnect()
-                        worker.finished.disconnect()
-                    except (RuntimeError, TypeError):
-                        pass
-                    # 使用线程管理器停止线程
+                    # 使用线程管理器停止线程（会自动处理信号断开）
+                    # 注意：在应用关闭时，ThreadManager 会安全地处理所有信号断开
                     self.thread_manager.stop_thread(worker, timeout=2000, force=True)
                 except Exception as e:
                     logger.warning(f"停止数据库列表worker {connection_id} 时出错: {e}")
@@ -199,11 +193,7 @@ class MainWindow(QMainWindow):
             for connection_id, worker in list(self.redis_dbsize_workers.items()):
                 if worker:
                     try:
-                        try:
-                            worker.sizes_ready.disconnect()
-                            worker.error_occurred.disconnect()
-                        except:
-                            pass
+                        # 使用线程管理器停止线程（会自动处理信号断开）
                         self.thread_manager.stop_thread(worker, timeout=1000, force=True)
                     except Exception as e:
                         logger.warning(f"停止 Redis dbsize worker {connection_id} 时出错: {e}")
@@ -1114,14 +1104,8 @@ class MainWindow(QMainWindow):
                 old_worker = self.database_list_workers[connection_id]
                 if old_worker:
                     try:
-                        # 断开信号连接，避免旧worker的回调影响新操作
-                        try:
-                            old_worker.databases_ready.disconnect()
-                            old_worker.error_occurred.disconnect()
-                            old_worker.finished.disconnect()
-                        except:
-                            pass
-                        # 使用线程管理器停止线程
+                        # 使用线程管理器停止线程（会自动处理信号断开）
+                        # 注意：不要手动断开信号，ThreadManager 会在删除对象时自动处理
                         self.thread_manager.stop_thread(old_worker, timeout=500, force=True)
                     except Exception as e:
                         logger.warning(f"停止旧worker时出错: {str(e)}")
@@ -1231,20 +1215,8 @@ class MainWindow(QMainWindow):
         
         # 清理worker（加载完成后）
         # 注意：不要在这里删除 worker，让 cleanup_worker（通过 finished 信号）来处理
-        # 这里只断开信号，避免重复回调
-        if connection_id and connection_id in self.database_list_workers:
-            try:
-                worker = self.database_list_workers[connection_id]
-                if worker:
-                    try:
-                        worker.databases_ready.disconnect()
-                        worker.error_occurred.disconnect()
-                    except (RuntimeError, TypeError):
-                        pass  # 信号可能已经断开
-                    # 不在这里删除 worker，让 cleanup_worker 处理
-                    # worker 会在 finished 信号触发时由 cleanup_worker 清理
-            except RuntimeError:
-                pass
+        # ThreadManager 会自动处理信号断开和对象删除，不需要手动断开信号
+        # 手动断开信号可能导致警告，因为对象可能正在被删除
         
         # 检查已存在的数据库项，避免重复添加
         existing_databases = set()
@@ -1624,8 +1596,9 @@ class MainWindow(QMainWindow):
             def cleanup_worker():
                 """清理worker（在线程finished信号触发时调用）"""
                 try:
-                    # 延迟删除，确保线程完全结束
-                    QTimer.singleShot(200, lambda: worker.deleteLater())
+                    # 使用 safe_delete_thread，自动处理线程清理
+                    from src.utils.thread_manager import safe_delete_thread
+                    safe_delete_thread(worker)
                 except RuntimeError:
                     pass  # 对象已被删除，忽略
             
@@ -2183,22 +2156,13 @@ class MainWindow(QMainWindow):
             logger.error(f"更新UI失败: {str(e)}")
         
         # 清理工作线程
-        # 注意：不要在这里立即删除，让线程自然结束
-        # 线程会在 run() 方法结束后自动结束
-        if self.query_worker and not self.query_worker.isRunning():
-            # 只有在线程已经结束时才清理
+        # 使用 safe_delete_thread 函数，自动处理线程清理
+        # 不需要手动断开信号，不需要延时，Qt 会自动处理
+        if self.query_worker:
             worker = self.query_worker
             self.query_worker = None
-            # 断开信号连接
-            try:
-                worker.query_finished.disconnect()
-                worker.query_progress.disconnect()
-                worker.multi_query_finished.disconnect()
-            except:
-                pass
-            # 延迟删除，确保所有信号处理完成
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(200, worker.deleteLater)
+            from src.utils.thread_manager import safe_delete_thread
+            safe_delete_thread(worker)
     
     
     def on_multi_query_finished(self, results: list):
@@ -2237,19 +2201,12 @@ class MainWindow(QMainWindow):
             logger.error(f"更新UI失败: {str(e)}")
         
         # 清理工作线程
-        if self.query_worker and not self.query_worker.isRunning():
+        # 使用 safe_delete_thread 函数，自动处理线程清理
+        if self.query_worker:
             worker = self.query_worker
             self.query_worker = None
-            # 断开信号连接
-            try:
-                worker.query_finished.disconnect()
-                worker.query_progress.disconnect()
-                worker.multi_query_finished.disconnect()
-            except:
-                pass
-            # 延迟删除，确保所有信号处理完成
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(200, worker.deleteLater)
+            from src.utils.thread_manager import safe_delete_thread
+            safe_delete_thread(worker)
     
     def clear_query(self):
         """清空查询"""

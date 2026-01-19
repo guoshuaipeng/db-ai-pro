@@ -293,6 +293,100 @@ class AIClient:
             self.logger.error(f"生成SQL失败: {str(e)}")
             raise Exception(f"AI生成SQL失败: {str(e)}")
     
+    def generate_redis_command(self, user_query: str, available_keys: Optional[list] = None) -> str:
+        """
+        根据用户查询生成Redis命令
+        
+        :param user_query: 用户的中文查询
+        :param available_keys: 可用的Redis key列表（可选）
+        :return: 生成的Redis命令
+        """
+        try:
+            self.logger.info(f"generate_redis_command 被调用，user_query: {user_query[:100] if user_query else 'None'}")
+            
+            client = self._get_client()
+            prompt_config = self._get_prompt_config()
+            
+            # 使用Redis命令生成的系统提示词
+            system_prompt = prompt_config.generate_redis_command_system
+            
+            # 构建用户提示词
+            if available_keys and len(available_keys) > 0:
+                # 限制显示的key数量，避免提示词过长
+                max_keys = 50
+                keys_to_show = available_keys[:max_keys]
+                keys_list = '\n'.join([f'  - {key}' for key in keys_to_show])
+                if len(available_keys) > max_keys:
+                    keys_list += f'\n  ... (还有 {len(available_keys) - max_keys} 个key)'
+                
+                user_prompt = f"""【用户需求】
+{user_query}
+
+【可用的Redis Key列表】
+以下是当前数据库中可用的key（你可以参考这些key来生成命令）：
+{keys_list}
+
+【任务】
+根据用户需求生成对应的Redis命令。如果用户描述的是具体的key，优先使用上述列表中的key。如果是模糊需求（如"查找所有user开头的key"），使用SCAN命令搜索。
+
+【注意事项】
+- 只生成查询和统计命令，不要生成修改数据的命令（如SET、DEL等）
+- 使用SCAN命令而不是KEYS命令进行搜索（更安全）
+- 确保命令格式正确，可以直接执行"""
+            else:
+                user_prompt = f"""【用户需求】
+{user_query}
+
+【任务】
+根据用户需求生成对应的Redis命令。
+
+【注意事项】
+- 只生成查询和统计命令，不要生成修改数据的命令（如SET、DEL等）
+- 使用SCAN命令而不是KEYS命令进行搜索（更安全）
+- 确保命令格式正确，可以直接执行"""
+            
+            # 记录发送给AI的完整内容
+            self.logger.info("=" * 80)
+            self.logger.info("发送给AI的完整提示词（Redis命令生成）:")
+            self.logger.info("=" * 80)
+            self.logger.info(f"【系统提示词】\n{system_prompt}")
+            self.logger.info("-" * 80)
+            self.logger.info(f"【用户提示词】\n{user_prompt}")
+            self.logger.info("=" * 80)
+            
+            # 调用AI生成Redis命令
+            response = client.chat.completions.create(
+                model=self.default_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1,
+                top_p=0.9,
+            )
+            
+            # 记录token使用情况
+            self._record_token_usage(response)
+            
+            command = response.choices[0].message.content.strip()
+            
+            # 清理命令（移除可能的markdown代码块标记）
+            if command.startswith("```redis"):
+                command = command[8:]
+            elif command.startswith("```"):
+                command = command[3:]
+            if command.endswith("```"):
+                command = command[:-3]
+            command = command.strip()
+            
+            self.logger.info(f"AI生成的Redis命令: {command}")
+            
+            return command
+            
+        except Exception as e:
+            self.logger.error(f"生成Redis命令失败: {str(e)}")
+            raise Exception(f"AI生成Redis命令失败: {str(e)}")
+    
     def _extract_table_names_from_sql(self, sql: str, available_tables: list) -> list:
         """
         从SQL语句中提取表名
@@ -491,7 +585,7 @@ class AIClient:
 {table_list_formatted}
 
 【你的任务】
-根据用户需求"{user_query}"，从上述表名列表中选择最相关的表（通常1-5个表）。
+根据用户需求"{user_query}"，从上述表名列表中选择最相关的表（通常1-3个表）。
 {"**⚠️ 重要**：用户查询以表名开头，请优先选择该表。" if table_name_in_query else "**提示**：如果用户需求中明确提到了表名（如\"支付订单表\"、\"用户表\"等），应该优先选择用户需求中提到的表。"}
 
 【输出要求】

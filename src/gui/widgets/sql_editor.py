@@ -147,7 +147,7 @@ class SQLEditor(QWidget):
         
         # 使用QPlainTextEdit而不是QTextEdit，确保只支持纯文本，不支持格式
         self.ai_input = QPlainTextEdit()
-        self.ai_input.setPlaceholderText("在此输入中文描述，AI将自动生成SQL并执行查询...\n\n💡 提示：\n- 按 Enter 键直接查询\n- 按 Shift+Enter 换行\n\n例如：\n- 查询所有用户信息\n- 统计每个部门的员工数量\n- 查找最近一周的订单")
+        self.ai_input.setPlaceholderText("输入中文描述，AI将生成SQL并执行（Enter查询，Shift+Enter换行）")
         self.ai_input.setFont(QFont("Microsoft YaHei", 10))
         self.ai_input.installEventFilter(self)  # 安装事件过滤器，用于处理回车键
         ai_layout.addWidget(self.ai_input)

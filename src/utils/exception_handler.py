@@ -129,13 +129,27 @@ class ExceptionHandler:
         try:
             # 获取主窗口
             app = QApplication.instance()
-            main_window = None
+            if app is None:
+                # 应用已关闭，只记录日志
+                logger.warning(f"应用已关闭，无法显示错误对话框: {error_type_name}: {error_msg}")
+                return
             
-            # 尝试找到主窗口
-            for widget in app.topLevelWidgets():
-                if hasattr(widget, 'windowTitle') and 'DataAI' in widget.windowTitle():
-                    main_window = widget
-                    break
+            # 检查应用是否正在关闭
+            try:
+                # 尝试检查主窗口是否正在关闭
+                main_window = None
+                for widget in app.topLevelWidgets():
+                    if hasattr(widget, 'windowTitle') and 'DataAI' in widget.windowTitle():
+                        main_window = widget
+                        # 检查是否有 _is_closing 标记
+                        if hasattr(widget, '_is_closing') and widget._is_closing:
+                            logger.debug(f"主窗口正在关闭，跳过显示错误对话框: {error_type_name}: {error_msg}")
+                            return
+                        break
+            except Exception:
+                # 如果检查失败，可能应用正在关闭，只记录日志
+                logger.warning(f"无法检查应用状态，跳过显示错误对话框: {error_type_name}: {error_msg}")
+                return
             
             # 如果是线程相关错误，显示友好的提示
             if is_thread_error:
@@ -159,24 +173,48 @@ class ExceptionHandler:
                 )
                 icon = QMessageBox.Icon.Critical
             
-            # 显示对话框
-            msg_box = QMessageBox(icon, title, message, QMessageBox.StandardButton.Ok, main_window)
-            msg_box.setWindowModality(Qt.WindowModality.WindowModal)
+            # 使用 QTimer 延迟显示对话框，避免在异常处理过程中直接显示
+            from PyQt6.QtCore import QTimer
             
-            # 添加详细信息按钮（可选）
-            if not is_thread_error:
-                detail_button = msg_box.addButton("详细信息", QMessageBox.ButtonRole.ActionRole)
-                detail_button.clicked.connect(
-                    lambda: cls._show_detail_dialog(error_type_name, error_msg, exc_traceback, main_window)
-                )
+            def show_dialog():
+                try:
+                    # 再次检查应用状态
+                    app = QApplication.instance()
+                    if app is None:
+                        return
+                    
+                    # 显示对话框
+                    msg_box = QMessageBox(icon, title, message, QMessageBox.StandardButton.Ok, main_window)
+                    msg_box.setWindowModality(Qt.WindowModality.WindowModal)
+                    
+                    # 添加详细信息按钮（可选）
+                    if not is_thread_error:
+                        detail_button = msg_box.addButton("详细信息", QMessageBox.ButtonRole.ActionRole)
+                        detail_button.clicked.connect(
+                            lambda: cls._show_detail_dialog(error_type_name, error_msg, exc_traceback, main_window)
+                        )
+                    
+                    msg_box.exec()
+                except SystemError:
+                    # SystemError 通常表示 Qt 内部状态有问题，只记录日志
+                    logger.warning(f"显示错误对话框时发生 SystemError（可能应用正在关闭）: {error_type_name}: {error_msg}")
+                except Exception as e:
+                    logger.error(f"显示错误对话框失败: {e}", exc_info=True)
             
-            msg_box.exec()
+            # 延迟显示，确保不在异常处理过程中直接显示
+            QTimer.singleShot(100, show_dialog)
             
+        except SystemError:
+            # SystemError 通常表示 Python 解释器或 Qt 内部状态有问题
+            # 在应用关闭时可能发生，只记录日志
+            logger.warning(f"异常处理器发生 SystemError（可能应用正在关闭）: {error_type_name}: {error_msg}")
         except Exception as e:
             logger.error(f"显示错误对话框失败: {e}", exc_info=True)
             # 如果显示对话框失败，至少打印到控制台
-            print(f"错误: {error_type_name}: {error_msg}")
-            traceback.print_exception(type(e), e, e.__traceback__)
+            try:
+                print(f"错误: {error_type_name}: {error_msg}")
+            except:
+                pass  # 如果连打印都失败，忽略
     
     @classmethod
     def _show_detail_dialog(cls, error_type_name: str, error_msg: str, exc_traceback, parent=None):
@@ -230,11 +268,15 @@ class ExceptionHandler:
                                 if app is None:
                                     return
                                 
-                                # 获取主窗口
+                                # 检查主窗口是否正在关闭
                                 main_window = None
                                 for widget in app.topLevelWidgets():
                                     if hasattr(widget, 'windowTitle') and 'DataAI' in widget.windowTitle():
                                         main_window = widget
+                                        # 检查是否有 _is_closing 标记
+                                        if hasattr(widget, '_is_closing') and widget._is_closing:
+                                            logger.debug(f"主窗口正在关闭，跳过显示线程警告: {message_str}")
+                                            return
                                         break
                                 
                                 msg_box = QMessageBox(
@@ -252,6 +294,9 @@ class ExceptionHandler:
                                 )
                                 msg_box.setWindowModality(Qt.WindowModality.WindowModal)
                                 msg_box.exec()
+                            except SystemError:
+                                # SystemError 通常表示 Qt 内部状态有问题，只记录日志
+                                logger.warning(f"显示线程警告对话框时发生 SystemError（可能应用正在关闭）: {message_str}")
                             except Exception as e:
                                 logger.error(f"显示线程警告对话框失败: {e}", exc_info=True)
                         

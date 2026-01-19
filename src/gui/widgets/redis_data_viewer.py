@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QTableWidget, QTableWidgetItem, QLabel,
     QPushButton, QHeaderView, QMessageBox, QLineEdit,
-    QApplication, QMenu
+    QApplication, QMenu, QPlainTextEdit
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent
 from PyQt6.QtGui import QFont, QKeySequence
@@ -180,9 +180,16 @@ class RedisDataViewer(QWidget):
         self.all_keys_data = []  # 存储所有 key 数据（用于搜索过滤）
         self.value_worker = None  # Redis value 加载工作线程
         self.search_worker = None  # Redis 搜索工作线程
+        self.scan_worker = None  # Redis SCAN 命令工作线程
         self.save_value_worker = None  # Redis 保存值工作线程
         self.delete_keys_worker = None  # Redis 删除 keys 工作线程
+        self.redis_ai_worker = None  # Redis AI 命令生成工作线程
         self.current_loading_key = None  # 当前正在加载的 key（用于验证回调是否有效）
+        
+        # 初始化线程管理器
+        from src.utils.thread_manager import get_thread_manager
+        self.thread_manager = get_thread_manager()
+        
         self.init_ui()
     
     def init_ui(self):
@@ -206,6 +213,39 @@ class RedisDataViewer(QWidget):
         title_font.setBold(True)
         title_label.setFont(title_font)
         left_layout.addWidget(title_label)
+        
+        # AI 智能查询框
+        ai_label = QLabel("AI 智能查询")
+        ai_label.setStyleSheet("font-weight: bold; font-size: 11px; padding: 3px; color: #666;")
+        left_layout.addWidget(ai_label)
+        
+        self.ai_input = QPlainTextEdit()
+        self.ai_input.setPlaceholderText("输入中文描述，AI将生成Redis命令（Enter查询，Shift+Enter换行）")
+        self.ai_input.setFont(QFont("Microsoft YaHei", 9))
+        self.ai_input.setMaximumHeight(80)  # 限制高度
+        self.ai_input.installEventFilter(self)  # 安装事件过滤器，用于处理回车键
+        left_layout.addWidget(self.ai_input)
+        
+        # AI 查询按钮
+        ai_btn_layout = QHBoxLayout()
+        self.ai_generate_btn = QPushButton("AI查询")
+        self.ai_generate_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                padding: 4px 12px;
+                border: none;
+                border-radius: 3px;
+                font-size: 10px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        self.ai_generate_btn.clicked.connect(self.generate_redis_command_from_ai)
+        ai_btn_layout.addWidget(self.ai_generate_btn)
+        ai_btn_layout.addStretch()
+        left_layout.addLayout(ai_btn_layout)
         
         # 搜索框
         search_layout = QHBoxLayout()
@@ -462,31 +502,8 @@ class RedisDataViewer(QWidget):
         
         # 停止之前的搜索 worker
         if self.search_worker:
-            try:
-                old_worker = self.search_worker
-                # 断开信号连接，避免回调执行
-                try:
-                    old_worker.data_ready.disconnect()
-                    old_worker.error_occurred.disconnect()
-                except:
-                    pass
-                
-                # 停止 worker
-                old_worker.stop()
-                
-                # 等待线程结束
-                if old_worker.isRunning():
-                    if not old_worker.wait(500):
-                        old_worker.terminate()
-                        old_worker.wait(200)
-                
-                # 延迟删除，确保线程完全结束
-                from PyQt6.QtCore import QTimer
-                QTimer.singleShot(200, lambda: self._safe_delete_search_worker(old_worker))
-            except Exception as e:
-                logger.warning(f"停止之前的搜索 worker 失败: {e}")
-            finally:
-                self.search_worker = None
+            self.thread_manager.stop_thread(self.search_worker)
+            self.search_worker = None
         
         # 显示搜索状态
         self.search_status_label.setText(f"正在搜索: {search_text}...")
@@ -531,8 +548,8 @@ class RedisDataViewer(QWidget):
                 logger.error(f"处理搜索结果失败: {e}", exc_info=True)
                 self.search_status_label.setText(f"处理搜索结果失败: {str(e)}")
             finally:
-                # 注意：不要在这里删除 worker，让 finished 信号处理最终清理
-                pass
+                # 清理 worker 引用
+                self.search_worker = None
         
         def on_search_error(error_msg: str):
             """搜索错误回调"""
@@ -543,38 +560,15 @@ class RedisDataViewer(QWidget):
             except Exception as e:
                 logger.error(f"处理搜索错误失败: {e}", exc_info=True)
             finally:
-                # 注意：不要在这里删除 worker，让 finished 信号处理最终清理
-                pass
-        
-        # 定义清理函数（当线程完全结束时调用）
-        def cleanup_search_worker():
-            """清理搜索 worker（在线程finished信号触发时调用）"""
-            try:
-                if self.search_worker and self.search_worker == worker:
-                    # 确保线程已经完全结束
-                    if worker.isRunning():
-                        logger.warning(f"Search worker 在 finished 信号触发时仍在运行，等待结束...")
-                        if not worker.wait(1000):  # 等待最多1秒
-                            logger.warning(f"Search worker 未能在1秒内结束，强制终止")
-                            worker.terminate()
-                            worker.wait(500)
-                    
-                    # 延迟删除，确保线程完全结束
-                    from PyQt6.QtCore import QTimer
-                    QTimer.singleShot(200, lambda: self._safe_delete_search_worker(worker))
-                    self.search_worker = None
-            except RuntimeError:
-                pass  # 对象已被删除，忽略
-            except Exception as e:
-                logger.warning(f"清理搜索 worker 时出错: {e}")
-        
-        worker = self.search_worker  # 保存引用用于清理函数
+                # 清理 worker 引用
+                self.search_worker = None
         
         # 连接信号
         self.search_worker.data_ready.connect(on_search_data_ready)
         self.search_worker.error_occurred.connect(on_search_error)
-        # 连接finished信号，确保线程完全结束后才清理
-        self.search_worker.finished.connect(cleanup_search_worker)
+        
+        # 注册到线程管理器
+        self.thread_manager.register_thread(self.search_worker)
         
         # 启动 worker
         self.search_worker.start()
@@ -587,19 +581,8 @@ class RedisDataViewer(QWidget):
         
         # 停止搜索 worker
         if self.search_worker:
-            try:
-                self.search_worker.stop()
-                if self.search_worker.isRunning():
-                    if not self.search_worker.wait(500):
-                        self.search_worker.terminate()
-                        self.search_worker.wait(200)
-                self.search_worker.data_ready.disconnect()
-                self.search_worker.error_occurred.disconnect()
-                self.search_worker.deleteLater()
-            except Exception as e:
-                logger.warning(f"停止搜索 worker 失败: {e}")
-            finally:
-                self.search_worker = None
+            self.thread_manager.stop_thread(self.search_worker)
+            self.search_worker = None
         
         # 重新从 Redis 加载所有数据（不使用 pattern）
         if not self.connection or not self.database:
@@ -634,8 +617,9 @@ class RedisDataViewer(QWidget):
                 logger.error(f"处理重新加载数据失败: {e}", exc_info=True)
                 self.search_status_label.setText(f"重新加载失败: {str(e)}")
             finally:
-                # 注意：不要在这里删除 worker，让 finished 信号处理最终清理
-                pass
+                # 延迟清理 worker 引用
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(300, lambda: setattr(self, 'search_worker', None))
         
         def on_reload_error(error_msg: str):
             """重新加载错误回调"""
@@ -646,38 +630,16 @@ class RedisDataViewer(QWidget):
             except Exception as e:
                 logger.error(f"处理重新加载错误失败: {e}", exc_info=True)
             finally:
-                # 注意：不要在这里删除 worker，让 finished 信号处理最终清理
-                pass
-        
-        # 定义清理函数（当线程完全结束时调用）
-        def cleanup_reload_worker():
-            """清理重新加载 worker（在线程finished信号触发时调用）"""
-            try:
-                if self.search_worker and self.search_worker == reload_worker:
-                    # 确保线程已经完全结束
-                    if reload_worker.isRunning():
-                        logger.warning(f"Reload worker 在 finished 信号触发时仍在运行，等待结束...")
-                        if not reload_worker.wait(1000):  # 等待最多1秒
-                            logger.warning(f"Reload worker 未能在1秒内结束，强制终止")
-                            reload_worker.terminate()
-                            reload_worker.wait(500)
-                    
-                    # 延迟删除，确保线程完全结束
-                    from PyQt6.QtCore import QTimer
-                    QTimer.singleShot(200, lambda: self._safe_delete_search_worker(reload_worker))
-                    self.search_worker = None
-            except RuntimeError:
-                pass  # 对象已被删除，忽略
-            except Exception as e:
-                logger.warning(f"清理重新加载 worker 时出错: {e}")
-        
-        reload_worker = self.search_worker  # 保存引用用于清理函数
+                # 延迟清理 worker 引用
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(300, lambda: setattr(self, 'search_worker', None))
         
         # 连接信号
         self.search_worker.data_ready.connect(on_reload_data_ready)
         self.search_worker.error_occurred.connect(on_reload_error)
-        # 连接finished信号，确保线程完全结束后才清理
-        self.search_worker.finished.connect(cleanup_reload_worker)
+        
+        # 注册到线程管理器
+        self.thread_manager.register_thread(self.search_worker)
         
         # 启动 worker
         self.search_worker.start()
@@ -714,34 +676,8 @@ class RedisDataViewer(QWidget):
         
         # 停止之前的 worker（如果存在）
         if self.value_worker:
-            try:
-                # 断开信号连接，避免回调执行
-                try:
-                    self.value_worker.value_ready.disconnect()
-                    self.value_worker.error_occurred.disconnect()
-                except (RuntimeError, TypeError):
-                    pass  # 信号可能已经断开或对象已删除
-                
-                # 停止 worker
-                self.value_worker.stop()
-                
-                # 等待线程结束
-                if self.value_worker.isRunning():
-                    if not self.value_worker.wait(1000):  # 等待最多1秒
-                        logger.warning(f"value worker 未能在1秒内结束，强制终止")
-                        self.value_worker.terminate()
-                        self.value_worker.wait(500)
-                
-                # 延迟删除，确保线程完全结束
-                from PyQt6.QtCore import QTimer
-                QTimer.singleShot(200, lambda: self._safe_delete_worker(self.value_worker))
-            except (RuntimeError, AttributeError) as e:
-                # 对象已被删除，忽略
-                logger.debug(f"停止之前的 value worker 时对象已删除: {e}")
-            except Exception as e:
-                logger.warning(f"停止之前的 value worker 失败: {e}")
-            finally:
-                self.value_worker = None
+            self.thread_manager.stop_thread(self.value_worker)
+            self.value_worker = None
         
         # 显示加载提示
         self.value_json_editor.set_json_text(f"正在加载 key: {key}...")
@@ -806,11 +742,10 @@ class RedisDataViewer(QWidget):
                 self.value_json_editor.set_json_text(error_text)
                 self.current_value_text = ""
             finally:
-                # 清理 worker（延迟删除，确保线程完全结束）
-                if self.value_worker and self.current_loading_key == key:
+                # 延迟清理 worker 引用
+                if self.current_loading_key == key:
                     from PyQt6.QtCore import QTimer
-                    QTimer.singleShot(200, lambda: self._safe_delete_worker(self.value_worker))
-                    self.value_worker = None
+                    QTimer.singleShot(300, lambda: setattr(self, 'value_worker', None))
         
         def on_error(error_msg: str):
             """加载错误回调"""
@@ -828,104 +763,48 @@ class RedisDataViewer(QWidget):
             except Exception as e:
                 logger.error(f"处理错误回调失败: {e}", exc_info=True)
             finally:
-                # 清理 worker（延迟删除，确保线程完全结束）
-                if self.value_worker and self.current_loading_key == key:
+                # 延迟清理 worker 引用
+                if self.current_loading_key == key:
                     from PyQt6.QtCore import QTimer
-                    QTimer.singleShot(200, lambda: self._safe_delete_worker(self.value_worker))
-                    self.value_worker = None
+                    QTimer.singleShot(300, lambda: setattr(self, 'value_worker', None))
         
         # 连接信号
         self.value_worker.value_ready.connect(on_value_ready)
         self.value_worker.error_occurred.connect(on_error)
+        
+        # 注册到线程管理器
+        self.thread_manager.register_thread(self.value_worker)
         
         # 启动 worker
         self.value_worker.start()
     
     def closeEvent(self, event):
         """关闭事件"""
-        # 停止搜索 worker
+        # 使用线程管理器统一停止所有 worker
+        if self.redis_ai_worker:
+            self.thread_manager.stop_thread(self.redis_ai_worker)
+            self.redis_ai_worker = None
+        
         if self.search_worker:
-            try:
-                self.search_worker.stop()
-                if self.search_worker.isRunning():
-                    if not self.search_worker.wait(500):
-                        self.search_worker.terminate()
-                        self.search_worker.wait(200)
-                self.search_worker.data_ready.disconnect()
-                self.search_worker.error_occurred.disconnect()
-                self.search_worker.deleteLater()
-            except Exception as e:
-                logger.warning(f"停止搜索 worker 失败: {e}")
-            finally:
-                self.search_worker = None
+            self.thread_manager.stop_thread(self.search_worker)
+            self.search_worker = None
         
-        # 停止 value worker
         if self.value_worker:
-            try:
-                # 断开信号连接
-                try:
-                    self.value_worker.value_ready.disconnect()
-                    self.value_worker.error_occurred.disconnect()
-                except (RuntimeError, TypeError):
-                    pass
-                
-                # 停止 worker
-                self.value_worker.stop()
-                
-                # 等待线程结束
-                if self.value_worker.isRunning():
-                    if not self.value_worker.wait(1000):
-                        self.value_worker.terminate()
-                        self.value_worker.wait(500)
-                
-                # 延迟删除，确保线程完全结束
-                from PyQt6.QtCore import QTimer
-                QTimer.singleShot(200, lambda: self._safe_delete_worker(self.value_worker))
-            except (RuntimeError, AttributeError) as e:
-                logger.debug(f"停止 value worker 时对象已删除: {e}")
-            except Exception as e:
-                logger.warning(f"停止 value worker 失败: {e}")
-            finally:
-                self.value_worker = None
-                self.current_loading_key = None
+            self.thread_manager.stop_thread(self.value_worker)
+            self.value_worker = None
+            self.current_loading_key = None
+
+        if self.scan_worker:
+            self.thread_manager.stop_thread(self.scan_worker)
+            self.scan_worker = None
         
-        # 停止 save value worker
         if self.save_value_worker:
-            try:
-                if self.save_value_worker.isRunning():
-                    self.save_value_worker.stop()
-                    if not self.save_value_worker.wait(500):
-                        self.save_value_worker.terminate()
-                        self.save_value_worker.wait(200)
-                    try:
-                        self.save_value_worker.save_success.disconnect()
-                        self.save_value_worker.save_error.disconnect()
-                    except:
-                        pass
-                    self.save_value_worker.deleteLater()
-            except Exception as e:
-                logger.warning(f"停止 save value worker 失败: {e}")
-            finally:
-                self.save_value_worker = None
+            self.thread_manager.stop_thread(self.save_value_worker)
+            self.save_value_worker = None
         
-        # 停止 delete keys worker
         if self.delete_keys_worker:
-            try:
-                if self.delete_keys_worker.isRunning():
-                    self.delete_keys_worker.stop()
-                    if not self.delete_keys_worker.wait(500):
-                        self.delete_keys_worker.terminate()
-                        self.delete_keys_worker.wait(200)
-                    try:
-                        self.delete_keys_worker.delete_success.disconnect()
-                        self.delete_keys_worker.delete_error.disconnect()
-                    except:
-                        pass
-                    self.delete_keys_worker.deleteLater()
-            except Exception as e:
-                logger.warning(f"停止 delete keys worker 失败: {e}")
-            finally:
-                self.delete_keys_worker = None
+            self.thread_manager.stop_thread(self.delete_keys_worker)
+            self.delete_keys_worker = None
         
         # 关闭 Redis 客户端
         if self.redis_client:
@@ -938,12 +817,350 @@ class RedisDataViewer(QWidget):
         
         super().closeEvent(event)
     
+    def generate_redis_command_from_ai(self):
+        """使用AI生成Redis命令并执行"""
+        user_query = self.ai_input.toPlainText().strip()
+        if not user_query:
+            QMessageBox.warning(self, "提示", "请输入中文描述")
+            return
+        
+        if not self.connection:
+            QMessageBox.warning(self, "错误", "未连接到Redis")
+            return
+        
+        # 更新按钮状态
+        self.ai_generate_btn.setText("生成中...")
+        self.ai_generate_btn.setEnabled(False)
+        
+        try:
+            # 获取AI客户端
+            from src.core.ai_client import AIClient
+            from src.core.ai_model_storage import AIModelStorage
+            
+            storage = AIModelStorage()
+            default_model = storage.get_default_model()
+            if not default_model:
+                QMessageBox.warning(self, "错误", "未配置AI模型，请在菜单中配置AI模型")
+                self.ai_generate_btn.setText("AI查询")
+                self.ai_generate_btn.setEnabled(True)
+                return
+            
+            ai_client = AIClient(
+                api_key=default_model.api_key.get_secret_value(),
+                base_url=default_model.get_base_url(),
+                default_model=default_model.default_model,
+                turbo_model=default_model.turbo_model
+            )
+            
+            # 获取当前可用的key列表（用于AI参考）
+            available_keys = []
+            if self.current_keys_data:
+                available_keys = [item.get('Key', '') for item in self.current_keys_data if item.get('Key')]
+            
+            # 在工作线程中生成Redis命令
+            from src.gui.workers.ai_worker import AIWorker
+            from PyQt6.QtCore import QThread
+            
+            class RedisAIWorker(QThread):
+                command_generated = pyqtSignal(str)
+                error_occurred = pyqtSignal(str)
+                
+                def __init__(self, ai_client, user_query, available_keys):
+                    super().__init__()
+                    self.setObjectName(f"RedisAIWorker-{id(self)}")  # 设置线程名称，便于调试
+                    self.ai_client = ai_client
+                    self.user_query = user_query
+                    self.available_keys = available_keys
+                    self._should_stop = False
+                
+                def stop(self):
+                    self._should_stop = True
+                    self.requestInterruption()
+                
+                def run(self):
+                    try:
+                        if self.isInterruptionRequested() or self._should_stop:
+                            return
+                        command = self.ai_client.generate_redis_command(self.user_query, self.available_keys)
+                        if not (self.isInterruptionRequested() or self._should_stop):
+                            self.command_generated.emit(command)
+                    except Exception as e:
+                        if not (self.isInterruptionRequested() or self._should_stop):
+                            self.error_occurred.emit(str(e))
+                    # 注意：QThread 的 run() 方法返回时，线程会自动结束，finished 信号会自动触发
+                    # 不需要调用 quit()，因为 QThread.run() 默认没有事件循环
+            
+            self.redis_ai_worker = RedisAIWorker(ai_client, user_query, available_keys)
+            
+            def on_command_generated(command: str):
+                """命令生成完成回调"""
+                try:
+                    self.ai_generate_btn.setText("AI查询")
+                    self.ai_generate_btn.setEnabled(True)
+
+                    # 将 AI 生成的搜索命令/模式填入搜索框，便于查看与复用
+                    command_text = command.strip()
+                    if command_text:
+                        parts = command_text.split()
+                        if parts and parts[0].upper() == 'SCAN':
+                            # SCAN 命令优先提取 MATCH 模式
+                            pattern = None
+                            i = 1
+                            while i < len(parts):
+                                if parts[i].upper() == 'MATCH' and i + 1 < len(parts):
+                                    pattern = parts[i + 1]
+                                    break
+                                i += 1
+                            self.search_input.setText(pattern if pattern else command_text)
+                        else:
+                            self.search_input.setText(command_text)
+                    
+                    # 执行生成的Redis命令
+                    self.execute_redis_command(command)
+                except Exception as e:
+                    logger.error(f"执行AI生成的Redis命令失败: {e}", exc_info=True)
+                    QMessageBox.warning(self, "错误", f"执行Redis命令失败: {str(e)}")
+                    self.ai_generate_btn.setText("AI查询")
+                    self.ai_generate_btn.setEnabled(True)
+                finally:
+                    # 延迟清理 worker 引用，确保线程完全结束
+                    from PyQt6.QtCore import QTimer
+                    QTimer.singleShot(300, lambda: setattr(self, 'redis_ai_worker', None))
+            
+            def on_ai_error(error_msg: str):
+                """AI生成失败回调"""
+                try:
+                    QMessageBox.warning(self, "错误", f"AI生成Redis命令失败: {error_msg}")
+                    self.ai_generate_btn.setText("AI查询")
+                    self.ai_generate_btn.setEnabled(True)
+                finally:
+                    # 延迟清理 worker 引用，确保线程完全结束
+                    from PyQt6.QtCore import QTimer
+                    QTimer.singleShot(300, lambda: setattr(self, 'redis_ai_worker', None))
+            
+            # 连接信号
+            self.redis_ai_worker.command_generated.connect(on_command_generated)
+            self.redis_ai_worker.error_occurred.connect(on_ai_error)
+            
+            # 注册线程到线程管理器，自动处理清理
+            # 注意：不需要提供 cleanup_callback，ThreadManager 会自动处理线程的清理
+            from src.utils.thread_manager import get_thread_manager
+            thread_manager = get_thread_manager()
+            thread_manager.register_thread(self.redis_ai_worker)
+            
+            self.redis_ai_worker.start()
+            
+        except Exception as e:
+            logger.error(f"生成Redis命令失败: {e}", exc_info=True)
+            QMessageBox.warning(self, "错误", f"生成Redis命令失败: {str(e)}")
+            self.ai_generate_btn.setText("AI查询")
+            self.ai_generate_btn.setEnabled(True)
+    
+    def execute_redis_command(self, command: str):
+        """执行Redis命令"""
+        if not command or not command.strip():
+            return
+        
+        if not self.connection:
+            QMessageBox.warning(self, "错误", "未连接到Redis")
+            return
+        
+        try:
+            # 解析命令
+            parts = command.strip().split()
+            if not parts:
+                return
+            
+            cmd = parts[0].upper()
+            args = parts[1:] if len(parts) > 1 else []
+            
+            # 创建Redis客户端
+            redis_client = RedisClient(self.connection)
+            client = redis_client.get_client()
+            
+            # 切换到指定数据库
+            if self.database:
+                try:
+                    db_num = int(self.database)
+                    client.execute_command('SELECT', db_num)
+                except ValueError:
+                    pass
+            
+            # 执行命令
+            if cmd == 'GET':
+                if args:
+                    value = client.get(args[0])
+                    if value:
+                        # 显示单个key的值
+                        self._display_single_key(args[0], 'string', value)
+                    else:
+                        QMessageBox.information(self, "结果", f"Key '{args[0]}' 不存在或值为空")
+            elif cmd == 'HGETALL':
+                if args:
+                    data = client.hgetall(args[0])
+                    if data:
+                        # 显示哈希数据
+                        self._display_hash_data(args[0], data)
+                    else:
+                        QMessageBox.information(self, "结果", f"Key '{args[0]}' 不存在或为空")
+            elif cmd == 'SCAN':
+                # 处理SCAN命令
+                cursor = int(args[0]) if args and args[0].isdigit() else 0
+                pattern = None
+                count = 100
+                
+                # 解析参数
+                i = 1
+                while i < len(args):
+                    if args[i].upper() == 'MATCH' and i + 1 < len(args):
+                        pattern = args[i + 1]
+                        i += 2
+                    elif args[i].upper() == 'COUNT' and i + 1 < len(args):
+                        count = int(args[i + 1])
+                        i += 2
+                    else:
+                        i += 1
+                
+                # 执行SCAN并显示结果
+                self._execute_scan_and_display(cursor, pattern, count)
+            elif cmd == 'DBSIZE':
+                size = client.dbsize()
+                QMessageBox.information(self, "结果", f"当前数据库共有 {size} 个 key")
+            elif cmd == 'KEYS':
+                if args:
+                    keys = client.keys(args[0])
+                    if keys:
+                        # 显示keys列表
+                        self._display_keys_list(keys)
+                    else:
+                        QMessageBox.information(self, "结果", "未找到匹配的 key")
+                else:
+                    QMessageBox.warning(self, "错误", "KEYS 命令需要 pattern 参数")
+            else:
+                # 其他命令，尝试直接执行
+                try:
+                    result = client.execute_command(cmd, *args)
+                    QMessageBox.information(self, "结果", f"命令执行成功\n结果: {str(result)[:200]}")
+                except Exception as e:
+                    QMessageBox.warning(self, "错误", f"执行命令失败: {str(e)}")
+            
+            redis_client.close()
+            
+        except Exception as e:
+            logger.error(f"执行Redis命令失败: {e}", exc_info=True)
+            QMessageBox.warning(self, "错误", f"执行Redis命令失败: {str(e)}")
+    
+    def _display_single_key(self, key: str, key_type: str, value):
+        """显示单个key的值"""
+        # 更新表格，选中该key
+        for row in range(self.keys_table.rowCount()):
+            if self.keys_table.item(row, 0) and self.keys_table.item(row, 0).text() == key:
+                self.keys_table.clearSelection()
+                self.keys_table.selectRow(row)
+                self.on_key_selected()
+                break
+        else:
+            # 如果key不在表格中，直接显示值
+            self.value_title_label.setText(f"Key: {key} (类型: {key_type})")
+            if isinstance(value, bytes):
+                value = value.decode('utf-8', errors='ignore')
+            self.value_json_editor.set_json_text(str(value))
+            self.current_key_name = key
+            self.current_key_type = key_type
+    
+    def _display_hash_data(self, key: str, data: dict):
+        """显示哈希数据"""
+        # 转换为JSON格式显示
+        json_data = {}
+        for k, v in data.items():
+            if isinstance(k, bytes):
+                k = k.decode('utf-8', errors='ignore')
+            if isinstance(v, bytes):
+                v = v.decode('utf-8', errors='ignore')
+            json_data[k] = v
+        
+        self.value_title_label.setText(f"Key: {key} (类型: hash)")
+        self.value_json_editor.set_json_text(json.dumps(json_data, ensure_ascii=False, indent=2))
+        self.current_key_name = key
+        self.current_key_type = 'hash'
+    
+    def _execute_scan_and_display(self, cursor: int, pattern: Optional[str], count: int):
+        """执行SCAN命令并显示结果"""
+        from src.gui.workers.redis_data_worker import RedisDataWorker
+        
+        # 停止之前的扫描 worker（如果存在）
+        if self.scan_worker:
+            self.thread_manager.stop_thread(self.scan_worker)
+            self.scan_worker = None
+
+        # 使用 worker 执行 SCAN
+        worker = RedisDataWorker(self.connection, self.database, limit=count, pattern=pattern)
+        self.scan_worker = worker
+        worker_id = id(worker)
+
+        def clear_scan_worker():
+            if self.scan_worker is not None and id(self.scan_worker) == worker_id:
+                self.scan_worker = None
+        
+        def on_scan_data_ready(data, columns):
+            try:
+                self.current_keys_data = data
+                self._populate_table(data)
+                if data:
+                    self.search_status_label.setText(f"找到 {len(data)} 个 key")
+                    self.search_status_label.show()
+            finally:
+                clear_scan_worker()
+        
+        def on_scan_error(error_msg: str):
+            try:
+                QMessageBox.warning(self, "错误", f"SCAN命令执行失败: {error_msg}")
+            finally:
+                clear_scan_worker()
+        
+        worker.data_ready.connect(on_scan_data_ready)
+        worker.error_occurred.connect(on_scan_error)
+        worker.finished.connect(clear_scan_worker, Qt.ConnectionType.QueuedConnection)
+
+        # 注册到线程管理器
+        self.thread_manager.register_thread(worker)
+
+        worker.start()
+    
+    def _display_keys_list(self, keys: list):
+        """显示keys列表"""
+        # 转换为表格数据格式
+        data = []
+        for key in keys:
+            if isinstance(key, bytes):
+                key = key.decode('utf-8', errors='ignore')
+            data.append({
+                'Key': key,
+                'Type': 'unknown',
+                'TTL': '-',
+                'Size': '-'
+            })
+        
+        self.current_keys_data = data
+        self._populate_table(data)
+        if data:
+            self.search_status_label.setText(f"找到 {len(data)} 个 key")
+            self.search_status_label.show()
+    
     def eventFilter(self, obj, event):
-        """事件过滤器，处理 Ctrl+C 复制"""
-        if obj == self.keys_table and event.type() == QEvent.Type.KeyPress:
+        """事件过滤器，处理 Ctrl+C 复制和 AI 输入框的 Enter 键"""
+        # 检查 keys_table 是否已初始化（可能在 init_ui 完成前被调用）
+        if hasattr(self, 'keys_table') and obj == self.keys_table and event.type() == QEvent.Type.KeyPress:
             if event.matches(QKeySequence.StandardKey.Copy):
                 self.copy_selected_cells()
                 return True
+        elif hasattr(self, 'ai_input') and obj == self.ai_input and event.type() == QEvent.Type.KeyPress:
+            # 处理 AI 输入框的 Enter 键
+            if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+                # 如果按的是 Enter（不是 Shift+Enter），触发AI查询
+                if event.modifiers() != Qt.KeyboardModifier.ShiftModifier:
+                    self.generate_redis_command_from_ai()
+                    return True
         return super().eventFilter(obj, event)
     
     def copy_selected_cells(self):
@@ -1035,42 +1252,6 @@ class RedisDataViewer(QWidget):
         if not menu.isEmpty():
             menu.exec(self.keys_table.mapToGlobal(position))
     
-    def _safe_delete_worker(self, worker):
-        """安全删除 worker（确保线程已完全结束）"""
-        if not worker:
-            return
-        try:
-            if not worker.isRunning():
-                worker.deleteLater()
-        except (RuntimeError, AttributeError):
-            # 对象已被删除，忽略
-            pass
-    
-    def _safe_delete_search_worker(self, worker):
-        """安全删除搜索 worker（确保线程已完全结束）"""
-        if not worker:
-            return
-        try:
-            # 检查线程是否还在运行
-            if worker.isRunning():
-                logger.warning(f"尝试删除仍在运行的 search worker")
-                return  # 如果还在运行，不删除
-            
-            # 断开所有信号连接
-            try:
-                worker.data_ready.disconnect()
-                worker.error_occurred.disconnect()
-                worker.finished.disconnect()
-            except (RuntimeError, TypeError):
-                pass
-            
-            # 删除 worker
-            worker.deleteLater()
-        except (RuntimeError, AttributeError):
-            pass  # 对象已被删除，忽略
-        except Exception as e:
-            logger.warning(f"安全删除 search worker 时出错: {e}")
-    
     def _enable_value_editing(self, enabled: bool):
         """启用或禁用值编辑功能"""
         # 获取编辑器内部对象
@@ -1130,18 +1311,31 @@ class RedisDataViewer(QWidget):
         )
         
         def on_save_success():
-            QMessageBox.information(self, "成功", f"Key '{self.current_key_name}' 的值已保存")
-            # 重新加载值以显示最新内容
-            self.load_key_value(self.current_key_name, self.current_key_type)
-            # 刷新 key 列表
-            self._refresh_keys_list()
+            try:
+                QMessageBox.information(self, "成功", f"Key '{self.current_key_name}' 的值已保存")
+                # 重新加载值以显示最新内容
+                self.load_key_value(self.current_key_name, self.current_key_type)
+                # 刷新 key 列表
+                self._refresh_keys_list()
+            finally:
+                # 延迟清理 worker 引用
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(300, lambda: setattr(self, 'save_value_worker', None))
         
         def on_save_error(error_msg: str):
-            QMessageBox.warning(self, "保存失败", f"保存失败: {error_msg}")
-            self.save_value_btn.setEnabled(True)  # 恢复按钮状态
+            try:
+                QMessageBox.warning(self, "保存失败", f"保存失败: {error_msg}")
+                self.save_value_btn.setEnabled(True)  # 恢复按钮状态
+            finally:
+                # 延迟清理 worker 引用
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(300, lambda: setattr(self, 'save_value_worker', None))
         
         self.save_value_worker.save_success.connect(on_save_success)
         self.save_value_worker.save_error.connect(on_save_error)
+        
+        # 注册到线程管理器
+        self.thread_manager.register_thread(self.save_value_worker)
         
         self.save_value_btn.setEnabled(False)  # 保存时禁用按钮
         self.save_value_worker.start()
@@ -1194,21 +1388,34 @@ class RedisDataViewer(QWidget):
         )
         
         def on_delete_success(deleted_count: int):
-            QMessageBox.information(self, "成功", f"已删除 {deleted_count} 个 Key")
-            # 刷新 key 列表
-            self._refresh_keys_list()
-            # 清空 value 显示区域
-            self.value_json_editor.set_json_text("")
-            self.value_title_label.setText("选择一个 Key 查看详细值")
-            self.current_key_name = ""
-            self.current_key_type = ""
-            self._enable_value_editing(False)
+            try:
+                QMessageBox.information(self, "成功", f"已删除 {deleted_count} 个 Key")
+                # 刷新 key 列表
+                self._refresh_keys_list()
+                # 清空 value 显示区域
+                self.value_json_editor.set_json_text("")
+                self.value_title_label.setText("选择一个 Key 查看详细值")
+                self.current_key_name = ""
+                self.current_key_type = ""
+                self._enable_value_editing(False)
+            finally:
+                # 延迟清理 worker 引用
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(300, lambda: setattr(self, 'delete_keys_worker', None))
         
         def on_delete_error(error_msg: str):
-            QMessageBox.warning(self, "删除失败", f"删除失败: {error_msg}")
+            try:
+                QMessageBox.warning(self, "删除失败", f"删除失败: {error_msg}")
+            finally:
+                # 延迟清理 worker 引用
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(300, lambda: setattr(self, 'delete_keys_worker', None))
         
         self.delete_keys_worker.delete_success.connect(on_delete_success)
         self.delete_keys_worker.delete_error.connect(on_delete_error)
+        
+        # 注册到线程管理器
+        self.thread_manager.register_thread(self.delete_keys_worker)
         
         self.delete_keys_worker.start()
     
@@ -1219,31 +1426,8 @@ class RedisDataViewer(QWidget):
         
         # 停止之前的搜索 worker（如果存在）
         if self.search_worker:
-            try:
-                old_worker = self.search_worker
-                # 断开信号连接，避免回调执行
-                try:
-                    old_worker.data_ready.disconnect()
-                    old_worker.error_occurred.disconnect()
-                except:
-                    pass
-                
-                # 停止 worker
-                old_worker.stop()
-                
-                # 等待线程结束
-                if old_worker.isRunning():
-                    if not old_worker.wait(500):
-                        old_worker.terminate()
-                        old_worker.wait(200)
-                
-                # 延迟删除，确保线程完全结束
-                from PyQt6.QtCore import QTimer
-                QTimer.singleShot(200, lambda: self._safe_delete_search_worker(old_worker))
-            except Exception as e:
-                logger.warning(f"停止刷新 worker 失败: {e}")
-            finally:
-                self.search_worker = None
+            self.thread_manager.stop_thread(self.search_worker)
+            self.search_worker = None
         
         # 触发重新搜索（使用当前搜索条件，如果没有则搜索所有）
         search_text = self.search_input.text().strip()
@@ -1253,42 +1437,30 @@ class RedisDataViewer(QWidget):
             self.search_worker = RedisDataWorker(self.connection, self.database, limit=100)
             
             def on_data_ready(data, columns):
-                self.all_keys_data = data
-                self.current_keys_data = data
-                self._populate_table(data)
-                self.search_status_label.hide()
+                try:
+                    self.all_keys_data = data
+                    self.current_keys_data = data
+                    self._populate_table(data)
+                    self.search_status_label.hide()
+                finally:
+                    # 延迟清理 worker 引用
+                    from PyQt6.QtCore import QTimer
+                    QTimer.singleShot(300, lambda: setattr(self, 'search_worker', None))
             
             def on_error(error_msg: str):
-                QMessageBox.warning(self, "错误", f"刷新失败: {error_msg}")
-            
-            # 定义清理函数（当线程完全结束时调用）
-            def cleanup_refresh_worker():
-                """清理刷新 worker（在线程finished信号触发时调用）"""
                 try:
-                    if self.search_worker and self.search_worker == refresh_worker:
-                        # 确保线程已经完全结束
-                        if refresh_worker.isRunning():
-                            logger.warning(f"Refresh worker 在 finished 信号触发时仍在运行，等待结束...")
-                            if not refresh_worker.wait(1000):  # 等待最多1秒
-                                logger.warning(f"Refresh worker 未能在1秒内结束，强制终止")
-                                refresh_worker.terminate()
-                                refresh_worker.wait(500)
-                        
-                        # 延迟删除，确保线程完全结束
-                        from PyQt6.QtCore import QTimer
-                        QTimer.singleShot(200, lambda: self._safe_delete_search_worker(refresh_worker))
-                        self.search_worker = None
-                except RuntimeError:
-                    pass  # 对象已被删除，忽略
-                except Exception as e:
-                    logger.warning(f"清理刷新 worker 时出错: {e}")
-            
-            refresh_worker = self.search_worker  # 保存引用用于清理函数
+                    QMessageBox.warning(self, "错误", f"刷新失败: {error_msg}")
+                finally:
+                    # 延迟清理 worker 引用
+                    from PyQt6.QtCore import QTimer
+                    QTimer.singleShot(300, lambda: setattr(self, 'search_worker', None))
             
             self.search_worker.data_ready.connect(on_data_ready)
             self.search_worker.error_occurred.connect(on_error)
-            # 连接finished信号，确保线程完全结束后才清理
-            self.search_worker.finished.connect(cleanup_refresh_worker)
+            
+            # 注册到线程管理器
+            self.thread_manager.register_thread(self.search_worker)
+            
             self.search_worker.start()
         else:
             # 如果有搜索条件，重新执行搜索

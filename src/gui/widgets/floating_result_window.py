@@ -213,14 +213,9 @@ class FloatingResultWindow(QMainWindow):
                     # 如果等待超时，强制终止
                     self.query_worker.terminate()
                     self.query_worker.wait(500)
-                # 断开信号连接
-                try:
-                    self.query_worker.query_finished.disconnect()
-                except:
-                    pass
-                # 延迟删除，确保线程完全结束
-                from PyQt6.QtCore import QTimer
-                QTimer.singleShot(200, self.query_worker.deleteLater)
+                # 使用 safe_delete_thread 自动处理线程清理
+                from src.utils.thread_manager import safe_delete_thread
+                safe_delete_thread(self.query_worker)
             except KeyboardInterrupt:
                 logger.warning("等待查询中断")
                 pass
@@ -289,17 +284,12 @@ class FloatingResultWindow(QMainWindow):
             logger.error(f"处理查询结果失败: {str(e)}", exc_info=True)
             self.statusBar().showMessage(f"处理结果失败: {str(e)}", 5000)
         finally:
-            # 清理worker（延迟删除，确保线程已完全结束）
+            # 清理worker，使用 safe_delete_thread 自动处理
             if self.query_worker:
-                try:
-                    self.query_worker.query_finished.disconnect()
-                except:
-                    pass
-                # 只有在线程已经结束时才删除
-                if not self.query_worker.isRunning():
-                    from PyQt6.QtCore import QTimer
-                    QTimer.singleShot(200, self.query_worker.deleteLater)
+                worker = self.query_worker
                 self.query_worker = None
+                from src.utils.thread_manager import safe_delete_thread
+                safe_delete_thread(worker)
     
     def closeEvent(self, event):
         """窗口关闭事件"""
@@ -312,14 +302,9 @@ class FloatingResultWindow(QMainWindow):
                     # 如果等待超时，强制终止
                     self.query_worker.terminate()
                     self.query_worker.wait(500)
-                # 断开信号连接
-                try:
-                    self.query_worker.query_finished.disconnect()
-                except:
-                    pass
-                # 延迟删除，确保线程完全结束
-                from PyQt6.QtCore import QTimer
-                QTimer.singleShot(200, self.query_worker.deleteLater)
+                # 使用 safe_delete_thread 自动处理线程清理
+                from src.utils.thread_manager import safe_delete_thread
+                safe_delete_thread(self.query_worker)
             except Exception as e:
                 logger.warning(f"停止查询线程失败: {str(e)}")
             finally:

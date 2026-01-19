@@ -16,6 +16,7 @@ from .prompts import (
     EDIT_TABLE_GENERATE_SQL_SYSTEM_PROMPT,
     PARSE_CONNECTION_CONFIG_SYSTEM_PROMPT,
 )
+from .prompts.query_prompts import GENERATE_REDIS_COMMAND_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,9 @@ class PromptConfig(BaseModel):
 
     # 识别数据库连接配置的系统提示词（从 prompts/connection_prompts.py 导入）
     parse_connection_config_system: str = PARSE_CONNECTION_CONFIG_SYSTEM_PROMPT
+    
+    # 生成Redis命令的系统提示词（从 prompts/query_prompts.py 导入）
+    generate_redis_command_system: str = GENERATE_REDIS_COMMAND_SYSTEM_PROMPT
 
 
 class PromptStorage:
@@ -74,6 +78,7 @@ class PromptStorage:
                 'create_table_generate_sql_system': prompts_dict.get('create_table_generate_sql_system', CREATE_TABLE_GENERATE_SQL_SYSTEM_PROMPT),
                 'edit_table_generate_sql_system': prompts_dict.get('edit_table_generate_sql_system', EDIT_TABLE_GENERATE_SQL_SYSTEM_PROMPT),
                 'parse_connection_config_system': prompts_dict.get('parse_connection_config_system', PARSE_CONNECTION_CONFIG_SYSTEM_PROMPT),
+                'generate_redis_command_system': prompts_dict.get('generate_redis_command_system', GENERATE_REDIS_COMMAND_SYSTEM_PROMPT),
             }
             
             return PromptConfig(**config_dict)
@@ -93,6 +98,7 @@ class PromptStorage:
             self.config_db.save_prompt('create_table_generate_sql_system', config.create_table_generate_sql_system)
             self.config_db.save_prompt('edit_table_generate_sql_system', config.edit_table_generate_sql_system)
             self.config_db.save_prompt('parse_connection_config_system', config.parse_connection_config_system)
+            self.config_db.save_prompt('generate_redis_command_system', config.generate_redis_command_system)
             
             # 保存 query_enum_values 到 settings 表
             self.config_db.save_setting('query_enum_values', config.query_enum_values)

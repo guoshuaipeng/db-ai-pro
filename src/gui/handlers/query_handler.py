@@ -183,21 +183,13 @@ class QueryHandler:
             logger.error(f"更新UI失败: {str(e)}")
         
         # 清理工作线程
-        # 注意：不要在这里立即删除，让线程自然结束
-        # 线程会在 run() 方法结束后自动结束
-        if self.main_window.query_worker and not self.main_window.query_worker.isRunning():
-            # 只有在线程已经结束时才清理
+        # 使用 safe_delete_thread 函数，它会自动处理线程的清理
+        # 不需要手动断开信号，不需要延时，Qt 会自动处理
+        if self.main_window.query_worker:
             worker = self.main_window.query_worker
             self.main_window.query_worker = None
-            # 断开信号连接
-            try:
-                worker.query_finished.disconnect()
-                worker.query_progress.disconnect()
-                worker.multi_query_finished.disconnect()
-            except:
-                pass
-            # 延迟删除，确保所有信号处理完成
-            QTimer.singleShot(200, worker.deleteLater)
+            from src.utils.thread_manager import safe_delete_thread
+            safe_delete_thread(worker)
     
     def on_multi_query_finished(self, results: list):
         """多条查询完成回调"""
@@ -245,8 +237,9 @@ class QueryHandler:
                 worker.multi_query_finished.disconnect()
             except:
                 pass
-            # 延迟删除，确保所有信号处理完成
-            QTimer.singleShot(200, worker.deleteLater)
+            # 使用 safe_delete_thread 函数，自动处理线程清理
+            from src.utils.thread_manager import safe_delete_thread
+            safe_delete_thread(worker)
     
     def query_table_data(self, connection_id: str, table_name: str, database: Optional[str] = None):
         """查询表数据（在点击事件中调用，确保不阻塞UI）"""

@@ -122,14 +122,8 @@ class TreeDataHandler:
             if worker:
                 logger.debug(f"连接 {connection_id} 的数据库列表正在加载中，停止旧worker")
                 try:
-                    # 断开信号连接
-                    try:
-                        worker.databases_ready.disconnect()
-                        worker.error_occurred.disconnect()
-                        worker.finished.disconnect()
-                    except:
-                        pass
-                    # 使用线程管理器停止线程
+                    # 使用线程管理器停止线程（会自动处理信号断开）
+                    # 注意：不要手动断开信号，ThreadManager 会在删除对象时自动处理
                     self.thread_manager.stop_thread(worker, timeout=500, force=True)
                 except Exception as e:
                     logger.warning(f"停止旧worker时出错: {str(e)}")
@@ -204,14 +198,8 @@ class TreeDataHandler:
                 old_worker = self.main_window.database_list_workers[connection_id]
                 if old_worker:
                     try:
-                        # 断开信号连接，避免旧worker的回调影响新操作
-                        try:
-                            old_worker.databases_ready.disconnect()
-                            old_worker.error_occurred.disconnect()
-                            old_worker.finished.disconnect()
-                        except:
-                            pass
-                        # 使用线程管理器停止线程
+                        # 使用线程管理器停止线程（会自动处理信号断开）
+                        # 注意：不要手动断开信号，ThreadManager 会在删除对象时自动处理
                         self.thread_manager.stop_thread(old_worker, timeout=500, force=True)
                     except Exception as e:
                         logger.warning(f"停止旧worker时出错: {str(e)}")
@@ -278,13 +266,11 @@ class TreeDataHandler:
                     worker = self.main_window.database_list_workers[connection_id]
                     if worker:
                         try:
-                            worker.databases_ready.disconnect()
-                            worker.error_occurred.disconnect()
-                            worker.finished.disconnect()
+                            # 使用线程管理器停止线程（会自动处理信号断开）
+                            # 注意：不要手动断开信号，ThreadManager 会在删除对象时自动处理
+                            self.thread_manager.stop_thread(worker, timeout=1000, force=True)
                         except:
                             pass
-                        # 使用线程管理器停止线程
-                        self.thread_manager.stop_thread(worker, timeout=1000, force=True)
                     del self.main_window.database_list_workers[connection_id]
                 except:
                     pass
@@ -338,21 +324,9 @@ class TreeDataHandler:
             logger.warning(f"⚠️ connection_id 为空，无法保存数据库缓存")
         
         # 清理worker引用（线程会通过finished信号自动清理，这里只清理字典引用）
-        # 断开信号（但保留 worker 在字典中，让 cleanup_worker 通过 finished 信号来处理最终清理）
-        # 这样可以确保线程完全结束后才删除 worker
-        if connection_id and connection_id in self.main_window.database_list_workers:
-            try:
-                worker = self.main_window.database_list_workers[connection_id]
-                if worker:
-                    try:
-                        worker.databases_ready.disconnect()
-                        worker.error_occurred.disconnect()
-                    except (RuntimeError, TypeError):
-                        pass  # 信号可能已经断开
-                    # 不在这里删除 worker，让 cleanup_worker（通过 finished 信号）来处理
-                    # worker 会在 finished 信号触发时由 cleanup_worker 清理
-            except RuntimeError:
-                pass
+        # 注意：不要在这里断开信号或删除 worker，让 cleanup_worker（通过 finished 信号）来处理
+        # ThreadManager 会自动处理信号断开和对象删除
+        # worker 会在 finished 信号触发时由 cleanup_worker 清理
         
         # 检查已存在的数据库项，避免重复添加
         existing_databases = set()
@@ -410,11 +384,13 @@ class TreeDataHandler:
                 if connection_id in self.main_window.redis_dbsize_workers:
                     old_worker = self.main_window.redis_dbsize_workers[connection_id]
                     try:
-                        if old_worker and old_worker.isRunning():
-                            old_worker.stop()
-                            # 不等待，让线程自己结束，稍后自动清理
-                            # 使用QTimer延迟删除，确保线程完全结束
-                            QTimer.singleShot(300, lambda: self._safe_delete_worker(old_worker))
+                        if old_worker:
+                            # 使用线程管理器安全停止并清理旧 worker
+                            from src.utils.thread_manager import get_thread_manager, safe_delete_thread
+                            thread_manager = getattr(self.main_window, 'thread_manager', None) or get_thread_manager()
+                            if old_worker.isRunning():
+                                thread_manager.stop_thread(old_worker, timeout=1000, force=True)
+                            safe_delete_thread(old_worker)
                     except Exception as e:
                         logger.debug(f"停止旧的 Redis dbsize worker 失败: {e}")
                     finally:
@@ -463,29 +439,34 @@ class TreeDataHandler:
                 """查询失败（不影响界面，只记录日志）"""
                 logger.debug(f"查询 Redis 数据库大小失败: {error}（不影响界面显示）")
             
-            def on_finished():
+            def cleanup_worker():
                 """worker 完成，清理引用"""
                 try:
                     # 检查窗口是否正在关闭
                     if hasattr(self.main_window, '_is_closing') and self.main_window._is_closing:
                         return
                     
-                    # 从字典中移除 worker 引用
+                    # 从字典中移除 worker 引用（确保只移除当前 worker）
                     if hasattr(self.main_window, 'redis_dbsize_workers'):
-                        if connection_id in self.main_window.redis_dbsize_workers:
+                        current = self.main_window.redis_dbsize_workers.get(connection_id)
+                        if current is not None and id(current) == worker_id:
                             del self.main_window.redis_dbsize_workers[connection_id]
-                    worker.deleteLater()
                 except Exception as e:
                     logger.debug(f"清理 Redis dbsize worker 失败: {e}")
             
             worker.sizes_ready.connect(on_sizes_ready, Qt.ConnectionType.QueuedConnection)
             worker.error_occurred.connect(on_error, Qt.ConnectionType.QueuedConnection)
-            worker.finished.connect(on_finished, Qt.ConnectionType.QueuedConnection)
             
             # 保存 worker 引用，以便在应用关闭时可以停止它
             if not hasattr(self.main_window, 'redis_dbsize_workers'):
                 self.main_window.redis_dbsize_workers = {}
             self.main_window.redis_dbsize_workers[connection_id] = worker
+
+            # 注册线程到线程管理器，自动处理清理
+            from src.utils.thread_manager import get_thread_manager
+            thread_manager = getattr(self.main_window, 'thread_manager', None) or get_thread_manager()
+            worker_id = id(worker)
+            thread_manager.register_thread(worker, cleanup_worker)
             
             # 启动 worker（在后台线程中运行，不阻塞界面）
             worker.start()
@@ -505,12 +486,8 @@ class TreeDataHandler:
                     if worker and hasattr(worker, 'connection_item') and worker.connection_item == connection_item:
                         try:
                             if worker:
-                                try:
-                                    worker.databases_ready.disconnect()
-                                    worker.error_occurred.disconnect()
-                                except:
-                                    pass
-                                # 断开信号后，不再需要立即删除，finished信号会处理清理
+                                # 注意：不要手动断开信号，ThreadManager 会自动处理
+                                # finished信号会处理清理
                                 del self.main_window.database_list_workers[conn_id]
                         except:
                             pass
@@ -576,12 +553,8 @@ class TreeDataHandler:
                     if worker and hasattr(worker, 'connection_item') and worker.connection_item == connection_item:
                         try:
                             if worker:
-                                try:
-                                    worker.databases_ready.disconnect()
-                                    worker.error_occurred.disconnect()
-                                except:
-                                    pass
-                                # 断开信号后，不再需要立即删除，finished信号会处理清理
+                                # 注意：不要手动断开信号，ThreadManager 会自动处理
+                                # finished信号会处理清理
                                 del self.main_window.database_list_workers[conn_id]
                         except RuntimeError:
                             pass
@@ -1288,14 +1261,11 @@ class TreeDataHandler:
             try:
                 if old_worker and old_worker.isRunning():
                     try:
-                        old_worker.databases_ready.disconnect()
-                        old_worker.error_occurred.disconnect()
+                        # 使用线程管理器停止线程（会自动处理信号断开）
+                        # 注意：不要手动断开信号，ThreadManager 会在删除对象时自动处理
+                        self.thread_manager.stop_thread(old_worker, timeout=500, force=True)
                     except:
                         pass
-                    old_worker.stop()
-                    # 不等待，让线程自己结束，稍后自动清理
-                    # 使用QTimer延迟删除，确保线程完全结束
-                    QTimer.singleShot(300, lambda: self._safe_delete_worker(old_worker))
             except RuntimeError:
                 pass
             except Exception as e:

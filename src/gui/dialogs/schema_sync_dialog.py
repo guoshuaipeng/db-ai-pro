@@ -447,9 +447,9 @@ class Step1SelectDatabasesPage(QWizardPage):
         def cleanup_worker():
             """清理worker（在线程finished信号触发时调用）"""
             try:
-                # 延迟删除，确保线程完全结束
-                from PyQt6.QtCore import QTimer
-                QTimer.singleShot(200, lambda: worker.deleteLater())
+                # 使用 safe_delete_thread，自动处理线程清理
+                from src.utils.thread_manager import safe_delete_thread
+                safe_delete_thread(worker)
             except RuntimeError:
                 pass  # 对象已被删除，忽略
         
