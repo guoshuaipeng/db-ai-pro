@@ -9,6 +9,7 @@ from typing import Optional
 
 from src.gui.widgets.redis_data_viewer import RedisDataViewer
 from src.gui.workers.redis_data_worker import RedisDataWorker
+from src.utils.thread_manager import safe_delete_thread
 
 logger = logging.getLogger(__name__)
 
@@ -323,7 +324,7 @@ class RedisHandler:
                 pass
             
             # 删除 worker
-            worker.deleteLater()
+            safe_delete_thread(worker)
         except (RuntimeError, AttributeError):
             pass  # 对象已被删除，忽略
         except Exception as e:

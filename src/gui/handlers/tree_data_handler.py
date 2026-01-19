@@ -16,7 +16,7 @@ from src.utils.ui_helpers import (
     get_table_icon,
     get_category_icon
 )
-from src.utils.thread_manager import get_thread_manager
+from src.utils.thread_manager import get_thread_manager, safe_delete_thread
 
 if TYPE_CHECKING:
     from src.gui.main_window import MainWindow
@@ -816,7 +816,7 @@ class TreeDataHandler:
                             self.main_window.table_list_worker_for_tree.terminate()
                             self.main_window.table_list_worker_for_tree.wait(200)
                         # 线程已停止，安全删除
-                        self.main_window.table_list_worker_for_tree.deleteLater()
+                        safe_delete_thread(self.main_window.table_list_worker_for_tree)
                 except RuntimeError:
                     # 对象已被删除，忽略
                     pass
@@ -1306,7 +1306,7 @@ class TreeDataHandler:
                     del self.main_window.database_list_workers[connection_id]
                 
                 # 延迟删除，确保线程完全结束
-                QTimer.singleShot(200, lambda: self._safe_delete_worker(worker))
+                safe_delete_thread(worker)
             except RuntimeError:
                 pass  # 对象已被删除，忽略
             except Exception as e:
@@ -1434,7 +1434,7 @@ class TreeDataHandler:
                     if not self.main_window.table_list_worker_for_tree.wait(200):
                         self.main_window.table_list_worker_for_tree.terminate()
                         self.main_window.table_list_worker_for_tree.wait(100)
-                    self.main_window.table_list_worker_for_tree.deleteLater()
+                    safe_delete_thread(self.main_window.table_list_worker_for_tree)
             except RuntimeError:
                 pass
             except Exception as e:

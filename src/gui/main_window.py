@@ -47,7 +47,7 @@ from src.utils.ui_helpers import (
     get_category_icon,
     format_connection_display
 )
-from src.utils.thread_manager import get_thread_manager
+from src.utils.thread_manager import get_thread_manager, safe_delete_thread
 import logging
 
 logger = logging.getLogger(__name__)
@@ -407,7 +407,7 @@ class MainWindow(QMainWindow):
             def cleanup():
                 if hasattr(self, '_create_db_workers') and worker in self._create_db_workers:
                     self._create_db_workers.remove(worker)
-                worker.deleteLater()
+                safe_delete_thread(worker)
             
             worker.finished.connect(cleanup)
             worker.error.connect(cleanup)
@@ -519,7 +519,7 @@ class MainWindow(QMainWindow):
             def cleanup():
                 if hasattr(self, '_delete_table_workers') and worker in self._delete_table_workers:
                     self._delete_table_workers.remove(worker)
-                worker.deleteLater()
+                safe_delete_thread(worker)
             
             worker.finished.connect(cleanup)
             worker.error.connect(cleanup)
@@ -626,7 +626,7 @@ class MainWindow(QMainWindow):
             def cleanup():
                 if hasattr(self, '_delete_db_workers') and worker in self._delete_db_workers:
                     self._delete_db_workers.remove(worker)
-                worker.deleteLater()
+                safe_delete_thread(worker)
             
             worker.finished.connect(cleanup)
             worker.error.connect(cleanup)
@@ -780,9 +780,7 @@ class MainWindow(QMainWindow):
                     pass
                 old_worker.stop()
                 # 不等待，让线程自己结束，避免阻塞UI
-                # 使用QTimer延迟删除，确保线程完全结束
-                from PyQt6.QtCore import QTimer
-                QTimer.singleShot(300, lambda: self._safe_delete_database_worker(old_worker))
+                safe_delete_thread(old_worker)
             # 安全删除，避免KeyError（可能在其他地方已被删除）
             self.database_list_workers.pop(connection_id, None)
         
@@ -820,9 +818,8 @@ class MainWindow(QMainWindow):
                 if connection_id in self.database_list_workers:
                     del self.database_list_workers[connection_id]
                 
-                # 延迟删除，确保线程完全结束（不阻塞UI）
-                from PyQt6.QtCore import QTimer
-                QTimer.singleShot(500, lambda: self._safe_delete_database_worker(worker))
+                # 安全删除，确保线程完全结束
+                safe_delete_thread(worker)
             except RuntimeError:
                 pass  # 对象已被删除，忽略
             except Exception as e:
@@ -905,8 +902,8 @@ class MainWindow(QMainWindow):
         # 连接信号（在保存引用之后）
         worker.databases_ready.connect(on_databases_ready)
         worker.error_occurred.connect(on_error)
-        # 连接finished信号，确保线程完全结束后才清理（优雅的方式，不阻塞）
-        worker.finished.connect(cleanup_worker)
+        # 注册线程到线程管理器，确保线程结束后清理
+        self.thread_manager.register_thread(worker, cleanup_worker)
         
         # 启动worker（在后台线程中执行）
         worker.start()
@@ -1038,7 +1035,7 @@ class MainWindow(QMainWindow):
                     if not worker.wait(200):
                         worker.terminate()
                         worker.wait(100)
-                    worker.deleteLater()
+                    safe_delete_thread(worker)
                 except Exception as e:
                     logger.warning(f"停止旧worker时出错: {str(e)}")
                 finally:
@@ -1335,7 +1332,7 @@ class MainWindow(QMainWindow):
                                     worker.error_occurred.disconnect()
                                 except:
                                     pass
-                                worker.deleteLater()
+                                safe_delete_thread(worker)
                             del self.database_list_workers[conn_id]
                         except RuntimeError:
                             pass
@@ -1563,6 +1560,15 @@ class MainWindow(QMainWindow):
                 tab_database_combo.clear()
                 tab_database_combo.setEnabled(True)
                 return
+
+            # 如果已有数据库列表worker在运行，先停止并清理
+            if hasattr(query_tab, '_database_list_worker') and query_tab._database_list_worker:
+                try:
+                    self.thread_manager.stop_thread(query_tab._database_list_worker, timeout=1000, force=True)
+                except Exception:
+                    pass
+                safe_delete_thread(query_tab._database_list_worker)
+                query_tab._database_list_worker = None
             
             from src.gui.workers.database_list_worker import DatabaseListWorker
             worker = DatabaseListWorker(
@@ -1571,6 +1577,7 @@ class MainWindow(QMainWindow):
                 connection.db_type,
                 connection
             )
+            query_tab._database_list_worker = worker
             
             def on_databases_ready(databases):
                 tab_database_combo.clear()
@@ -1596,15 +1603,16 @@ class MainWindow(QMainWindow):
             def cleanup_worker():
                 """清理worker（在线程finished信号触发时调用）"""
                 try:
+                    if hasattr(query_tab, '_database_list_worker') and query_tab._database_list_worker is worker:
+                        query_tab._database_list_worker = None
                     # 使用 safe_delete_thread，自动处理线程清理
-                    from src.utils.thread_manager import safe_delete_thread
                     safe_delete_thread(worker)
                 except RuntimeError:
                     pass  # 对象已被删除，忽略
             
             worker.databases_ready.connect(on_databases_ready)
             worker.error_occurred.connect(on_error)
-            worker.finished.connect(cleanup_worker)
+            self.thread_manager.register_thread(worker, cleanup_worker)
             worker.start()
         
         # 延迟执行，避免阻塞UI初始化
@@ -1671,6 +1679,15 @@ class MainWindow(QMainWindow):
                     tab_database_combo.setEnabled(True)
                     return
                 
+                # 如果已有数据库列表worker在运行，先停止并清理
+                if hasattr(query_tab, '_database_list_worker') and query_tab._database_list_worker:
+                    try:
+                        self.thread_manager.stop_thread(query_tab._database_list_worker, timeout=1000, force=True)
+                    except Exception:
+                        pass
+                    safe_delete_thread(query_tab._database_list_worker)
+                    query_tab._database_list_worker = None
+
                 from src.gui.workers.database_list_worker import DatabaseListWorker
                 worker = DatabaseListWorker(
                     new_connection.get_connection_string(),
@@ -1678,7 +1695,8 @@ class MainWindow(QMainWindow):
                     new_connection.db_type,
                     new_connection
                 )
-                
+                query_tab._database_list_worker = worker
+
                 def on_databases_ready(databases):
                     tab_database_combo.clear()
                     for db in databases:
@@ -1688,18 +1706,24 @@ class MainWindow(QMainWindow):
                         # 更新数据库
                         on_tab_database_changed(tab_database_combo.currentText())
                     tab_database_combo.setEnabled(True)
-                    worker.deleteLater()
-                
+
                 def on_error(error_msg):
                     tab_database_combo.clear()
                     tab_database_combo.addItem("加载失败", None)
                     tab_database_combo.setEnabled(True)
                     logger.warning(f"加载数据库列表失败: {error_msg}")
-                    worker.deleteLater()
-                
+
+                def cleanup_worker():
+                    try:
+                        if hasattr(query_tab, '_database_list_worker') and query_tab._database_list_worker is worker:
+                            query_tab._database_list_worker = None
+                        safe_delete_thread(worker)
+                    except RuntimeError:
+                        pass
+
                 worker.databases_ready.connect(on_databases_ready)
                 worker.error_occurred.connect(on_error)
-                worker.finished.connect(lambda: worker.deleteLater())
+                self.thread_manager.register_thread(worker, cleanup_worker)
                 worker.start()
                 # 更新SQL编辑器的数据库信息
                 sql_editor.set_database_info(self.db_manager, new_connection_id, None)
@@ -1785,7 +1809,7 @@ class MainWindow(QMainWindow):
                     if query_tab._query_worker.isRunning():
                         query_tab._query_worker.stop()
                         query_tab._query_worker.wait(1000)
-                    query_tab._query_worker.deleteLater()
+                    safe_delete_thread(query_tab._query_worker)
                 except:
                     pass
             
@@ -1963,7 +1987,7 @@ class MainWindow(QMainWindow):
                         self.query_worker.multi_query_finished.disconnect()
                     except:
                         pass
-                    self.query_worker.deleteLater()
+                    safe_delete_thread(self.query_worker)
                     self.query_worker = None
                 
                 # 停止连接初始化 worker（如果正在运行）
@@ -1976,7 +2000,7 @@ class MainWindow(QMainWindow):
                         self.connection_init_worker.init_finished.disconnect()
                     except:
                         pass
-                    self.connection_init_worker.deleteLater()
+                    safe_delete_thread(self.connection_init_worker)
                     self.connection_init_worker = None
                 
                 # 停止 completion worker（如果正在运行）
@@ -1989,7 +2013,7 @@ class MainWindow(QMainWindow):
                         self.completion_worker.completion_ready.disconnect()
                     except:
                         pass
-                    self.completion_worker.deleteLater()
+                    safe_delete_thread(self.completion_worker)
                     self.completion_worker = None
                 
                 # 双击表项时，始终切换到第一个查询tab
@@ -2071,7 +2095,7 @@ class MainWindow(QMainWindow):
                     self.completion_worker.completion_ready.disconnect()
                 except:
                     pass
-                self.completion_worker.deleteLater()
+                safe_delete_thread(self.completion_worker)
             except RuntimeError:
                 # 对象已被删除，忽略
                 pass

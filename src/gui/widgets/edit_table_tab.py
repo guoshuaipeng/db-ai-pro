@@ -18,6 +18,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QEvent
 from PyQt6.QtGui import QFont, QColor, QKeyEvent, QKeySequence
 from typing import Optional
 import logging
+from src.utils.thread_manager import safe_delete_thread
 
 logger = logging.getLogger(__name__)
 
@@ -413,7 +414,7 @@ class EditTableTab(QWidget):
                     self.schema_worker.schema_ready.disconnect()
                 except:
                     pass
-                self.schema_worker.deleteLater()
+                safe_delete_thread(self.schema_worker)
             except RuntimeError:
                 pass
             self.schema_worker = None
@@ -428,7 +429,7 @@ class EditTableTab(QWidget):
                     self.index_worker.indexes_ready.disconnect()
                 except:
                     pass
-                self.index_worker.deleteLater()
+                safe_delete_thread(self.index_worker)
             except RuntimeError:
                 pass
             self.index_worker = None
@@ -550,7 +551,7 @@ class EditTableTab(QWidget):
             self.set_status(f"错误: {error_msg}", is_error=True)
             # 清理worker
             if self.schema_worker:
-                self.schema_worker.deleteLater()
+                safe_delete_thread(self.schema_worker)
                 self.schema_worker = None
             return
         
@@ -577,7 +578,7 @@ class EditTableTab(QWidget):
         
         # 清理worker
         if self.schema_worker:
-            self.schema_worker.deleteLater()
+            safe_delete_thread(self.schema_worker)
             self.schema_worker = None
         
         # 自动发送初始消息给AI，告知当前表结构
@@ -844,7 +845,7 @@ class EditTableTab(QWidget):
                     self.ai_worker.error_occurred.disconnect()
                 except:
                     pass
-                self.ai_worker.deleteLater()
+                safe_delete_thread(self.ai_worker)
             except RuntimeError:
                 pass
             self.ai_worker = None
@@ -984,7 +985,7 @@ class EditTableTab(QWidget):
                     self._execute_worker.error_occurred.disconnect()
                 except:
                     pass
-                self._execute_worker.deleteLater()
+                safe_delete_thread(self._execute_worker)
             except RuntimeError:
                 pass
             self._execute_worker = None
@@ -1020,7 +1021,7 @@ class EditTableTab(QWidget):
         
         # 清理worker
         if self._execute_worker:
-            self._execute_worker.deleteLater()
+            safe_delete_thread(self._execute_worker)
             self._execute_worker = None
     
     def copy_sql(self):
@@ -1124,7 +1125,7 @@ class EditTableTab(QWidget):
                     self.ai_worker.error_occurred.disconnect()
                 except:
                     pass
-                self.ai_worker.deleteLater()
+                safe_delete_thread(self.ai_worker)
             except RuntimeError:
                 pass
             self.ai_worker = None
@@ -1141,7 +1142,7 @@ class EditTableTab(QWidget):
                     self.schema_worker.schema_ready.disconnect()
                 except:
                     pass
-                self.schema_worker.deleteLater()
+                safe_delete_thread(self.schema_worker)
             except RuntimeError:
                 pass
             self.schema_worker = None
@@ -1156,7 +1157,7 @@ class EditTableTab(QWidget):
                     self.index_worker.indexes_ready.disconnect()
                 except:
                     pass
-                self.index_worker.deleteLater()
+                safe_delete_thread(self.index_worker)
             except RuntimeError:
                 pass
             self.index_worker = None
@@ -1173,7 +1174,7 @@ class EditTableTab(QWidget):
                     self._execute_worker.query_finished.disconnect()
                 except:
                     pass
-                self._execute_worker.deleteLater()
+                safe_delete_thread(self._execute_worker)
             except RuntimeError:
                 pass
             self._execute_worker = None

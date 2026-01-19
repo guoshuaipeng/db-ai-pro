@@ -207,9 +207,18 @@ def safe_delete_thread(thread: QThread, cleanup_callback: Optional[Callable] = N
     """
     if thread is None:
         return
-    
+
+    try:
+        is_running = thread.isRunning()
+    except RuntimeError:
+        # 对象已被删除
+        return
+    except Exception as e:
+        logger.warning(f"检查线程状态失败: {e}")
+        return
+
     # 如果线程还在运行，连接 finished 信号到删除操作
-    if thread.isRunning():
+    if is_running:
         # 如果有清理回调，先执行它
         if cleanup_callback:
             def on_finished():
@@ -218,8 +227,13 @@ def safe_delete_thread(thread: QThread, cleanup_callback: Optional[Callable] = N
                 except Exception as e:
                     logger.warning(f"执行清理回调失败: {e}")
                 # 使用 QueuedConnection 确保在所有信号处理完成后再删除
-                thread.deleteLater()
-            
+                try:
+                    thread.deleteLater()
+                except RuntimeError:
+                    pass
+                except Exception as e:
+                    logger.warning(f"删除线程时出错: {e}")
+
             thread.finished.connect(
                 on_finished,
                 type=Qt.ConnectionType.QueuedConnection
@@ -238,4 +252,9 @@ def safe_delete_thread(thread: QThread, cleanup_callback: Optional[Callable] = N
                 cleanup_callback()
             except Exception as e:
                 logger.warning(f"执行清理回调失败: {e}")
-        thread.deleteLater()
+        try:
+            thread.deleteLater()
+        except RuntimeError:
+            pass
+        except Exception as e:
+            logger.warning(f"删除线程时出错: {e}")

@@ -13,6 +13,7 @@ from src.utils.ui_helpers import (
     get_category_icon,
     get_table_icon,
 )
+from src.utils.thread_manager import safe_delete_thread
 
 if TYPE_CHECKING:
     from src.gui.main_window import MainWindow
@@ -38,7 +39,7 @@ class PreloadHandler:
             else:
                 # 清理旧的worker
                 try:
-                    self.main_window.preload_worker.deleteLater()
+                    safe_delete_thread(self.main_window.preload_worker)
                 except:
                     pass
                 self.main_window.preload_worker = None

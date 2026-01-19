@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import logging
 
 from src.gui.widgets.create_table_tab import CreateTableTab
+from src.utils.thread_manager import safe_delete_thread
 
 if TYPE_CHECKING:
     from src.gui.main_window import MainWindow
@@ -70,7 +71,7 @@ class TableStructureHandler:
                     self.main_window.copy_structure_worker.error_occurred.disconnect()
                 except:
                     pass
-                self.main_window.copy_structure_worker.deleteLater()
+                safe_delete_thread(self.main_window.copy_structure_worker)
             except RuntimeError:
                 pass
             self.main_window.copy_structure_worker = None
@@ -105,7 +106,7 @@ class TableStructureHandler:
         
         # 清理 worker
         if self.main_window.copy_structure_worker:
-            self.main_window.copy_structure_worker.deleteLater()
+            safe_delete_thread(self.main_window.copy_structure_worker)
             self.main_window.copy_structure_worker = None
     
     def on_copy_structure_error(self, error: str, table_name: str):
@@ -115,7 +116,7 @@ class TableStructureHandler:
         
         # 清理 worker
         if self.main_window.copy_structure_worker:
-            self.main_window.copy_structure_worker.deleteLater()
+            safe_delete_thread(self.main_window.copy_structure_worker)
             self.main_window.copy_structure_worker = None
     
     def edit_table_structure(self, connection_id: str, database: str, table_name: str):
@@ -191,7 +192,7 @@ class TableStructureHandler:
                 if tab_widget._query_worker and tab_widget._query_worker.isRunning():
                     tab_widget._query_worker.stop()
                     tab_widget._query_worker.wait(1000)
-                    tab_widget._query_worker.deleteLater()
+                    safe_delete_thread(tab_widget._query_worker)
             except:
                 pass
         

@@ -8,6 +8,7 @@ import logging
 
 from src.gui.utils.tree_item_types import TreeItemType, TreeItemData
 from src.core.database_connection import DatabaseType
+from src.utils.thread_manager import safe_delete_thread
 
 if TYPE_CHECKING:
     from src.gui.main_window import MainWindow
@@ -106,7 +107,7 @@ class TreeHandler:
                                             if not self.main_window.table_list_worker_for_tree.wait(200):
                                                 self.main_window.table_list_worker_for_tree.terminate()
                                                 self.main_window.table_list_worker_for_tree.wait(100)
-                                            self.main_window.table_list_worker_for_tree.deleteLater()
+                                            safe_delete_thread(self.main_window.table_list_worker_for_tree)
                                         except Exception as e:
                                             logger.warning(f"停止表列表worker时出错: {str(e)}")
                                         finally:

@@ -37,6 +37,7 @@ import json
 import re
 import csv
 import logging
+from src.utils.thread_manager import safe_delete_thread
 import time
 from datetime import datetime, date, time as dt_time
 from decimal import Decimal
@@ -2004,7 +2005,7 @@ class SingleResultTable(QWidget):
                     self.update_worker.query_finished.disconnect()
                 except:
                     pass
-                self.update_worker.deleteLater()
+                safe_delete_thread(self.update_worker)
             
             # 使用主窗口的execute_query方法执行UPDATE
             # 注意：这里直接执行，不显示在SQL编辑器中
@@ -2382,7 +2383,7 @@ class SingleResultTable(QWidget):
                 pass  # 信号可能已经断开
             
             # 删除对象
-            worker.deleteLater()
+            safe_delete_thread(worker)
         except RuntimeError:
             pass  # 对象已被删除，忽略
         except Exception as e:
@@ -2791,7 +2792,7 @@ class SingleResultTable(QWidget):
                     self.update_worker.query_finished.disconnect()
                 except:
                     pass
-                self.update_worker.deleteLater()
+                safe_delete_thread(self.update_worker)
             
             from src.gui.workers.query_worker import QueryWorker
             
@@ -3078,7 +3079,7 @@ class SingleResultTable(QWidget):
                 self.export_worker.export_finished.disconnect()
             except:
                 pass
-            self.export_worker.deleteLater()
+            safe_delete_thread(self.export_worker)
             self.export_worker = None
         
         # 显示结果

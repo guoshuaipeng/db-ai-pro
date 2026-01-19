@@ -20,6 +20,7 @@ from PyQt6.QtGui import QFont, QTextCursor, QKeyEvent
 from typing import List, Optional, Callable
 from src.gui.workers.ai_worker import AIWorker
 from src.core.ai_client import AIClient
+from src.utils.thread_manager import safe_delete_thread
 
 
 class CompletableTextEdit(QPlainTextEdit):
@@ -543,7 +544,7 @@ class SQLEditor(QWidget):
                         self._main_window.query_worker.multi_query_finished.disconnect()
                     except:
                         pass
-                    self._main_window.query_worker.deleteLater()
+                    safe_delete_thread(self._main_window.query_worker)
                     self._main_window.query_worker = None
         self.execute_btn.setText("执行 (F5)")
         self.set_status("已取消", timeout=2000)
@@ -566,7 +567,7 @@ class SQLEditor(QWidget):
                 if worker.isRunning():
                     worker.terminate()
                     worker.wait(500)
-                worker.deleteLater()
+                safe_delete_thread(worker)
                 setattr(self, name, None)
     
     def on_tables_ready(self, table_info_list: list):
@@ -651,7 +652,7 @@ class SQLEditor(QWidget):
         
         # 清理表名列表worker
         if self.table_list_worker:
-            self.table_list_worker.deleteLater()
+            safe_delete_thread(self.table_list_worker)
             self.table_list_worker = None
     
     def on_tables_selected(self, selected_tables: list):
@@ -696,7 +697,7 @@ class SQLEditor(QWidget):
                 
                 # 清理AI选表worker
                 if self.ai_table_selector_worker:
-                    self.ai_table_selector_worker.deleteLater()
+                    safe_delete_thread(self.ai_table_selector_worker)
                     self.ai_table_selector_worker = None
                 return
         
@@ -716,7 +717,7 @@ class SQLEditor(QWidget):
         
         # 清理schema worker
         if self.schema_worker:
-            self.schema_worker.deleteLater()
+            safe_delete_thread(self.schema_worker)
             self.schema_worker = None
         
         if not table_schema or not table_schema.strip():
@@ -772,7 +773,7 @@ class SQLEditor(QWidget):
         
         # 清理AI选枚举字段worker
         if self.ai_enum_selector_worker:
-            self.ai_enum_selector_worker.deleteLater()
+            safe_delete_thread(self.ai_enum_selector_worker)
             self.ai_enum_selector_worker = None
         
         # 如果没有选择枚举字段，直接使用表结构生成SQL
@@ -836,7 +837,7 @@ class SQLEditor(QWidget):
         
         # 清理worker
         if self.enum_values_worker:
-            self.enum_values_worker.deleteLater()
+            safe_delete_thread(self.enum_values_worker)
             self.enum_values_worker = None
     
     def on_schema_ready(self, table_schema: str, table_names: list):
@@ -860,7 +861,7 @@ class SQLEditor(QWidget):
         
         # 清理工作线程
         if hasattr(self, 'schema_worker') and self.schema_worker:
-            self.schema_worker.deleteLater()
+            safe_delete_thread(self.schema_worker)
             self.schema_worker = None
     
     def _start_ai_generation(self, user_query: str, table_schema: str, table_names: list = None, all_table_names: list = None):
@@ -929,7 +930,7 @@ class SQLEditor(QWidget):
         
         # 清理工作线程
         if self.ai_worker:
-            self.ai_worker.deleteLater()
+            safe_delete_thread(self.ai_worker)
             self.ai_worker = None
     
     def on_ai_error(self, error: str):
@@ -950,10 +951,10 @@ class SQLEditor(QWidget):
         
         # 清理工作线程
         if self.ai_worker:
-            self.ai_worker.deleteLater()
+            safe_delete_thread(self.ai_worker)
             self.ai_worker = None
         if hasattr(self, 'ai_table_selector_worker') and self.ai_table_selector_worker:
-            self.ai_table_selector_worker.deleteLater()
+            safe_delete_thread(self.ai_table_selector_worker)
             self.ai_table_selector_worker = None
     
     def execute_sql(self):

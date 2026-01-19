@@ -16,6 +16,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QKeyEvent
 from typing import Optional
 import logging
+from src.utils.thread_manager import safe_delete_thread
 
 logger = logging.getLogger(__name__)
 
@@ -249,7 +250,7 @@ class CreateTableTab(QWidget):
                     self.table_list_worker.tables_ready.disconnect()
                 except:
                     pass
-                self.table_list_worker.deleteLater()
+                safe_delete_thread(self.table_list_worker)
             except RuntimeError:
                 pass
             self.table_list_worker = None
@@ -297,7 +298,7 @@ class CreateTableTab(QWidget):
         
         # 清理worker
         if self.table_list_worker:
-            self.table_list_worker.deleteLater()
+            safe_delete_thread(self.table_list_worker)
             self.table_list_worker = None
     
     def on_reference_schema_ready(self, schema_text: str, table_names: list):
@@ -311,7 +312,7 @@ class CreateTableTab(QWidget):
         
         # 清理worker
         if self.schema_worker:
-            self.schema_worker.deleteLater()
+            safe_delete_thread(self.schema_worker)
             self.schema_worker = None
         
         # 现在生成建表语句
@@ -386,7 +387,7 @@ class CreateTableTab(QWidget):
                     self.select_reference_worker.error_occurred.disconnect()
                 except:
                     pass
-                self.select_reference_worker.deleteLater()
+                safe_delete_thread(self.select_reference_worker)
             except RuntimeError:
                 pass
             self.select_reference_worker = None
@@ -436,7 +437,7 @@ class CreateTableTab(QWidget):
         
         # 清理worker
         if self.select_reference_worker:
-            self.select_reference_worker.deleteLater()
+            safe_delete_thread(self.select_reference_worker)
             self.select_reference_worker = None
         
         # 获取这些表的结构
@@ -457,7 +458,7 @@ class CreateTableTab(QWidget):
                     self.schema_worker.schema_ready.disconnect()
                 except:
                     pass
-                self.schema_worker.deleteLater()
+                safe_delete_thread(self.schema_worker)
             except RuntimeError:
                 pass
             self.schema_worker = None
@@ -493,7 +494,7 @@ class CreateTableTab(QWidget):
                     self.ai_worker.error_occurred.disconnect()
                 except:
                     pass
-                self.ai_worker.deleteLater()
+                safe_delete_thread(self.ai_worker)
             except RuntimeError:
                 pass
             self.ai_worker = None
@@ -562,7 +563,7 @@ class CreateTableTab(QWidget):
         
         # 清理worker
         if self.ai_worker:
-            self.ai_worker.deleteLater()
+            safe_delete_thread(self.ai_worker)
             self.ai_worker = None
     
     def on_ai_error(self, error_msg: str):
@@ -573,7 +574,7 @@ class CreateTableTab(QWidget):
         
         # 清理worker
         if self.ai_worker:
-            self.ai_worker.deleteLater()
+            safe_delete_thread(self.ai_worker)
             self.ai_worker = None
     
     def clear_conversation(self):
@@ -620,7 +621,7 @@ class CreateTableTab(QWidget):
                     self.ai_worker.error_occurred.disconnect()
                 except:
                     pass
-                self.ai_worker.deleteLater()
+                safe_delete_thread(self.ai_worker)
             except RuntimeError:
                 pass
             self.ai_worker = None
@@ -637,7 +638,7 @@ class CreateTableTab(QWidget):
                     self.schema_worker.schema_ready.disconnect()
                 except:
                     pass
-                self.schema_worker.deleteLater()
+                safe_delete_thread(self.schema_worker)
             except RuntimeError:
                 pass
             self.schema_worker = None
@@ -654,7 +655,7 @@ class CreateTableTab(QWidget):
                     self.table_list_worker.tables_ready.disconnect()
                 except:
                     pass
-                self.table_list_worker.deleteLater()
+                safe_delete_thread(self.table_list_worker)
             except RuntimeError:
                 pass
             self.table_list_worker = None
@@ -672,7 +673,7 @@ class CreateTableTab(QWidget):
                     self.select_reference_worker.error_occurred.disconnect()
                 except:
                     pass
-                self.select_reference_worker.deleteLater()
+                safe_delete_thread(self.select_reference_worker)
             except RuntimeError:
                 pass
             self.select_reference_worker = None

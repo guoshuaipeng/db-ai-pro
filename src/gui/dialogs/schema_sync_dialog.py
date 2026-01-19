@@ -30,6 +30,7 @@ import logging
 
 from src.core.database_connection import DatabaseConnection, DatabaseType
 from src.core.database_manager import DatabaseManager
+from src.utils.thread_manager import safe_delete_thread
 
 logger = logging.getLogger(__name__)
 
@@ -578,7 +579,7 @@ class Step2CompareResultsPage(QWizardPage):
             if self.sync_worker.isRunning():
                 self.sync_worker.terminate()
                 self.sync_worker.wait(1000)
-            self.sync_worker.deleteLater()
+            safe_delete_thread(self.sync_worker)
         
         # 创建并启动比较线程
         self.sync_worker = SchemaSyncWorker(
@@ -853,7 +854,7 @@ class Step3PreviewAndExecutePage(QWizardPage):
         
         # 清理worker
         try:
-            worker.deleteLater()
+            safe_delete_thread(worker)
         except:
             pass
         

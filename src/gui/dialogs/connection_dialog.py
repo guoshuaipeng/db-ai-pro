@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QIntValidator
 from src.core.database_connection import DatabaseConnection, DatabaseType
+from src.utils.thread_manager import safe_delete_thread
 import logging
 
 logger = logging.getLogger(__name__)
@@ -669,7 +670,7 @@ class ConnectionDialog(QDialog):
         
         # 清理线程对象
         try:
-            self.parse_worker.deleteLater()
+            safe_delete_thread(self.parse_worker)
         except RuntimeError:
             pass
         

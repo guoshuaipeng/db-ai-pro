@@ -22,6 +22,7 @@ from typing import List, Dict, Optional
 import logging
 from datetime import datetime, date, time as dt_time
 from decimal import Decimal
+from src.utils.thread_manager import safe_delete_thread
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,7 @@ class ProcessMonitorTab(QWidget):
                 if self.process_list_worker.isRunning():
                     self.process_list_worker.stop()
                     self.process_list_worker.wait(500)
-                self.process_list_worker.deleteLater()
+                safe_delete_thread(self.process_list_worker)
             except:
                 pass
         
@@ -183,7 +184,7 @@ class ProcessMonitorTab(QWidget):
             try:
                 if self.process_list_worker == worker:
                     self.process_list_worker = None
-                worker.deleteLater()
+                safe_delete_thread(worker)
             except RuntimeError:
                 pass
         
@@ -356,7 +357,7 @@ class ProcessMonitorTab(QWidget):
                 if self.health_worker.isRunning():
                     self.health_worker.stop()
                     self.health_worker.wait(500)
-                self.health_worker.deleteLater()
+                safe_delete_thread(self.health_worker)
             except:
                 pass
         
@@ -380,7 +381,7 @@ class ProcessMonitorTab(QWidget):
             try:
                 if self.health_worker == worker:
                     self.health_worker = None
-                worker.deleteLater()
+                safe_delete_thread(worker)
             except RuntimeError:
                 pass
         
@@ -437,7 +438,7 @@ class ProcessMonitorTab(QWidget):
                 try:
                     if self.ai_diagnosis_worker == worker:
                         self.ai_diagnosis_worker = None
-                    worker.deleteLater()
+                    safe_delete_thread(worker)
                 except RuntimeError:
                     pass
             
@@ -556,7 +557,7 @@ class ProcessMonitorTab(QWidget):
                 if self.process_list_worker.isRunning():
                     self.process_list_worker.stop()
                     self.process_list_worker.wait(1000)
-                self.process_list_worker.deleteLater()
+                safe_delete_thread(self.process_list_worker)
             except:
                 pass
             self.process_list_worker = None
@@ -566,7 +567,7 @@ class ProcessMonitorTab(QWidget):
                 if self.health_worker.isRunning():
                     self.health_worker.stop()
                     self.health_worker.wait(1000)
-                self.health_worker.deleteLater()
+                safe_delete_thread(self.health_worker)
             except:
                 pass
             self.health_worker = None
@@ -576,7 +577,7 @@ class ProcessMonitorTab(QWidget):
                 if self.ai_diagnosis_worker.isRunning():
                     self.ai_diagnosis_worker.stop()
                     self.ai_diagnosis_worker.wait(1000)
-                self.ai_diagnosis_worker.deleteLater()
+                safe_delete_thread(self.ai_diagnosis_worker)
             except:
                 pass
             self.ai_diagnosis_worker = None

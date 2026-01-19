@@ -8,6 +8,7 @@ import logging
 
 from src.core.database_connection import DatabaseType
 from src.gui.workers.query_worker import QueryWorker
+from src.utils.thread_manager import safe_delete_thread
 
 if TYPE_CHECKING:
     from src.gui.main_window import MainWindow
@@ -53,7 +54,7 @@ class QueryHandler:
                 except:
                     pass
             # 确保线程对象被正确清理
-            self.main_window.query_worker.deleteLater()
+            safe_delete_thread(self.main_window.query_worker)
             self.main_window.query_worker = None
         
         # 判断SQL类型
@@ -268,7 +269,7 @@ class QueryHandler:
                         self.main_window.query_worker.multi_query_finished.disconnect()
                     except:
                         pass
-                    self.main_window.query_worker.deleteLater()
+                    safe_delete_thread(self.main_window.query_worker)
                     self.main_window.query_worker = None
                 
                 # 停止连接初始化 worker（如果正在运行）
@@ -281,7 +282,7 @@ class QueryHandler:
                         self.main_window.connection_init_worker.init_finished.disconnect()
                     except:
                         pass
-                    self.main_window.connection_init_worker.deleteLater()
+                    safe_delete_thread(self.main_window.connection_init_worker)
                     self.main_window.connection_init_worker = None
                 
                 # 停止 completion worker（如果正在运行）
@@ -294,7 +295,7 @@ class QueryHandler:
                         self.main_window.completion_worker.completion_ready.disconnect()
                     except:
                         pass
-                    self.main_window.completion_worker.deleteLater()
+                    safe_delete_thread(self.main_window.completion_worker)
                     self.main_window.completion_worker = None
                 
                 # 双击表项时，始终切换到第一个查询tab
@@ -388,7 +389,7 @@ class QueryHandler:
                     self.main_window.completion_worker.completion_ready.disconnect()
                 except:
                     pass
-                self.main_window.completion_worker.deleteLater()
+                safe_delete_thread(self.main_window.completion_worker)
             except RuntimeError:
                 # 对象已被删除，忽略
                 pass

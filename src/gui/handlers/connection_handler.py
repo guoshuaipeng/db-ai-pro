@@ -9,6 +9,7 @@ from src.core.database_connection import DatabaseConnection
 from src.gui.dialogs.connection_dialog import ConnectionDialog
 from src.gui.dialogs.import_dialog import ImportDialog
 from src.gui.workers.connection_test_worker import ConnectionTestWorker
+from src.utils.thread_manager import safe_delete_thread
 
 if TYPE_CHECKING:
     from src.gui.main_window import MainWindow
@@ -90,7 +91,7 @@ class ConnectionHandler:
             if self.main_window.connection_test_worker.isRunning():
                 self.main_window.connection_test_worker.terminate()
                 self.main_window.connection_test_worker.wait(500)
-            self.main_window.connection_test_worker.deleteLater()
+            safe_delete_thread(self.main_window.connection_test_worker)
         
         # 保存连接信息，用于测试完成后的回调
         self.main_window._pending_connection = connection
@@ -292,7 +293,7 @@ class ConnectionHandler:
                     # 请求停止，但不等待（异步停止）
                     self.main_window.connection_test_worker.stop()
                     # 不等待，让线程自己结束，稍后自动清理
-                    self.main_window.connection_test_worker.deleteLater()
+                    safe_delete_thread(self.main_window.connection_test_worker)
             except RuntimeError:
                 pass
         
