@@ -25,6 +25,7 @@ openpyxl>=3.1.0  # Excel文件导出支持
 
 # 其他工具
 cryptography>=41.0.0  # 密码加密（用于保存数据库密码）
+sqlparse>=0.4.4  # SQL 解析和格式化
 
 # AI功能
 openai>=1.0.0  # OpenAI兼容API（用于AI生成SQL）

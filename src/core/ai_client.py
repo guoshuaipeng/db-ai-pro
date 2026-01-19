@@ -147,7 +147,7 @@ class AIClient:
                     "sqlite": "SQLite",
                 }
                 db_type_name = db_type_name_map.get(db_type.lower(), db_type)
-                system_prompt += f"\n\n【重要】当前数据库类型: {db_type_name}\n请根据 {db_type_name} 的SQL语法规范生成SQL语句，注意不同数据库的语法差异（如字符串引号、日期函数、分页语法等）。"
+                system_prompt += f"\n\n【数据库类型】当前数据库类型: {db_type_name}"
             
             # 如果传入了表名列表，优先使用它（这应该是AI选中的表，而不是所有表）
             # 如果没有传入表名列表，则从表结构中提取

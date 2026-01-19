@@ -21,6 +21,10 @@ from typing import List, Optional, Callable
 from src.gui.workers.ai_worker import AIWorker
 from src.core.ai_client import AIClient
 from src.utils.thread_manager import safe_delete_thread
+import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class CompletableTextEdit(QPlainTextEdit):
@@ -234,8 +238,13 @@ class SQLEditor(QWidget):
         
         self.clear_btn = QPushButton("清空")
         self.clear_btn.clicked.connect(self.clear_sql)
+
+        self.format_btn = QPushButton("美化")
+        self.format_btn.setToolTip("格式化 SQL")
+        self.format_btn.clicked.connect(self.format_sql)
         
         sql_btn_layout.addWidget(self.execute_btn)
+        sql_btn_layout.addWidget(self.format_btn)
         sql_btn_layout.addWidget(self.clear_btn)
         sql_btn_layout.addStretch()
         sql_layout.addLayout(sql_btn_layout)
@@ -419,6 +428,140 @@ class SQLEditor(QWidget):
         self.sql_edit.clear()
         self.ai_input.clear()
         self.status_label.setText("已清空")
+
+    def format_sql(self):
+        """SQL 美化（优先使用 sqlparse，不可用时回退到轻量级格式化）"""
+        sql = self.get_sql()
+        if not sql:
+            self.set_status("错误: SQL语句为空", is_error=True)
+            return
+
+        try:
+            # 优先尝试使用 sqlparse
+            import sqlparse
+            formatted = sqlparse.format(
+                sql,
+                reindent=True,
+                keyword_case='upper',
+                indent_width=2,
+                wrap_after=80,
+                comma_first=False
+            )
+            if formatted.strip():
+                self.set_sql(formatted.strip())
+                self.set_status("SQL 已美化 (使用 sqlparse)", timeout=2000)
+                return
+        except ImportError:
+            # sqlparse 未安装，使用轻量级格式化
+            logger.debug("sqlparse 未安装，使用轻量级格式化")
+        except Exception as e:
+            # sqlparse 格式化失败，回退到轻量级格式化
+            logger.warning(f"sqlparse 格式化失败: {e}，使用轻量级格式化")
+
+        # 回退到轻量级格式化
+        formatted = self._format_sql_text(sql)
+        if formatted.strip():
+            self.set_sql(formatted)
+            self.set_status("SQL 已美化", timeout=2000)
+        else:
+            self.set_status("错误: SQL 美化失败", is_error=True)
+
+    def _format_sql_text(self, sql: str) -> str:
+        """保持字符串字面量不变的前提下，格式化 SQL（轻量级格式化，作为 fallback）"""
+        segments = self._split_sql_segments(sql)
+        formatted_parts = []
+        for text, is_literal in segments:
+            if is_literal:
+                formatted_parts.append(text)
+            else:
+                formatted_parts.append(self._format_sql_segment(text))
+        combined = ''.join(formatted_parts)
+        # 处理多语句的分隔
+        combined = re.sub(r';\s*', ';\n', combined)
+        # 清理多余空行
+        lines = [line.strip() for line in combined.splitlines()]
+        return '\n'.join(line for line in lines if line)
+
+    def _split_sql_segments(self, sql: str):
+        """按字符串字面量拆分，避免修改字符串内容"""
+        segments = []
+        buf = []
+        in_quote = None
+        i = 0
+        while i < len(sql):
+            ch = sql[i]
+            if in_quote:
+                buf.append(ch)
+                if ch == in_quote:
+                    if in_quote in ("'", '"'):
+                        # 处理双引号/单引号的转义
+                        if i + 1 < len(sql) and sql[i + 1] == in_quote:
+                            buf.append(sql[i + 1])
+                            i += 1
+                            i += 1
+                            continue
+                        # 处理反斜杠转义
+                        backslashes = 0
+                        j = i - 1
+                        while j >= 0 and sql[j] == '\\':
+                            backslashes += 1
+                            j -= 1
+                        if backslashes % 2 == 1:
+                            i += 1
+                            continue
+                    segments.append((''.join(buf), True))
+                    buf = []
+                    in_quote = None
+            else:
+                if ch in ("'", '"', '`'):
+                    if buf:
+                        segments.append((''.join(buf), False))
+                        buf = []
+                    in_quote = ch
+                    buf.append(ch)
+                else:
+                    buf.append(ch)
+            i += 1
+        if buf:
+            segments.append((''.join(buf), in_quote is not None))
+        return segments
+
+    def _format_sql_segment(self, text: str) -> str:
+        """格式化非字符串片段"""
+        if not text:
+            return text
+
+        # 归一化空白
+        text = re.sub(r'\s+', ' ', text).strip()
+
+        # 关键字大写
+        keywords = [
+            "select", "from", "where", "group by", "order by", "having",
+            "limit", "offset", "insert into", "update", "delete from",
+            "values", "set", "join", "left join", "right join", "inner join",
+            "outer join", "full join", "cross join", "on", "union", "union all",
+            "distinct", "into", "as"
+        ]
+        for kw in sorted(keywords, key=len, reverse=True):
+            pattern = r'\b' + re.escape(kw) + r'\b'
+            text = re.sub(pattern, kw.upper(), text, flags=re.IGNORECASE)
+
+        # 主要子句换行
+        clauses = [
+            "SELECT", "FROM", "WHERE", "GROUP BY", "ORDER BY", "HAVING",
+            "LIMIT", "OFFSET", "INSERT INTO", "UPDATE", "DELETE FROM",
+            "VALUES", "SET", "UNION ALL", "UNION",
+            "LEFT JOIN", "RIGHT JOIN", "INNER JOIN", "OUTER JOIN",
+            "FULL JOIN", "CROSS JOIN", "JOIN", "ON"
+        ]
+        for clause in clauses:
+            pattern = r'\s+' + re.escape(clause) + r'\b'
+            text = re.sub(pattern, '\n' + clause, text, flags=re.IGNORECASE)
+
+        # 清理空白
+        text = re.sub(r'[ \t]+\n', '\n', text)
+        text = re.sub(r'\n[ \t]+', '\n', text)
+        return text
     
     def generate_sql_from_ai(self):
         """使用AI生成SQL（分步交互：先获取表名，AI选择表，再获取表结构，最后生成SQL）"""
