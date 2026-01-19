@@ -39,7 +39,7 @@ class PromptConfigDialog(QDialog):
         self.setLayout(layout)
         
         # 说明标签
-        info_label = QLabel("配置AI生成SQL时使用的提示词。可以自定义每个步骤的提示词以优化AI行为。")
+        info_label = QLabel("配置AI生成SQL和Redis命令时使用的提示词。可以自定义每个步骤的提示词以优化AI行为。")
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
         
@@ -155,6 +155,20 @@ class PromptConfigDialog(QDialog):
         
         self.tabs.addTab(connection_tab_widget, "解析连接配置")
         
+        # 生成Redis命令提示词
+        redis_tab = QVBoxLayout()
+        redis_tab_widget = QWidget()
+        redis_tab_widget.setLayout(redis_tab)
+        
+        redis_label = QLabel("生成Redis命令的系统提示词（用于根据用户需求生成Redis命令）")
+        redis_tab.addWidget(redis_label)
+        
+        self.generate_redis_edit = QTextEdit()
+        self.generate_redis_edit.setFont(QFont("Consolas", 10))
+        redis_tab.addWidget(self.generate_redis_edit)
+        
+        self.tabs.addTab(redis_tab_widget, "生成Redis命令")
+        
         layout.addWidget(self.tabs)
         
         # 按钮
@@ -184,6 +198,7 @@ class PromptConfigDialog(QDialog):
         self.create_table_select_edit.setPlainText(self.config.create_table_select_reference_tables_system)
         self.create_table_generate_edit.setPlainText(self.config.create_table_generate_sql_system)
         self.edit_table_generate_edit.setPlainText(self.config.edit_table_generate_sql_system)
+        self.generate_redis_edit.setPlainText(self.config.generate_redis_command_system)
         self.query_enum_checkbox.setChecked(self.config.query_enum_values)
     
     def reset_to_default(self):
@@ -211,6 +226,7 @@ class PromptConfigDialog(QDialog):
             self.config.create_table_select_reference_tables_system = self.create_table_select_edit.toPlainText()
             self.config.create_table_generate_sql_system = self.create_table_generate_edit.toPlainText()
             self.config.edit_table_generate_sql_system = self.edit_table_generate_edit.toPlainText()
+            self.config.generate_redis_command_system = self.generate_redis_edit.toPlainText()
             self.config.query_enum_values = self.query_enum_checkbox.isChecked()
             
             self.storage.save_prompts(self.config)
