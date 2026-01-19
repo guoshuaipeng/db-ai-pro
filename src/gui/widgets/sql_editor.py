@@ -632,6 +632,14 @@ class SQLEditor(QWidget):
                 # 使用工作线程获取表名列表，避免阻塞
                 from src.gui.workers.table_list_worker import TableListWorker
                 
+                # 🎯 断开旧 worker 的信号连接，让它自然完成
+                if self.table_list_worker:
+                    try:
+                        self.table_list_worker.tables_ready.disconnect()
+                    except:
+                        pass
+                    self.table_list_worker.finished.connect(self.table_list_worker.deleteLater)
+                
                 self.table_list_worker = TableListWorker(
                     connection.get_connection_string(),
                     connection.get_connect_args(),
@@ -639,6 +647,7 @@ class SQLEditor(QWidget):
                     database=self.current_database  # 传入当前数据库，仅获取该数据库的表
                 )
                 self.table_list_worker.tables_ready.connect(self.on_tables_ready)
+                self.table_list_worker.finished.connect(self.table_list_worker.deleteLater)
                 self.table_list_worker.start()
                 # 等待表名列表获取完成
                 return
@@ -657,13 +666,26 @@ class SQLEditor(QWidget):
             self.ai_enum_selector_worker,
             self.enum_values_worker,
         ]
-        return any(worker and worker.isRunning() for worker in workers)
+        # 🎯 需要捕获 RuntimeError：worker 可能已被 deleteLater() 删除
+        for worker in workers:
+            if worker:
+                try:
+                    if worker.isRunning():
+                        return True
+                except RuntimeError:
+                    # worker 的 C++ 对象已被删除，视为不在运行
+                    pass
+        return False
     
     def _is_executing(self):
         """检查是否正在执行SQL（通过主窗口的query_worker）"""
         if hasattr(self, '_main_window') and self._main_window:
             if hasattr(self._main_window, 'query_worker') and self._main_window.query_worker:
-                return self._main_window.query_worker.isRunning()
+                try:
+                    return self._main_window.query_worker.isRunning()
+                except RuntimeError:
+                    # worker 的 C++ 对象已被删除
+                    return False
         return False
     
     def _cancel_generation(self):
@@ -676,19 +698,23 @@ class SQLEditor(QWidget):
         """取消SQL执行"""
         if hasattr(self, '_main_window') and self._main_window:
             if hasattr(self._main_window, 'query_worker') and self._main_window.query_worker:
-                if self._main_window.query_worker.isRunning():
-                    self._main_window.query_worker.stop()
-                    if not self._main_window.query_worker.wait(2000):
-                        self._main_window.query_worker.terminate()
-                        self._main_window.query_worker.wait(500)
-                    try:
-                        self._main_window.query_worker.query_finished.disconnect()
-                        self._main_window.query_worker.query_progress.disconnect()
-                        self._main_window.query_worker.multi_query_finished.disconnect()
-                    except:
-                        pass
-                    safe_delete_thread(self._main_window.query_worker)
-                    self._main_window.query_worker = None
+                try:
+                    if self._main_window.query_worker.isRunning():
+                        self._main_window.query_worker.stop()
+                        if not self._main_window.query_worker.wait(2000):
+                            self._main_window.query_worker.terminate()
+                            self._main_window.query_worker.wait(500)
+                        try:
+                            self._main_window.query_worker.query_finished.disconnect()
+                            self._main_window.query_worker.query_progress.disconnect()
+                            self._main_window.query_worker.multi_query_finished.disconnect()
+                        except:
+                            pass
+                        safe_delete_thread(self._main_window.query_worker)
+                        self._main_window.query_worker = None
+                except RuntimeError:
+                    # worker 的 C++ 对象已被删除
+                    pass
         self.execute_btn.setText("执行 (F5)")
         self.set_status("已取消", timeout=2000)
     
@@ -704,13 +730,18 @@ class SQLEditor(QWidget):
         ]
         
         for name, worker in workers:
-            if worker and worker.isRunning():
-                worker.stop()
-                worker.wait(1000)
-                if worker.isRunning():
-                    worker.terminate()
-                    worker.wait(500)
-                safe_delete_thread(worker)
+            if worker:
+                try:
+                    if worker.isRunning():
+                        worker.stop()
+                        worker.wait(1000)
+                        if worker.isRunning():
+                            worker.terminate()
+                            worker.wait(500)
+                    safe_delete_thread(worker)
+                except RuntimeError:
+                    # worker 的 C++ 对象已被删除
+                    pass
                 setattr(self, name, None)
     
     def on_tables_ready(self, table_info_list: list):
@@ -783,6 +814,15 @@ class SQLEditor(QWidget):
         # 使用AI选择相关表（传递包含注释的表信息列表）
         from src.gui.workers.ai_table_selector_worker import AITableSelectorWorker
         
+        # 🎯 断开旧 worker 的信号连接，让它自然完成
+        if self.ai_table_selector_worker:
+            try:
+                self.ai_table_selector_worker.tables_selected.disconnect()
+                self.ai_table_selector_worker.error_occurred.disconnect()
+            except:
+                pass
+            self.ai_table_selector_worker.finished.connect(self.ai_table_selector_worker.deleteLater)
+        
         self.ai_table_selector_worker = AITableSelectorWorker(
             self.ai_client,
             user_query,
@@ -791,12 +831,8 @@ class SQLEditor(QWidget):
         )
         self.ai_table_selector_worker.tables_selected.connect(self.on_tables_selected)
         self.ai_table_selector_worker.error_occurred.connect(self.on_ai_error)
+        self.ai_table_selector_worker.finished.connect(self.ai_table_selector_worker.deleteLater)
         self.ai_table_selector_worker.start()
-        
-        # 清理表名列表worker
-        if self.table_list_worker:
-            safe_delete_thread(self.table_list_worker)
-            self.table_list_worker = None
     
     def on_tables_selected(self, selected_tables: list):
         """AI选择表完成回调（第二步：获取选中表的结构，让AI选择枚举字段）"""
@@ -827,6 +863,14 @@ class SQLEditor(QWidget):
             if connection:
                 from src.gui.workers.schema_worker import SchemaWorker
                 
+                # 🎯 断开旧 worker 的信号连接，让它自然完成
+                if self.schema_worker:
+                    try:
+                        self.schema_worker.schema_ready.disconnect()
+                    except:
+                        pass
+                    self.schema_worker.finished.connect(self.schema_worker.deleteLater)
+                
                 # 只获取选中表的结构（仅针对当前数据库）
                 self.schema_worker = SchemaWorker(
                     connection.get_connection_string(),
@@ -836,12 +880,8 @@ class SQLEditor(QWidget):
                     database=self.current_database  # 传入当前数据库，仅获取该数据库的表结构
                 )
                 self.schema_worker.schema_ready.connect(self.on_schema_ready_for_enum_selection)
+                self.schema_worker.finished.connect(self.schema_worker.deleteLater)
                 self.schema_worker.start()
-                
-                # 清理AI选表worker
-                if self.ai_table_selector_worker:
-                    safe_delete_thread(self.ai_table_selector_worker)
-                    self.ai_table_selector_worker = None
                 return
         
         # 如果没有连接，直接生成SQL
@@ -858,10 +898,7 @@ class SQLEditor(QWidget):
         self._temp_table_schema = table_schema
         self._temp_table_names = table_names
         
-        # 清理schema worker
-        if self.schema_worker:
-            safe_delete_thread(self.schema_worker)
-            self.schema_worker = None
+        # 🎯 不需要手动清理：worker 会通过 finished 信号自动 deleteLater()
         
         if not table_schema or not table_schema.strip():
             logger.warning("表结构为空，直接生成SQL")
@@ -889,6 +926,15 @@ class SQLEditor(QWidget):
         
         from src.gui.workers.ai_enum_selector_worker import AIEnumSelectorWorker
         
+        # 🎯 断开旧 worker 的信号连接，让它自然完成
+        if self.ai_enum_selector_worker:
+            try:
+                self.ai_enum_selector_worker.enum_selection_ready.disconnect()
+                self.ai_enum_selector_worker.error_occurred.disconnect()
+            except:
+                pass
+            self.ai_enum_selector_worker.finished.connect(self.ai_enum_selector_worker.deleteLater)
+        
         user_query = self.ai_input.toPlainText().strip()
         self.ai_enum_selector_worker = AIEnumSelectorWorker(
             self.ai_client,
@@ -897,6 +943,7 @@ class SQLEditor(QWidget):
         )
         self.ai_enum_selector_worker.enum_selection_ready.connect(self.on_enum_selection_ready)
         self.ai_enum_selector_worker.error_occurred.connect(self.on_ai_error)
+        self.ai_enum_selector_worker.finished.connect(self.ai_enum_selector_worker.deleteLater)
         self.ai_enum_selector_worker.start()
     
     def on_enum_selection_ready(self, enum_columns: dict, should_query: bool):
@@ -953,6 +1000,14 @@ class SQLEditor(QWidget):
             if connection:
                 from src.gui.workers.enum_values_worker import EnumValuesWorker
                 
+                # 🎯 断开旧 worker 的信号连接，让它自然完成
+                if self.enum_values_worker:
+                    try:
+                        self.enum_values_worker.enum_values_ready.disconnect()
+                    except:
+                        pass
+                    self.enum_values_worker.finished.connect(self.enum_values_worker.deleteLater)
+                
                 self.enum_values_worker = EnumValuesWorker(
                     connection.get_connection_string(),
                     connection.get_connect_args(),
@@ -960,6 +1015,7 @@ class SQLEditor(QWidget):
                     enum_columns
                 )
                 self.enum_values_worker.enum_values_ready.connect(self.on_enum_values_ready)
+                self.enum_values_worker.finished.connect(self.enum_values_worker.deleteLater)
                 self.enum_values_worker.start()
                 return
         
@@ -1002,10 +1058,7 @@ class SQLEditor(QWidget):
         # 确保传递非空的表结构（如果为空则传递空字符串）
         self._start_ai_generation(user_query, table_schema if table_schema else "", table_names if table_names else [], self._all_table_names)
         
-        # 清理工作线程
-        if hasattr(self, 'schema_worker') and self.schema_worker:
-            safe_delete_thread(self.schema_worker)
-            self.schema_worker = None
+        # 🎯 不需要手动清理：worker 会通过 finished 信号自动 deleteLater()
     
     def _start_ai_generation(self, user_query: str, table_schema: str, table_names: list = None, all_table_names: list = None):
         """启动AI生成SQL
@@ -1019,6 +1072,18 @@ class SQLEditor(QWidget):
         import logging
         logger = logging.getLogger(__name__)
         logger.info(f"启动AI生成SQL，表结构是否为空: {not table_schema}, 选中表数量: {len(table_names) if table_names else 0}, 所有表数量: {len(all_table_names) if all_table_names else 0}")
+        
+        # 🎯 新策略：断开旧 worker 的信号连接（如果存在）
+        # 让旧线程自然完成，但不处理它的结果
+        if self.ai_worker:
+            try:
+                self.ai_worker.sql_generated.disconnect()
+                self.ai_worker.error_occurred.disconnect()
+            except:
+                pass  # 信号可能已经断开
+            # 让旧 worker 自动清理
+            self.ai_worker.finished.connect(self.ai_worker.deleteLater)
+            logger.info("旧的 AI worker 将自然完成并自动清理")
         
         # 更新状态栏
         self.set_status("AI正在生成SQL...", timeout=0)
@@ -1039,14 +1104,15 @@ class SQLEditor(QWidget):
             all_table_names = getattr(self, '_all_table_names', [])
             logger.info(f"使用保存的所有表名列表: {len(all_table_names)} 个表")
         
-        # 创建并启动AI工作线程
-        # 如果已经选中了表，就只传递选中的表，不再传递所有表（因为AI已经在第一步选择了表）
-        # 如果没有选中表，才传递所有表名（作为降级处理）
+        # 🎯 创建新的 worker（旧的会自然完成）
         tables_to_pass = table_names if table_names else (all_table_names or [])
         self.ai_worker = AIWorker(self.ai_client, user_query, table_schema, table_names or [], db_type, current_sql, tables_to_pass)
         self.ai_worker.sql_generated.connect(self.on_sql_generated)
         self.ai_worker.error_occurred.connect(self.on_ai_error)
+        # 自动清理：线程完成后自动删除
+        self.ai_worker.finished.connect(self.ai_worker.deleteLater)
         self.ai_worker.start()
+        logger.info("新的 AI worker 已启动")
     
     def on_sql_generated(self, sql: str):
         """AI生成SQL完成回调"""
@@ -1071,10 +1137,7 @@ class SQLEditor(QWidget):
             # 增删改语句：不自动执行，提示用户手动执行
             self.set_status("SQL生成成功，请点击\"执行\"按钮执行（增删改操作需要确认后执行）", timeout=5000)
         
-        # 清理工作线程
-        if self.ai_worker:
-            safe_delete_thread(self.ai_worker)
-            self.ai_worker = None
+        # 🎯 不需要手动清理：worker 会通过 finished 信号自动 deleteLater()
     
     def on_ai_error(self, error: str):
         """AI生成SQL错误回调"""
@@ -1092,13 +1155,7 @@ class SQLEditor(QWidget):
         except Exception as e:
             logger.warning(f"显示Toast失败: {str(e)}")
         
-        # 清理工作线程
-        if self.ai_worker:
-            safe_delete_thread(self.ai_worker)
-            self.ai_worker = None
-        if hasattr(self, 'ai_table_selector_worker') and self.ai_table_selector_worker:
-            safe_delete_thread(self.ai_table_selector_worker)
-            self.ai_table_selector_worker = None
+        # 🎯 不需要手动清理：worker 会通过 finished 信号自动 deleteLater()
     
     def execute_sql(self):
         """执行SQL"""
