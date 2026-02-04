@@ -36,12 +36,27 @@ fi
 echo "[3/4] 生成ICO图标文件（如果需要）..."
 python3 resources/icons/create_ico.py 2>/dev/null || echo "[提示] ICO生成跳过（Linux/Mac可选）"
 
-echo "[4/4] 开始打包（不包含默认AI配置）..."
+echo "[4/5] 生成构建版本号..."
+BUILD_VERSION=$(python3 scripts/generate_build_version.py 2>/dev/null | grep "BUILD_VERSION=" | cut -d'=' -f2)
+if [ $? -ne 0 ] || [ -z "$BUILD_VERSION" ]; then
+    echo "[警告] 版本号生成失败，将使用默认版本号"
+else
+    export BUILD_VERSION="$BUILD_VERSION"
+    echo "[信息] 使用版本号: $BUILD_VERSION"
+fi
+
+echo "[5/5] 开始打包（不包含默认AI配置）..."
 pyinstaller build_exe.spec --clean --noconfirm
 
 if [ $? -ne 0 ]; then
     echo "[错误] 打包失败"
     exit 1
+fi
+
+# 复制版本号文件到 dist 目录（如果存在）
+if [ -f "VERSION.txt" ]; then
+    cp VERSION.txt dist/VERSION.txt 2>/dev/null
+    echo "[信息] 版本号文件已复制到 dist/VERSION.txt"
 fi
 
 # 重命名为社区版

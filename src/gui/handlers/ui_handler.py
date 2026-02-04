@@ -4,7 +4,7 @@ UI 初始化处理器
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, 
     QTreeWidgetItem, QToolBar, QPushButton, QComboBox, QLabel, QTabWidget,
-    QGroupBox, QMenu
+    QGroupBox, QMenu, QToolButton
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QIcon
@@ -118,6 +118,17 @@ class UIHandler:
         # 设置tab bar的右键菜单
         tab_bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         tab_bar.customContextMenuRequested.connect(self._on_tab_bar_context_menu)
+        
+        # 右侧下拉箭头：列出所有 tab 便于选择
+        tab_list_btn = QToolButton()
+        tab_list_btn.setToolTip(self.main_window.tr("列出所有标签页"))
+        tab_list_btn.setArrowType(Qt.ArrowType.DownArrow)
+        tab_list_btn.setFixedSize(24, 24)
+        tab_list_btn.clicked.connect(self._show_tab_list_menu)
+        self.main_window._tab_list_button = tab_list_btn  # 供弹出菜单定位
+        self.main_window.right_tab_widget.setCornerWidget(tab_list_btn, Qt.Corner.TopRightCorner)
+        # 支持将 tab 拖出为独立窗口（便于对比）
+        tab_bar.installEventFilter(self.main_window)
         
         # 第一个tab：查询（包含AI查询、SQL编辑器和结果）
         query_tab = QWidget()
@@ -464,6 +475,24 @@ class UIHandler:
                 if tab_text in ["查询", "Query"]:
                     self.main_window.right_tab_widget.setTabText(i, self.main_window.tr("查询"))
     
+    def _show_tab_list_menu(self):
+        """点击右侧下拉箭头时显示所有 tab 列表，便于选择"""
+        tw = self.main_window.right_tab_widget
+        if tw.count() == 0:
+            return
+        menu = QMenu(self.main_window)
+        for i in range(tw.count()):
+            text = tw.tabText(i)
+            if not text.strip():
+                text = self.main_window.tr("(无标题)")
+            action = menu.addAction(text)
+            action.triggered.connect(lambda checked, idx=i: tw.setCurrentIndex(idx))
+        btn = getattr(self.main_window, "_tab_list_button", None)
+        if btn and btn.isVisible():
+            menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
+        else:
+            menu.exec(tw.mapToGlobal(tw.rect().topRight()))
+
     def _on_tab_bar_context_menu(self, position):
         """Tab bar右键菜单处理"""
         tab_bar = self.main_window.right_tab_widget.tabBar()
@@ -476,6 +505,11 @@ class UIHandler:
         # 创建右键菜单
         menu = QMenu(self.main_window)
         tab_count = self.main_window.right_tab_widget.count()
+        
+        # 拖出为独立窗口（便于对比）
+        detach_action = menu.addAction(self.main_window.tr("拖出为独立窗口"))
+        detach_action.triggered.connect(lambda: self.main_window.detach_tab(index))
+        menu.addSeparator()
         
         # 关闭当前tab（第一个查询tab不能关闭）
         if index > 0:

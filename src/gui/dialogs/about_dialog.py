@@ -97,8 +97,9 @@ class AboutDialog(QDialog):
         left_layout.addLayout(logo_container)
         left_layout.addSpacing(10)
         
-        # 版本信息
-        version_label = QLabel("📌 版本 0.2.0")
+        # 版本信息（从 src.__version__ 动态读取）
+        from src import __version__
+        version_label = QLabel(f"📌 版本 {__version__}")
         version_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #34495e;")
         left_layout.addWidget(version_label)
         
@@ -201,6 +202,30 @@ class AboutDialog(QDialog):
         button_layout.setContentsMargins(0, 12, 0, 0)
         button_layout.addStretch()
         
+        # 检查更新按钮
+        check_update_btn = QPushButton("🔄 检查更新")
+        check_update_btn.setMinimumWidth(120)
+        check_update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        check_update_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 10px 24px;
+                font-weight: 600;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #2ecc71;
+            }
+            QPushButton:pressed {
+                background-color: #229954;
+            }
+        """)
+        check_update_btn.clicked.connect(self.check_update)
+        button_layout.addWidget(check_update_btn)
+        
         close_btn = QPushButton("✓ 关闭")
         close_btn.setMinimumWidth(120)
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -231,6 +256,38 @@ class AboutDialog(QDialog):
         
         # 设置对话框大小
         self.resize(750, 480)
+    
+    def check_update(self):
+        """检查更新"""
+        # 尝试从父窗口获取主窗口引用
+        parent = self.parent()
+        main_window = None
+        
+        # 如果父窗口有 main_window 属性（通过 SettingsHandler 传递）
+        while parent:
+            if hasattr(parent, 'check_for_updates'):
+                main_window = parent
+                break
+            parent = parent.parent()
+        
+        if main_window:
+            main_window.check_for_updates(show_no_update=True)
+        else:
+            # 如果没有主窗口，直接调用更新检查
+            from src.gui.workers.update_check_worker import UpdateCheckWorker
+            from src.gui.dialogs.update_dialog import UpdateDialog
+            from PyQt6.QtWidgets import QMessageBox
+            
+            worker = UpdateCheckWorker()
+            worker.update_available.connect(lambda info: UpdateDialog(info, self).exec())
+            worker.no_update.connect(lambda: QMessageBox.information(
+                self, "检查更新", "当前已是最新版本！"
+            ))
+            worker.check_failed.connect(lambda msg: QMessageBox.warning(
+                self, "检查更新失败", f"无法检查更新:\n{msg}"
+            ))
+            worker.finished.connect(worker.deleteLater)
+            worker.start()
 
 
 

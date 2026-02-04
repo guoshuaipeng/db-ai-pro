@@ -43,7 +43,24 @@ if errorlevel 1 (
     echo [警告] ICO文件生成失败，将使用PNG图标
 )
 
-echo [4/4] 开始打包（不包含默认AI配置）...
+echo [4/5] 生成构建版本号...
+for /f "tokens=2 delims==" %%a in ('python scripts\generate_build_version.py 2^>nul ^| findstr /C:"BUILD_VERSION="') do set BUILD_VERSION=%%a
+if errorlevel 1 (
+    echo [警告] 版本号生成失败，将使用默认版本号（从代码读取）
+) else (
+    if defined BUILD_VERSION (
+        echo [信息] 使用版本号: %BUILD_VERSION%
+        set "BUILD_VERSION=%BUILD_VERSION%"
+    ) else (
+        echo [信息] 版本号未设置，将使用默认版本号（从代码读取）
+    )
+)
+
+echo [5/5] 开始打包（不包含默认AI配置）...
+REM 设置环境变量（如果已生成版本号）
+if defined BUILD_VERSION (
+    set "BUILD_VERSION=%BUILD_VERSION%"
+)
 pyinstaller build_exe.spec --clean --noconfirm
 
 if errorlevel 1 (
@@ -52,10 +69,20 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM 复制版本号文件到 dist 目录（如果存在）
+if exist VERSION.txt (
+    copy /Y VERSION.txt dist\VERSION.txt >nul
+    echo [信息] 版本号文件已复制到 dist\VERSION.txt
+)
+
 echo 打包完成！
 echo.
 echo ========================================
 echo 可执行文件位置: dist\DataAI.exe
+if defined BUILD_VERSION (
+    echo 版本号: %BUILD_VERSION%
+    echo 版本号文件: dist\VERSION.txt
+)
 echo ========================================
 echo.
 echo 提示：

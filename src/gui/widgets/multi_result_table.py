@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
+    QAbstractItemView,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -417,8 +418,10 @@ class SingleResultTable(QWidget):
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
         
-        # 安装事件过滤器以处理键盘事件（Ctrl+C复制）
+        # 安装事件过滤器以处理键盘事件（Ctrl+C复制）和选中直接输入
         self.table.installEventFilter(self)
+        # 用于输入时实时同步到多选的连接（编辑结束后自动失效）
+        self._batch_sync_connection = None
         
         layout.addWidget(self.table)
         
@@ -1079,14 +1082,111 @@ class SingleResultTable(QWidget):
                 header.resizeSection(col_idx, max_column_width)
     
     def eventFilter(self, obj, event):
-        """事件过滤器，处理Ctrl+C复制"""
+        """事件过滤器：Ctrl+C 复制；选中状态下直接按键开始编辑；编辑时焦点进入编辑器则挂上实时同步"""
         if obj == self.table and event.type() == QEvent.Type.KeyPress:
             key_event = event
             # Ctrl+C 或 Cmd+C (macOS)
             if key_event.matches(QKeySequence.StandardKey.Copy):
                 self.copy_selected_cells()
                 return True
+            # 已处于编辑状态时不再拦截（按键交给编辑器）
+            if self.table.state() == QAbstractItemView.State.EditingState:
+                return False
+            # 有可输入字符且非快捷键：在选中状态下直接开始编辑并注入首字符
+            if key_event.text() and not (key_event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier)):
+                selected = self.table.selectedItems()
+                if not selected:
+                    return False
+                idx = self.table.currentIndex()
+                if not idx.isValid():
+                    first = self.table.selectedIndexes()[0] if self.table.selectedIndexes() else None
+                    if first is not None:
+                        self.table.setCurrentIndex(first)
+                        idx = first
+                if idx.isValid():
+                    self.table.edit(idx)
+                    key_text = key_event.text()
+                    QTimer.singleShot(0, lambda: self._after_editor_opened(key_text))
+                    return True
+        # 双击开始编辑时，延迟挂上编辑器 textChanged，实现输入时实时同步到多选
+        if obj == self.table and event.type() == QEvent.Type.MouseButtonDblClick:
+            if len(self.table.selectedItems()) > 1:
+                QTimer.singleShot(80, self._connect_editor_for_realtime_sync)
         return super().eventFilter(obj, event)
+
+    def _after_editor_opened(self, first_key: str):
+        """编辑器打开后：注入首键并挂上输入时实时同步到所有选中单元格"""
+        fw = QApplication.focusWidget()
+        if isinstance(fw, QLineEdit):
+            fw.setText(first_key)
+            fw.setFocus()
+        self._connect_editor_for_realtime_sync()
+
+    def _connect_editor_for_realtime_sync(self):
+        """若当前焦点为本表格的单元格编辑器且多选，则连接 textChanged 实现输入时实时同步"""
+        fw = QApplication.focusWidget()
+        if not isinstance(fw, QLineEdit):
+            return
+        try:
+            is_our_editor = (fw.parent() is not None and
+                             (fw.parent() == self.table.viewport() or self.table.viewport().isAncestorOf(fw)))
+        except Exception:
+            is_our_editor = False
+        if not is_our_editor or len(self.table.selectedItems()) <= 1:
+            return
+        if self._batch_sync_connection is not None:
+            try:
+                self._batch_sync_connection.disconnect()
+            except Exception:
+                pass
+            self._batch_sync_connection = None
+        self._batch_sync_connection = fw.textChanged.connect(lambda: self._on_editor_text_changed(fw))
+
+    def _on_editor_text_changed(self, editor: QLineEdit):
+        """编辑器内容变化时：将当前输入同步到所有选中单元格（输入过程中即时生效）"""
+        if not self.raw_data or editor is None:
+            return
+        try:
+            if not editor.isVisible():
+                return
+        except RuntimeError:
+            return
+        text = editor.text()
+        new_value_for_db = None if (text.upper() == "NULL" or text == "") else text
+        display_value = "NULL" if new_value_for_db is None else text
+        columns = list(self.raw_data[0].keys())
+        current = self.table.currentIndex()
+        cur_r, cur_c = current.row(), current.column()
+        selected = self.table.selectedItems()
+        if not selected:
+            return
+        self._updating_data = True
+        try:
+            for it in selected:
+                r, c = it.row(), it.column()
+                if r < 0 or r >= len(self.raw_data) or c < 0 or c >= len(columns):
+                    continue
+                col_name = columns[c]
+                other_old = self.original_data[r].get(col_name) if self.original_data and r < len(self.original_data) else self.raw_data[r].get(col_name)
+                self.raw_data[r][col_name] = new_value_for_db
+                self.modified_cells[(r, c)] = (other_old, new_value_for_db, col_name)
+                if (r, c) != (cur_r, cur_c):
+                    it.setText(display_value)
+                    if new_value_for_db is None:
+                        it.setForeground(Qt.GlobalColor.gray)
+                    else:
+                        it.setForeground(Qt.GlobalColor.black)
+                    if r in self.pending_deletes:
+                        it.setBackground(QColor(255, 150, 150, 180))
+                    else:
+                        it.setBackground(QColor(255, 255, 200))
+            self._update_save_cancel_buttons()
+            if self.modified_cells:
+                self._show_status_to_main_window(
+                    f"查询完成: {len(self.raw_data)} 行, {len(columns)} 列 (已暂存 {len(self.modified_cells)} 个修改，请点击保存)"
+                )
+        finally:
+            self._updating_data = False
     
     def copy_selected_cells(self):
         """复制选中的单元格内容到剪贴板"""
@@ -1146,46 +1246,48 @@ class SingleResultTable(QWidget):
         
         # 创建右键菜单
         menu = QMenu(self)
-        
-        # 如果有选中的单元格，添加复制选项
+
+        def add_action(icon_key, text, handler):
+            action = menu.addAction(self._get_icon(icon_key), text)
+            action.triggered.connect(handler)
+            return action
+
+        def add_separator_if_needed():
+            actions = menu.actions()
+            if actions:
+                last_action = actions[-1]
+                if not last_action.isSeparator():
+                    menu.addSeparator()
+
+        # 复制
         if selected_items:
-            copy_action = menu.addAction(self._get_icon('copy'), "复制选中内容 (Ctrl+C)")
-            copy_action.triggered.connect(self.copy_selected_cells)
-            menu.addSeparator()
-        
-        # 添加"刷新"选项（如果有原始SQL）
-        if self.original_sql and self.main_window:
-            refresh_action = menu.addAction(self._get_icon('refresh'), "刷新")
-            refresh_action.triggered.connect(self.refresh_data)
-            menu.addSeparator()
-        
-        # 如果有选中的单元格，添加其他选项
+            add_action('copy', "复制选中内容 (Ctrl+C)", self.copy_selected_cells)
+
+        # 行 / 字段查询
         if item:
             row = item.row()
             if 0 <= row < len(self.raw_data):
-                # 添加分隔线（如果前面有内容）
                 if menu.actions():
                     menu.addSeparator()
-                
-                # 查询行数据（一级菜单）
-                json_row_action = menu.addAction(self._get_icon('json'), "以JSON查询行数据")
-                json_row_action.triggered.connect(lambda: self.query_by_json_row(row))
-                
-                # 查询字段数据（一级菜单）
-                json_field_action = menu.addAction(self._get_icon('json'), "以JSON查询字段数据")
-                json_field_action.triggered.connect(lambda: self.query_by_json_field(row, item.column()))
+                add_action('json', "以JSON查询行数据", lambda: self.query_by_json_row(row))
+                add_action('json', "以JSON查询字段数据", lambda: self.query_by_json_field(row, item.column()))
 
-                # 如果有选中的单元格，添加"填充为 NULL"选项
+                # 设置为 NULL
                 if selected_items:
-                    fill_null_action = menu.addAction(self._get_icon('null'), "设置为NULL")
-                    fill_null_action.triggered.connect(self.fill_selected_cells_with_null)
-                
-                # 如果有选中的行，添加删除选项
+                    add_separator_if_needed()
+                    add_action('null', "设置为NULL", self.fill_selected_cells_with_null)
+
+                # 删除行（放在更靠后的位置）
                 if selected_rows:
-                    menu.addSeparator()
-                    delete_action = menu.addAction(self._get_icon('delete'), f"删除选中行 ({len(selected_rows)} 行)")
-                    delete_action.triggered.connect(lambda: self.delete_selected_rows(selected_rows))
-        
+                    add_separator_if_needed()
+                    add_action('delete', f"删除选中行 ({len(selected_rows)} 行)", lambda: self.delete_selected_rows(selected_rows))
+
+        # 刷新放在最底部
+        if self.original_sql and self.main_window:
+            if menu.actions():
+                menu.addSeparator()
+            add_action('refresh', "刷新", self.refresh_data)
+
         # 显示菜单
         menu.exec(self.table.mapToGlobal(position))
     
@@ -1215,7 +1317,7 @@ class SingleResultTable(QWidget):
         for it in items:
             # 设置显示文本为 "NULL"；on_item_changed 会把它转换为 None 并更新数据库
             it.setText("NULL")
-    
+
     def show_json_dialog(self, row: int):
         """显示JSON数据对话框"""
         if not self.raw_data:
@@ -1665,6 +1767,34 @@ class SingleResultTable(QWidget):
                             item.setBackground(QColor(255, 200, 200, 150))  # 浅红色
                         else:
                             item.setBackground(QColor(255, 255, 255, 0))  # 透明背景，让系统样式生效
+                
+                # 键盘输入时批量生效：若选中了多个单元格，将当前输入同步到其余选中单元格
+                selected = self.table.selectedItems()
+                if len(selected) > 1:
+                    display_value = "NULL" if new_value_for_db is None else str(new_value_for_db)
+                    self._updating_data = True
+                    try:
+                        for other in selected:
+                            if other is item:
+                                continue
+                            r, c = other.row(), other.column()
+                            if r < 0 or r >= len(self.raw_data) or c < 0 or c >= len(columns):
+                                continue
+                            other_col_name = columns[c]
+                            other_old = self.original_data[r].get(other_col_name) if self.original_data and r < len(self.original_data) else self.raw_data[r].get(other_col_name)
+                            other.setText(display_value)
+                            if new_value_for_db is None:
+                                other.setForeground(Qt.GlobalColor.gray)
+                            else:
+                                other.setForeground(Qt.GlobalColor.black)
+                            self.raw_data[r][other_col_name] = new_value_for_db
+                            self.modified_cells[(r, c)] = (other_old, new_value_for_db, other_col_name)
+                            if r in self.pending_deletes:
+                                other.setBackground(QColor(255, 150, 150, 180))
+                            else:
+                                other.setBackground(QColor(255, 255, 200))
+                    finally:
+                        self._updating_data = False
                 
                 # 更新按钮状态和修改数量显示（会同时更新高亮）
                 self._update_save_cancel_buttons()
@@ -2402,26 +2532,20 @@ class SingleResultTable(QWidget):
         self._continue_with_deletes_after_update = False
         
         if success:
-            # 更新成功，更新原始数据
-            import copy
-            self.original_data = copy.deepcopy(self.raw_data)
-            # 清空修改记录
+            # 清空修改记录和样式
             self.modified_cells.clear()
-            # 恢复所有单元格的背景色
             self._clear_modified_cell_styles()
-            
-            # 更新按钮状态
             self._update_save_cancel_buttons()
-            
-            # 显示耗时信息
             time_str = f"耗时: {elapsed_time:.3f}秒" if elapsed_time else ""
             self._show_status_to_main_window(
-                f"查询完成: {len(self.raw_data)} 行 (已保存 {affected_rows or 0} 个修改到数据库) {time_str}".strip()
+                f"已保存 {affected_rows or 0} 个修改到数据库，正在刷新数据... {time_str}".strip()
             )
-            
-            # 如果更新成功且有待删除的行，继续执行删除
+            # 如果更新成功且有待删除的行，先执行删除，删除完成后再刷新
             if continue_with_deletes and self.pending_deletes:
                 self._execute_pending_deletes()
+            else:
+                # 重新执行查询，获取数据库真实数据
+                QTimer.singleShot(100, self._refresh_after_update)
         else:
             # 只显示状态栏提示，不弹出对话框
             time_str = f"耗时: {elapsed_time:.3f}秒" if elapsed_time else ""
@@ -2449,23 +2573,18 @@ class SingleResultTable(QWidget):
         
         if success_count > 0:
             # 至少有一个更新成功
-            import copy
-            self.original_data = copy.deepcopy(self.raw_data)
             self.modified_cells.clear()
             self._clear_modified_cell_styles()
-            
-            # 更新按钮状态
             self._update_save_cancel_buttons()
-            
             if error_count > 0:
-                # 只显示状态栏提示，不弹出对话框
-                self._show_status_to_main_window(f"保存完成: 成功 {success_count} 个，失败 {error_count} 个 {time_str}".strip())
+                self._show_status_to_main_window(f"保存完成: 成功 {success_count} 个，失败 {error_count} 个，正在刷新... {time_str}".strip())
             else:
-                self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行 (已保存 {total_affected} 个修改到数据库) {time_str}".strip())
-            
-            # 如果更新成功且有待删除的行，继续执行删除
+                self._show_status_to_main_window(f"已保存 {total_affected} 个修改到数据库，正在刷新数据... {time_str}".strip())
+            # 如果更新成功且有待删除的行，先执行删除，删除完成后再刷新
             if continue_with_deletes and self.pending_deletes:
                 self._execute_pending_deletes()
+            else:
+                QTimer.singleShot(100, self._refresh_after_update)
         else:
             error_messages = [r[3] for r in results if r[3]]
             error_msg = error_messages[0] if error_messages else "未知错误"
@@ -2579,20 +2698,20 @@ class SingleResultTable(QWidget):
     def _on_update_finished(self, success: bool, error: Optional[str], affected_rows: Optional[int]):
         """UPDATE执行完成回调（保留此方法以兼容旧代码）"""
         if success:
-            # 更新成功，更新原始数据
-            import copy
-            self.original_data = copy.deepcopy(self.raw_data)
-            # 清空修改记录
+            # 清空修改记录和样式
             self.modified_cells.clear()
-            # 恢复所有单元格的背景色
             self._clear_modified_cell_styles()
-            
-            # 更新按钮状态
             self._update_save_cancel_buttons()
-            
-            self._show_status_to_main_window(f"查询完成: {len(self.raw_data)} 行 (已保存到数据库)")
+            self._show_status_to_main_window(f"查询完成: 已保存到数据库，正在刷新数据...")
+            # 重新执行查询，获取数据库真实数据（处理触发器、默认值等）
+            QTimer.singleShot(100, self._refresh_after_update)
         else:
             QMessageBox.warning(self, "更新失败", f"更新数据库失败: {error}")
+
+    def _refresh_after_update(self):
+        """UPDATE成功后重新查询，以显示数据库中的真实数据"""
+        if self.original_sql and (self.execute_query_func or (self.main_window and hasattr(self.main_window, 'execute_query'))):
+            self.refresh_data()
     
     def delete_selected_rows(self, selected_rows: List[int]):
         """标记选中的行为待删除（确认后才真正删除）"""
@@ -2841,16 +2960,10 @@ class SingleResultTable(QWidget):
             for row_idx in selected_rows:
                 if row_idx in self.pending_deletes:
                     self.pending_deletes.remove(row_idx)
-            
-            # 删除成功，从表格中移除行（从后往前删除，避免索引变化）
-            self._remove_rows_from_table(selected_rows)
-            
-            # 更新按钮状态
             self._update_save_cancel_buttons()
-            
-            # 更新状态到主窗口状态栏
-            remaining_rows = len(self.raw_data)
-            self._show_status_to_main_window(f"删除成功: 已删除 {len(selected_rows)} 行，剩余 {remaining_rows} 行")
+            # 删除成功，重新查询以显示数据库真实数据
+            self._show_status_to_main_window(f"删除成功: 已删除 {len(selected_rows)} 行，正在刷新数据...")
+            QTimer.singleShot(100, self._refresh_after_update)
         else:
             # 删除失败，不清除待删除标记，让用户可以重试
             # 只显示状态栏提示，不弹出对话框
@@ -2864,25 +2977,15 @@ class SingleResultTable(QWidget):
         
         if success_count > 0:
             # 清除成功删除的行的待删除标记
-            # 注意：这里假设所有选中的行都尝试删除了，实际应该根据results来判断哪些成功
-            # 为了简化，如果至少有一个成功，就清除所有标记
             for row_idx in selected_rows:
                 if row_idx in self.pending_deletes:
                     self.pending_deletes.remove(row_idx)
-            
-            # 至少有一条删除成功，从表格中移除行
-            self._remove_rows_from_table(selected_rows)
-            
-            # 更新按钮状态
             self._update_save_cancel_buttons()
-            
-            # 更新状态到主窗口状态栏
-            remaining_rows = len(self.raw_data)
             if error_count > 0:
-                # 只显示状态栏提示，不弹出对话框
-                self._show_status_to_main_window(f"删除完成: 成功 {success_count} 行，失败 {error_count} 行，剩余 {remaining_rows} 行")
+                self._show_status_to_main_window(f"删除完成: 成功 {success_count} 行，失败 {error_count} 行，正在刷新数据...")
             else:
-                self._show_status_to_main_window(f"删除成功: 已删除 {success_count} 行，剩余 {remaining_rows} 行")
+                self._show_status_to_main_window(f"删除成功: 已删除 {success_count} 行，正在刷新数据...")
+            QTimer.singleShot(100, self._refresh_after_update)
         else:
             # 全部失败
             error_messages = [r[3] for r in results if r[3]]

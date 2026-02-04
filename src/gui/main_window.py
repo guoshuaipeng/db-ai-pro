@@ -18,8 +18,9 @@ from PyQt6.QtWidgets import (
     QLabel,
     QTabWidget,
     QApplication,
+    QSizePolicy,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QThread, QThread, QTimer
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QThread, QTimer, QEvent, QPoint, QRect
 from PyQt6.QtGui import QAction, QIcon, QFont
 from typing import Optional, List
 
@@ -98,8 +99,18 @@ class MainWindow(QMainWindow):
         self.redis_data_worker = None  # Redis 数据查询工作线程
         self._query_table_timer = None  # 用于防抖的定时器
         self._is_closing = False
+        # Tab 拖出为独立窗口：拖拽状态
+        self._tab_drag_start_index = -1
+        self._tab_drag_start_global: Optional[QPoint] = None
+        self._tab_detaching = False
+        self._floating_tab_windows: List = []  # 已拖出的窗口列表
         # 获取线程管理器
         self.thread_manager = get_thread_manager()  # 标记窗口是否正在关闭
+        
+        # 更新检查间隔限制（3天 = 259200 秒）
+        self._update_check_interval = 3 * 24 * 3600  # 3天
+        # 从设置中加载上次检查时间（持久化）
+        self._last_update_check_time = settings.last_update_check_time or 0
         
         # 初始化处理器
         from src.gui.handlers.connection_handler import ConnectionHandler
@@ -677,6 +688,76 @@ class MainWindow(QMainWindow):
     def close_query_tab(self, index: int):
         """关闭查询tab"""
         self.table_structure_handler.close_query_tab(index)
+
+    def detach_tab(self, index: int):
+        """将指定 tab 拖出为主窗口旁的独立窗口，便于对比查看"""
+        if not hasattr(self, "right_tab_widget") or index < 0 or index >= self.right_tab_widget.count():
+            return
+        title = self.right_tab_widget.tabText(index)
+        widget = self.right_tab_widget.widget(index)
+        if widget is None:
+            return
+        self.right_tab_widget.removeTab(index)
+        # 从 tab 移出后需放入带布局的容器，否则在新窗口里可能不参与布局导致空白
+        widget.setParent(None)
+        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        widget.setMinimumSize(400, 300)
+        container = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(widget)
+        container.setLayout(layout)
+        win = QMainWindow(None)  # 独立窗口，不设 parent
+        win.setWindowTitle(f"{title} - DataAI")
+        win.setCentralWidget(container)
+        win.resize(1000, 700)
+        win.show()
+        widget.show()
+        widget.update()
+        self._floating_tab_windows.append(win)
+        try:
+            def _on_float_closed():
+                try:
+                    if win in self._floating_tab_windows:
+                        self._floating_tab_windows.remove(win)
+                except Exception:
+                    pass
+            win.destroyed.connect(_on_float_closed)
+        except Exception:
+            pass
+
+    def eventFilter(self, obj, event):
+        """处理 tab 栏拖拽：拖出 tab 为独立窗口"""
+        if not hasattr(self, "right_tab_widget") or obj is not self.right_tab_widget.tabBar():
+            return super().eventFilter(obj, event)
+        tab_bar = self.right_tab_widget.tabBar()
+        t = event.type()
+        if t == QEvent.Type.MouseButtonPress:
+            if event.button() == Qt.MouseButton.LeftButton:
+                pt = event.position().toPoint() if hasattr(event, "position") else event.pos()
+                self._tab_drag_start_index = tab_bar.tabAt(pt)
+                self._tab_drag_start_global = event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos()
+        elif t == QEvent.Type.MouseMove:
+            if self._tab_drag_start_index >= 0 and (event.buttons() & Qt.MouseButton.LeftButton):
+                g = event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos()
+                if self._tab_drag_start_global and (g - self._tab_drag_start_global).manhattanLength() > 20:
+                    bar_rect = QRect(tab_bar.mapToGlobal(QPoint(0, 0)), tab_bar.size())
+                    if not bar_rect.contains(g):
+                        self._tab_detaching = True
+                        tab_bar.grabMouse()
+            return False
+        elif t == QEvent.Type.MouseButtonRelease:
+            if self._tab_detaching:
+                self.detach_tab(self._tab_drag_start_index)
+                tab_bar.releaseMouse()
+                self._tab_detaching = False
+                self._tab_drag_start_index = -1
+                self._tab_drag_start_global = None
+                return True
+            self._tab_drag_start_index = -1
+            self._tab_drag_start_global = None
+        return super().eventFilter(obj, event)
     
     def add_connection(self):
         """添加数据库连接"""
@@ -2255,4 +2336,104 @@ class MainWindow(QMainWindow):
     def show_about(self):
         """显示关于对话框"""
         self.settings_handler.show_about()
+    
+    def check_for_updates(self, show_no_update: bool = False, auto_check: bool = False):
+        """
+        检查更新
+        
+        Args:
+            show_no_update: 如果无更新是否显示提示
+            auto_check: 是否为自动检查（如果是，失败时不显示错误，且受检查间隔限制）
+        """
+        from src.gui.workers.update_check_worker import UpdateCheckWorker
+        from src.gui.dialogs.update_dialog import UpdateDialog
+        from PyQt6.QtWidgets import QMessageBox
+        import logging
+        import time
+        
+        logger = logging.getLogger(__name__)
+        
+        # 检查间隔限制（仅对自动检查生效，手动检查不受限制）
+        current_time = time.time()
+        if auto_check and (current_time - self._last_update_check_time) < self._update_check_interval:
+            elapsed = int(current_time - self._last_update_check_time)
+            interval_days = self._update_check_interval / (24 * 3600)
+            remaining = int(self._update_check_interval - elapsed)
+            remaining_hours = remaining // 3600
+            remaining_minutes = (remaining % 3600) // 60
+            
+            logger.info(
+                f"距离上次检查仅 {elapsed} 秒，跳过自动检查"
+                f"（检查间隔: {interval_days} 天，还需等待约 {remaining_hours} 小时 {remaining_minutes} 分钟）"
+            )
+            return
+        
+        # 如果已经有检查线程在运行，不重复检查
+        if hasattr(self, 'update_check_worker') and self.update_check_worker:
+            try:
+                if self.update_check_worker.isRunning():
+                    logger.info("更新检查已在进行中，跳过重复检查")
+                    if not auto_check:
+                        QMessageBox.information(
+                            self,
+                            "检查更新",
+                            "正在检查更新，请稍候..."
+                        )
+                    return
+            except RuntimeError:
+                # worker 可能已被删除
+                pass
+        
+        # 记录检查时间（在开始检查时记录，避免频繁重复检查）
+        self._last_update_check_time = current_time
+        # 持久化保存到设置
+        try:
+            self.settings.last_update_check_time = current_time
+            self.settings.save_to_file()
+        except Exception as e:
+            logger.warning(f"保存上次检查时间失败: {e}")
+        
+        logger.info("开始检查更新...")
+        
+        # 如果自动检查且没有显示提示，只记录日志
+        if auto_check and not show_no_update:
+            def on_no_update():
+                logger.info("自动检查更新：当前已是最新版本")
+            
+            def on_check_failed(msg):
+                logger.warning(f"自动检查更新失败: {msg}")
+        else:
+            def on_no_update():
+                if show_no_update:
+                    QMessageBox.information(
+                        self,
+                        "检查更新",
+                        "当前已是最新版本！"
+                    )
+            
+            def on_check_failed(msg):
+                if not auto_check:
+                    QMessageBox.warning(
+                        self,
+                        "检查更新失败",
+                        f"无法检查更新:\n{msg}"
+                    )
+        
+        # 创建检查线程
+        # 配置 GitHub 仓库信息
+        self.update_check_worker = UpdateCheckWorker(
+            owner="guoshuaipeng",  # GitHub 用户名
+            repo="db-ai-pro",      # 仓库名
+            use_custom_api=False   # 使用 GitHub Releases API
+        )
+        self.update_check_worker.update_available.connect(
+            lambda info: UpdateDialog(info, self).exec()
+        )
+        self.update_check_worker.no_update.connect(on_no_update)
+        self.update_check_worker.check_failed.connect(on_check_failed)
+        
+        # 线程完成后自动清理
+        self.update_check_worker.finished.connect(self.update_check_worker.deleteLater)
+        
+        self.update_check_worker.start()
     

@@ -8,13 +8,20 @@ import json
 import os
 import sys
 
+# 从主模块导入版本号（统一版本号管理）
+try:
+    from src import __version__
+    DEFAULT_APP_VERSION = __version__
+except ImportError:
+    DEFAULT_APP_VERSION = "0.2.0"  # 备用版本号
+
 
 class Settings(BaseSettings):
     """应用设置"""
     
     # 应用配置
     app_name: str = "DataAI"
-    app_version: str = "0.1.0"
+    app_version: str = DEFAULT_APP_VERSION  # 从 src.__version__ 导入
     
     # 窗口配置
     window_width: int = 800
@@ -34,6 +41,9 @@ class Settings(BaseSettings):
     # 其他配置
     debug: bool = False
     log_level: str = "INFO"
+    
+    # 更新检查配置
+    last_update_check_time: float = 0.0  # 上次检查更新的时间戳
     
     class Config:
         """Pydantic配置"""
@@ -103,6 +113,7 @@ class Settings(BaseSettings):
                 'query_enum_values': self.query_enum_values,
                 'debug': self.debug,
                 'log_level': self.log_level,
+                'last_update_check_time': self.last_update_check_time,
             }
             with open(config_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, ensure_ascii=False, indent=2)

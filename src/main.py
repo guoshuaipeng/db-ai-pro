@@ -230,6 +230,11 @@ def main():
         window.showMaximized()
         logger.info("主窗口已显示")
         
+        # 延迟自动检查更新（避免影响启动速度）
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(3000, lambda: window.check_for_updates(auto_check=True))
+        logger.info("已设置自动检查更新（延迟 3 秒）")
+        
         # 运行应用程序
         exit_code = app.exec()
         logger.info(f"应用程序退出，退出码: {exit_code}")

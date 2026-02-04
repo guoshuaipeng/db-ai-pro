@@ -605,7 +605,6 @@ class TreeDataHandler:
                 tables_category = QTreeWidgetItem(db_item)
                 tables_category.setText(0, "表")
                 TreeItemData.set_item_type_and_data(tables_category, TreeItemType.TABLE_CATEGORY)
-                from src.utils.ui_helpers import get_category_icon
                 tables_category.setIcon(0, get_category_icon("表", 16))
                 tables_category.setFlags(Qt.ItemFlag.ItemIsEnabled)
             
@@ -702,7 +701,6 @@ class TreeDataHandler:
                 tables_category = QTreeWidgetItem(db_item)
                 tables_category.setText(0, "表")
                 TreeItemData.set_item_type_and_data(tables_category, TreeItemType.TABLE_CATEGORY)
-                from src.utils.ui_helpers import get_category_icon
                 tables_category.setIcon(0, get_category_icon("表", 16))
                 tables_category.setFlags(Qt.ItemFlag.ItemIsEnabled)
             
