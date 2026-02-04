@@ -651,6 +651,14 @@ class SingleResultTable(QWidget):
             # 显示数据（不触发动画）
             self._fill_table_with_pagination(page_data)
             
+            # 同步当前页为 raw_data/original_data，便于编辑时正确记录并触发保存
+            import copy
+            self.raw_data = page_data
+            self.original_data = copy.deepcopy(page_data)
+            self.modified_cells.clear()
+            self.pending_deletes.clear()
+            self._update_save_cancel_buttons()
+            
             # 更新分页控件
             self._update_pagination_controls()
     
@@ -739,8 +747,15 @@ class SingleResultTable(QWidget):
             # 更新表格数据
             self._fill_table_with_pagination(data)
             
-            # 保存当前页数据
+            # 保存当前页数据（供编辑和保存时使用，否则第2页等编辑不会触发保存）
             self.all_data = data
+            import copy
+            self.raw_data = data
+            self.original_data = copy.deepcopy(data)
+            # 切换页后修改记录按当前页重新计算，清空避免错行
+            self.modified_cells.clear()
+            self.pending_deletes.clear()
+            self._update_save_cancel_buttons()
             
             # 更新分页控件
             self._update_pagination_controls()
@@ -1092,6 +1107,10 @@ class SingleResultTable(QWidget):
             # 已处于编辑状态时不再拦截（按键交给编辑器）
             if self.table.state() == QAbstractItemView.State.EditingState:
                 return False
+            # F2 开始编辑时，若多选则稍后挂上实时同步
+            if key_event.key() == Qt.Key.Key_F2 and len(self.table.selectedItems()) > 1:
+                for delay in (0, 50, 150, 300):
+                    QTimer.singleShot(delay, self._connect_editor_for_realtime_sync)
             # 有可输入字符且非快捷键：在选中状态下直接开始编辑并注入首字符
             if key_event.text() and not (key_event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier)):
                 selected = self.table.selectedItems()
@@ -1108,10 +1127,11 @@ class SingleResultTable(QWidget):
                     key_text = key_event.text()
                     QTimer.singleShot(0, lambda: self._after_editor_opened(key_text))
                     return True
-        # 双击开始编辑时，延迟挂上编辑器 textChanged，实现输入时实时同步到多选
+        # 双击开始编辑时，多次尝试挂上编辑器 textChanged（编辑器创建时机因 Qt 版本可能略晚）
         if obj == self.table and event.type() == QEvent.Type.MouseButtonDblClick:
             if len(self.table.selectedItems()) > 1:
-                QTimer.singleShot(80, self._connect_editor_for_realtime_sync)
+                for delay in (0, 50, 150, 300):
+                    QTimer.singleShot(delay, self._connect_editor_for_realtime_sync)
         return super().eventFilter(obj, event)
 
     def _after_editor_opened(self, first_key: str):
@@ -1127,12 +1147,15 @@ class SingleResultTable(QWidget):
         fw = QApplication.focusWidget()
         if not isinstance(fw, QLineEdit):
             return
+        # 放宽判定：只要编辑器在本 table 之下即可（不同 Qt/系统下 parent 可能不是 viewport）
         try:
-            is_our_editor = (fw.parent() is not None and
-                             (fw.parent() == self.table.viewport() or self.table.viewport().isAncestorOf(fw)))
+            is_our_editor = self.table.isAncestorOf(fw)
         except Exception:
             is_our_editor = False
         if not is_our_editor or len(self.table.selectedItems()) <= 1:
+            return
+        # 已连接过同一编辑器则不再重复连接
+        if getattr(fw, "_batch_sync_connected", False):
             return
         if self._batch_sync_connection is not None:
             try:
@@ -1141,6 +1164,18 @@ class SingleResultTable(QWidget):
                 pass
             self._batch_sync_connection = None
         self._batch_sync_connection = fw.textChanged.connect(lambda: self._on_editor_text_changed(fw))
+        fw._batch_sync_connected = True
+        # 编辑器关闭时清除标记，避免下次编辑误判
+        try:
+            def _clear_flag():
+                try:
+                    if hasattr(fw, "_batch_sync_connected"):
+                        del fw._batch_sync_connected
+                except Exception:
+                    pass
+            fw.destroyed.connect(_clear_flag)
+        except Exception:
+            pass
 
     def _on_editor_text_changed(self, editor: QLineEdit):
         """编辑器内容变化时：将当前输入同步到所有选中单元格（输入过程中即时生效）"""
