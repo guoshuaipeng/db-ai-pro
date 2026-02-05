@@ -1914,10 +1914,14 @@ class MainWindow(QMainWindow):
                     logger.warning(f"切换数据库失败: {e}")
             
             # 创建新的查询worker（使用添加了LIMIT的SQL）
+            # 注意：必须传入 is_query，否则非查询语句会被当作查询，导致
+            #      如 DELETE/UPDATE 等语句执行时尝试读取结果集而报
+            #      “This result object does not return rows. It has been closed automatically.”
             query_tab._query_worker = QueryWorker(
                 connection.get_connection_string(),
                 connection.get_connect_args(),
-                sql_for_execution
+                sql_for_execution,
+                is_query=is_query
             )
             
             # 保存原始SQL和是否自动添加了LIMIT的标志

@@ -699,9 +699,15 @@ class SingleResultTable(QWidget):
         """COUNT 查询完成"""
         self.total_rows = total_rows
         self.total_pages = max(1, (total_rows + self.page_size - 1) // self.page_size)
+        # 刷新后保持的页码可能超出新总页数，需限制
+        self.current_page = min(max(1, self.current_page), self.total_pages)
         
         # 更新分页控件
         self._update_pagination_controls()
+        
+        # 若当前不是第1页，需要从服务器加载当前页数据（display_results 只带回了第1页）
+        if self.current_page > 1:
+            self._load_page_from_server()
         
         logger.info(f"总行数: {total_rows}, 总页数: {self.total_pages}")
     
@@ -889,6 +895,14 @@ class SingleResultTable(QWidget):
         # 保存原始数据
         self.raw_data = data
         
+        # 刷新时保留当前页码（若之前已有分页数据）
+        preserved_page = None
+        if getattr(self, 'all_data', None) is not None and getattr(self, 'total_pages', None) is not None:
+            try:
+                preserved_page = min(max(1, self.current_page), self.total_pages)
+            except (AttributeError, TypeError):
+                pass
+        
         # 检测是否启用服务器端分页
         # 条件：1. 有连接信息  2. 有原始SQL  3. SQL是SELECT查询
         import re
@@ -907,7 +921,7 @@ class SingleResultTable(QWidget):
             
             # 当前页数据
             self.all_data = data
-            self.current_page = 1
+            self.current_page = preserved_page if preserved_page is not None else 1
             
             # 启动 COUNT 查询获取总行数
             self._start_count_query()
@@ -921,11 +935,10 @@ class SingleResultTable(QWidget):
             # 使用客户端分页（数据已全部加载）
             self.server_side_paging = False
             self.all_data = data
-            self.current_page = 1
             self.total_rows = len(data)
-            
-            # 计算总页数
             self.total_pages = max(1, (len(data) + self.page_size - 1) // self.page_size)
+            self.current_page = preserved_page if preserved_page is not None else 1
+            self.current_page = min(max(1, self.current_page), self.total_pages)
         
         # 显示分页控件（数据超过10行时显示）
         self.pagination_widget.setVisible(len(data) > 10)
@@ -945,8 +958,14 @@ class SingleResultTable(QWidget):
         else:
             self.export_btn.setEnabled(False)
         
-        # 显示第一页数据
-        page_data = data[:min(self.page_size, len(data))]
+        # 根据当前页截取要显示的数据（刷新时保持页码）
+        # 服务端分页时入参 data 仅为第1页，当前页>1 时由 _on_count_finished 触发 _load_page_from_server 再刷表
+        if self.server_side_paging:
+            page_data = data
+        else:
+            start_idx = (self.current_page - 1) * self.page_size
+            end_idx = min(start_idx + self.page_size, len(data))
+            page_data = data[start_idx:end_idx]
         
         # 显示数据
         columns = list(data[0].keys())
