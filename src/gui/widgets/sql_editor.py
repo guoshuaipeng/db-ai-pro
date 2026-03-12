@@ -18,8 +18,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QStringListModel, QModelIndex
 from PyQt6.QtGui import QFont, QTextCursor, QKeyEvent
 from typing import List, Optional, Callable
-# AIWorker 已由 QueryLangGraphWorker 替代，保留此行仅作占位防止 import 报错
-# from src.gui.workers.ai_worker import AIWorker
 from src.core.ai_client import AIClient
 from src.utils.thread_manager import safe_delete_thread
 import re
@@ -121,14 +119,11 @@ class SQLEditor(QWidget):
         self.init_ui()
     
     def set_database_info(self, db_manager, connection_id: str, database: Optional[str] = None):
-        """设置数据库信息（用于AI生成SQL时获取表结构）"""
+        """设置数据库信息（用于 AI 生成 SQL 时传入连接上下文）"""
         self.db_manager = db_manager
         self.current_connection_id = connection_id
-        self.current_database = database  # 当前数据库
-        # 初始化schema_worker为None
-        if not hasattr(self, 'schema_worker'):
-            self.schema_worker = None
-        
+        self.current_database = database
+
     
     def init_ui(self):
         """初始化UI"""
@@ -558,7 +553,7 @@ class SQLEditor(QWidget):
         return text
     
     def generate_sql_from_ai(self):
-        """使用AI生成SQL（分步交互：先获取表名，AI选择表，再获取表结构，最后生成SQL）"""
+        """使用 AI 生成 SQL（LangGraph Agent：自主决定需要哪些工具，一次完成）"""
         # 检查是否正在运行，如果是则取消
         if self._is_generating():
             self._cancel_generation()
@@ -621,9 +616,8 @@ class SQLEditor(QWidget):
             # 获取连接信息
             connection = self.db_manager.get_connection(self.current_connection_id)
             if connection:
-                # 显示状态
-                self.set_status("步骤1/4: 正在获取表名列表...", timeout=0)  # timeout=0 表示永久显示，直到下次更新
-                # 使用工作线程获取表名列表，避免阻塞
+                self.set_status("正在获取表名列表...", timeout=0)
+
                 from src.gui.workers.table_list_worker import TableListWorker
                 
                 # 🎯 断开旧 worker 的信号连接，让它自然完成
@@ -643,7 +637,6 @@ class SQLEditor(QWidget):
                 self.table_list_worker.tables_ready.connect(self.on_tables_ready)
                 self.table_list_worker.finished.connect(self.table_list_worker.deleteLater)
                 self.table_list_worker.start()
-                # 等待表名列表获取完成
                 return
         
         # 如果没有数据库连接，直接走 LangGraph（空表结构）
@@ -816,9 +809,7 @@ class SQLEditor(QWidget):
         self.ai_worker.finished.connect(self.ai_worker.deleteLater)
         self.ai_worker.start()
         logger.info("QueryLangGraphWorker 已启动")
-    
-    # ── 以下旧版多步骤回调已全部移除，现在统一由 on_tables_ready → QueryLangGraphWorker 处理 ──
-    
+
     def on_sql_generated(self, sql: str, sql_type: str = "OTHER"):
         """AI生成SQL完成回调（sql_type 由 AI 直接返回，无需代码推断）"""
         self.sql_edit.setPlainText(sql)
