@@ -18,7 +18,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QStringListModel, QModelIndex
 from PyQt6.QtGui import QFont, QTextCursor, QKeyEvent
 from typing import List, Optional, Callable
-from src.gui.workers.ai_worker import AIWorker
+# AIWorker 已由 QueryLangGraphWorker 替代，保留此行仅作占位防止 import 报错
+# from src.gui.workers.ai_worker import AIWorker
 from src.core.ai_client import AIClient
 from src.utils.thread_manager import safe_delete_thread
 import re
@@ -264,16 +265,9 @@ class SQLEditor(QWidget):
         
         # 初始化AI客户端和工作线程
         self.ai_client = None
-        self.ai_worker = None
-        self.schema_worker = None
-        self.table_list_worker = None
-        self.ai_table_selector_worker = None
-        self.ai_enum_selector_worker = None
-        self.enum_values_worker = None
-        self._temp_table_schema = ""
-        self._temp_table_names = []
-        self._all_table_names = []  # 保存所有表名列表（用于传递给AI）
-        self._temp_enum_columns = {}  # 临时保存枚举字段信息
+        self.ai_worker = None          # QueryLangGraphWorker
+        self.table_list_worker = None  # TableListWorker（获取表名列表）
+        self._all_table_names = []     # 保存所有表名列表
     
     def setup_completer(self):
         """设置自动完成"""
@@ -588,9 +582,9 @@ class SQLEditor(QWidget):
         if hasattr(self, '_main_window') and self._main_window:
             conn_name = self._main_window.connection_combo.currentText()
             db_name = self._main_window.database_combo.currentText() if self.current_database else ""
-            self.status_label.setText(f"步骤1/4: 正在获取表名列表... (连接: {conn_name}, 数据库: {db_name})")
+            self.status_label.setText(f"正在获取表名列表... (连接: {conn_name}, 数据库: {db_name})")
         else:
-            self.status_label.setText("步骤1/4: 正在获取表名列表...")
+            self.status_label.setText("正在获取表名列表...")
         
         # 停止所有正在运行的工作线程
         self._stop_all_workers()
@@ -680,11 +674,7 @@ class SQLEditor(QWidget):
         """检查是否正在生成SQL"""
         workers = [
             self.ai_worker,
-            self.schema_worker,
             self.table_list_worker,
-            self.ai_table_selector_worker,
-            self.ai_enum_selector_worker,
-            self.enum_values_worker,
         ]
         # 🎯 需要捕获 RuntimeError：worker 可能已被 deleteLater() 删除
         for worker in workers:
@@ -742,11 +732,7 @@ class SQLEditor(QWidget):
         """停止所有正在运行的工作线程"""
         workers = [
             ('ai_worker', self.ai_worker),
-            ('schema_worker', self.schema_worker),
             ('table_list_worker', self.table_list_worker),
-            ('ai_table_selector_worker', self.ai_table_selector_worker),
-            ('ai_enum_selector_worker', self.ai_enum_selector_worker),
-            ('enum_values_worker', self.enum_values_worker),
         ]
         
         for name, worker in workers:
@@ -831,285 +817,7 @@ class SQLEditor(QWidget):
         self.ai_worker.start()
         logger.info("QueryLangGraphWorker 已启动")
     
-    def on_tables_selected(self, selected_tables: list):
-        """AI选择表完成回调（第二步：获取选中表的结构，让AI选择枚举字段）"""
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"AI选择了 {len(selected_tables)} 个表: {selected_tables}")
-        
-        if not selected_tables:
-            logger.warning("AI未选择任何表，使用空表结构生成SQL")
-            user_query = self.ai_input.toPlainText().strip()
-            self._start_ai_generation(user_query, "", [], self._all_table_names)
-            return
-        
-        # 检查配置，决定步骤数
-        from src.core.prompt_config import PromptStorage
-        prompt_storage = PromptStorage()
-        prompt_config = prompt_storage.load_prompts()
-        config_allows_query = prompt_config.query_enum_values
-        
-        if config_allows_query:
-            self.set_status(f"步骤3/4: 正在获取 {len(selected_tables)} 个表的结构...", timeout=0)
-        else:
-            self.set_status(f"步骤3/3: 正在获取 {len(selected_tables)} 个表的结构...", timeout=0)
-        
-        # 获取选中表的结构（不包含枚举值）
-        if self.db_manager and self.current_connection_id:
-            connection = self.db_manager.get_connection(self.current_connection_id)
-            if connection:
-                from src.gui.workers.schema_worker import SchemaWorker
-                
-                # 🎯 断开旧 worker 的信号连接，让它自然完成
-                if self.schema_worker:
-                    try:
-                        self.schema_worker.schema_ready.disconnect()
-                    except:
-                        pass
-                    self.schema_worker.finished.connect(self.schema_worker.deleteLater)
-                
-                # 只获取选中表的结构（仅针对当前数据库）
-                self.schema_worker = SchemaWorker(
-                    connection.get_connection_string(),
-                    connection.get_connect_args(),
-                    selected_tables=selected_tables,  # 只获取选中的表
-                    connection_id=self.current_connection_id,  # 传入连接ID用于缓存
-                    database=self.current_database  # 传入当前数据库，仅获取该数据库的表结构
-                )
-                self.schema_worker.schema_ready.connect(self.on_schema_ready_for_enum_selection)
-                self.schema_worker.finished.connect(self.schema_worker.deleteLater)
-                self.schema_worker.start()
-                return
-        
-        # 如果没有连接，直接生成SQL
-        user_query = self.ai_input.toPlainText().strip()
-        self._start_ai_generation(user_query, "", selected_tables, self._all_table_names)
-    
-    def on_schema_ready_for_enum_selection(self, table_schema: str, table_names: list):
-        """表结构获取完成回调（第二步：根据配置决定是否让AI选择枚举字段）"""
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"表结构获取完成，表结构长度: {len(table_schema) if table_schema else 0}")
-        
-        # 保存表结构，后续使用
-        self._temp_table_schema = table_schema
-        self._temp_table_names = table_names
-        
-        # 🎯 不需要手动清理：worker 会通过 finished 信号自动 deleteLater()
-        
-        if not table_schema or not table_schema.strip():
-            logger.warning("表结构为空，直接生成SQL")
-            user_query = self.ai_input.toPlainText().strip()
-            self.set_status("正在生成SQL...", timeout=0)
-            self._start_ai_generation(user_query, "", table_names if table_names else [], self._all_table_names)
-            return
-        
-        # 检查配置：是否允许查询枚举值
-        from src.core.prompt_config import PromptStorage
-        prompt_storage = PromptStorage()
-        prompt_config = prompt_storage.load_prompts()
-        config_allows_query = prompt_config.query_enum_values
-        
-        # 如果配置不允许查询枚举值，直接跳过枚举字段识别，生成SQL
-        if not config_allows_query:
-            logger.info("配置不允许查询枚举值，跳过枚举字段识别，直接生成SQL")
-            self.set_status("步骤3/3: 正在生成SQL...", timeout=0)
-            user_query = self.ai_input.toPlainText().strip()
-            self._start_ai_generation(user_query, table_schema, table_names, self._all_table_names)
-            return
-        
-        # 配置允许查询枚举值，使用AI选择枚举字段
-        self.set_status("步骤4/4: AI正在识别枚举字段并判断是否需要查询...", timeout=0)
-        
-        from src.gui.workers.ai_enum_selector_worker import AIEnumSelectorWorker
-        
-        # 🎯 断开旧 worker 的信号连接，让它自然完成
-        if self.ai_enum_selector_worker:
-            try:
-                self.ai_enum_selector_worker.enum_selection_ready.disconnect()
-                self.ai_enum_selector_worker.error_occurred.disconnect()
-            except:
-                pass
-            self.ai_enum_selector_worker.finished.connect(self.ai_enum_selector_worker.deleteLater)
-        
-        user_query = self.ai_input.toPlainText().strip()
-        self.ai_enum_selector_worker = AIEnumSelectorWorker(
-            self.ai_client,
-            user_query,
-            table_schema
-        )
-        self.ai_enum_selector_worker.enum_selection_ready.connect(self.on_enum_selection_ready)
-        self.ai_enum_selector_worker.error_occurred.connect(self.on_ai_error)
-        self.ai_enum_selector_worker.finished.connect(self.ai_enum_selector_worker.deleteLater)
-        self.ai_enum_selector_worker.start()
-    
-    def on_enum_selection_ready(self, enum_columns: dict, should_query: bool):
-        """AI选择枚举字段并判断完成回调（第三步：根据配置和判断结果决定是否查询枚举值）"""
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"AI选择了枚举字段: {enum_columns}")
-        logger.info(f"AI判断结果: {'需要查询枚举值' if should_query else '不需要查询枚举值'}")
-        
-        # 检查配置：是否允许查询枚举值
-        from src.core.prompt_config import PromptStorage
-        prompt_storage = PromptStorage()
-        prompt_config = prompt_storage.load_prompts()
-        config_allows_query = prompt_config.query_enum_values
-        
-        logger.info(f"配置允许查询枚举值: {config_allows_query}")
-        
-        # 清理AI选枚举字段worker
-        if self.ai_enum_selector_worker:
-            safe_delete_thread(self.ai_enum_selector_worker)
-            self.ai_enum_selector_worker = None
-        
-        # 如果没有选择枚举字段，直接使用表结构生成SQL
-        if not enum_columns:
-            logger.info("AI未选择任何枚举字段，直接使用表结构生成SQL")
-            user_query = self.ai_input.toPlainText().strip()
-            self.set_status("正在生成SQL...", timeout=0)
-            self._start_ai_generation(user_query, self._temp_table_schema, self._temp_table_names, self._all_table_names)
-            return
-        
-        # 如果配置不允许查询枚举值，直接使用表结构生成SQL
-        if not config_allows_query:
-            logger.info("配置不允许查询枚举值，直接使用表结构生成SQL")
-            user_query = self.ai_input.toPlainText().strip()
-            self.set_status("正在生成SQL...", timeout=0)
-            self._start_ai_generation(user_query, self._temp_table_schema, self._temp_table_names, self._all_table_names)
-            return
-        
-        # 如果AI判断不需要查询枚举值，直接使用表结构生成SQL
-        if not should_query:
-            logger.info("AI判断不需要查询枚举值，直接使用表结构生成SQL")
-            user_query = self.ai_input.toPlainText().strip()
-            self.set_status("正在生成SQL...", timeout=0)
-            self._start_ai_generation(user_query, self._temp_table_schema, self._temp_table_names, self._all_table_names)
-            return
-        
-        # 需要查询枚举值（配置允许且AI判断需要）
-        enum_count = sum(len(cols) for cols in enum_columns.values())
-        self.set_status(f"正在查询 {enum_count} 个枚举字段的值...", timeout=0)
-        
-        # 查询选中枚举字段的值
-        if self.db_manager and self.current_connection_id:
-            connection = self.db_manager.get_connection(self.current_connection_id)
-            if connection:
-                from src.gui.workers.enum_values_worker import EnumValuesWorker
-                
-                # 🎯 断开旧 worker 的信号连接，让它自然完成
-                if self.enum_values_worker:
-                    try:
-                        self.enum_values_worker.enum_values_ready.disconnect()
-                    except:
-                        pass
-                    self.enum_values_worker.finished.connect(self.enum_values_worker.deleteLater)
-                
-                self.enum_values_worker = EnumValuesWorker(
-                    connection.get_connection_string(),
-                    connection.get_connect_args(),
-                    self._temp_table_schema,
-                    enum_columns
-                )
-                self.enum_values_worker.enum_values_ready.connect(self.on_enum_values_ready)
-                self.enum_values_worker.finished.connect(self.enum_values_worker.deleteLater)
-                self.enum_values_worker.start()
-                return
-        
-        # 如果没有连接，直接使用表结构生成SQL
-        user_query = self.ai_input.toPlainText().strip()
-        self._start_ai_generation(user_query, self._temp_table_schema, self._temp_table_names, self._all_table_names)
-    
-    def on_enum_values_ready(self, enhanced_schema: str):
-        """枚举值查询完成回调（最后一步：生成SQL）"""
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"枚举值查询完成，增强后的表结构长度: {len(enhanced_schema)}")
-        
-        self.set_status("正在生成SQL...", timeout=0)
-        
-        user_query = self.ai_input.toPlainText().strip()
-        self._start_ai_generation(user_query, enhanced_schema, self._temp_table_names, self._all_table_names)
-        
-        # 清理worker
-        if self.enum_values_worker:
-            safe_delete_thread(self.enum_values_worker)
-            self.enum_values_worker = None
-    
-    def on_schema_ready(self, table_schema: str, table_names: list):
-        """表结构获取完成回调（旧版本兼容，实际不再使用）"""
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"表结构获取完成，表结构长度: {len(table_schema) if table_schema else 0}，表数量: {len(table_names) if table_names else 0}")
-        if table_schema and table_schema.strip():
-            logger.info(f"表结构前500字符: {table_schema[:500]}")
-        else:
-            logger.warning("⚠️ 表结构为空或只包含空白字符！")
-            # 如果表结构为空，尝试重新获取或提示用户
-            if self.db_manager and self.current_connection_id:
-                logger.warning("表结构获取失败，但连接存在，可能需要检查数据库连接或权限")
-        
-        self.status_label.setText("正在生成SQL...")
-        
-        user_query = self.ai_input.toPlainText().strip()
-        # 确保传递非空的表结构（如果为空则传递空字符串）
-        self._start_ai_generation(user_query, table_schema if table_schema else "", table_names if table_names else [], self._all_table_names)
-        
-        # 🎯 不需要手动清理：worker 会通过 finished 信号自动 deleteLater()
-    
-    def _start_ai_generation(self, user_query: str, table_schema: str, table_names: list = None, all_table_names: list = None):
-        """启动AI生成SQL
-        
-        Args:
-            user_query: 用户查询
-            table_schema: 选中表的结构信息
-            table_names: 选中表的表名列表
-            all_table_names: 所有表名列表（用于传递给AI，让AI知道所有可用表）
-        """
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"启动AI生成SQL，表结构是否为空: {not table_schema}, 选中表数量: {len(table_names) if table_names else 0}, 所有表数量: {len(all_table_names) if all_table_names else 0}")
-        
-        # 🎯 新策略：断开旧 worker 的信号连接（如果存在）
-        # 让旧线程自然完成，但不处理它的结果
-        if self.ai_worker:
-            try:
-                self.ai_worker.sql_generated.disconnect()
-                self.ai_worker.error_occurred.disconnect()
-            except:
-                pass  # 信号可能已经断开
-            # 让旧 worker 自动清理
-            self.ai_worker.finished.connect(self.ai_worker.deleteLater)
-            logger.info("旧的 AI worker 将自然完成并自动清理")
-        
-        # 更新状态栏
-        self.set_status("AI正在生成SQL...", timeout=0)
-        
-        # 获取数据库类型
-        db_type = None
-        if self.db_manager and self.current_connection_id:
-            connection = self.db_manager.get_connection(self.current_connection_id)
-            if connection:
-                db_type = connection.db_type.value
-                logger.info(f"数据库类型: {db_type}")
-        
-        # 获取当前SQL编辑器中的SQL（已废弃，不再使用，但保留参数以保持兼容性）
-        current_sql = self.sql_edit.toPlainText().strip() if hasattr(self, 'sql_edit') else ""
-        
-        # 如果没有传递所有表名，尝试使用保存的
-        if all_table_names is None:
-            all_table_names = getattr(self, '_all_table_names', [])
-            logger.info(f"使用保存的所有表名列表: {len(all_table_names)} 个表")
-        
-        # 🎯 创建新的 worker（旧的会自然完成）
-        tables_to_pass = table_names if table_names else (all_table_names or [])
-        self.ai_worker = AIWorker(self.ai_client, user_query, table_schema, table_names or [], db_type, current_sql, tables_to_pass)
-        self.ai_worker.sql_generated.connect(self.on_sql_generated)
-        self.ai_worker.error_occurred.connect(self.on_ai_error)
-        # 自动清理：线程完成后自动删除
-        self.ai_worker.finished.connect(self.ai_worker.deleteLater)
-        self.ai_worker.start()
-        logger.info("新的 AI worker 已启动")
+    # ── 以下旧版多步骤回调已全部移除，现在统一由 on_tables_ready → QueryLangGraphWorker 处理 ──
     
     def on_sql_generated(self, sql: str, sql_type: str = "OTHER"):
         """AI生成SQL完成回调（sql_type 由 AI 直接返回，无需代码推断）"""
