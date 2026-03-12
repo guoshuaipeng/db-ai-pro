@@ -310,29 +310,24 @@ sql_type 枚举：SELECT（含只读操作）/ INSERT / UPDATE / DELETE / OTHER
     iterations = 0
 
     try:
-        client = ai_client._get_client()
-
         for iteration in range(MAX_AGENT_ITERATIONS):
             iterations = iteration + 1
             logger.info(f"agent_sql 第 {iterations} 轮调用")
 
             try:
-                response = client.chat.completions.create(
-                    model=ai_client.default_model,
+                response = ai_client.chat_complete(
                     messages=messages,
                     tools=tools,
                     tool_choice="auto",
-                    temperature=0.1,
-                    top_p=0.9,
+                    caller="agent_sql",
                 )
             except Exception as api_err:
                 # 某些模型不支持 tools 参数，降级到无工具模式
                 if "tool" in str(api_err).lower() or "function" in str(api_err).lower():
                     logger.warning(f"模型不支持 tool calling，降级到直接生成: {api_err}")
-                    return _fallback_generate_sql(state, client, ai_client, system_prompt, user_message)
+                    return _fallback_generate_sql(state, ai_client, system_prompt, user_message)
                 raise
 
-            ai_client._record_token_usage(response)
             choice = response.choices[0]
             msg = choice.message
 
@@ -455,22 +450,20 @@ def node_write_memory(state: QueryGraphState) -> dict:
 # ──────────────────────────────────────────────────────────────
 # 降级：模型不支持 tool calling 时直接生成（保留兼容性）
 # ──────────────────────────────────────────────────────────────
-def _fallback_generate_sql(state: QueryGraphState, client, ai_client, system_prompt: str, user_message: str) -> dict:
+def _fallback_generate_sql(state: QueryGraphState, ai_client, system_prompt: str, user_message: str) -> dict:
     """当模型不支持 tool calling 时，用传统方式生成 SQL"""
     logger.info("降级到无工具模式生成 SQL")
     try:
         from src.core.prompt_config import PromptStorage
         prompt_config = PromptStorage().load_prompts()
         sys_p = prompt_config.generate_sql_system + "\n\n【输出格式】以 JSON 返回：{\"sql_type\":\"...\",\"sql\":\"...\"}"
-        response = client.chat.completions.create(
-            model=ai_client.default_model,
+        response = ai_client.chat_complete(
             messages=[
                 {"role": "system", "content": sys_p},
                 {"role": "user", "content": user_message},
             ],
-            temperature=0.1,
+            caller="agent_sql_fallback",
         )
-        ai_client._record_token_usage(response)
         raw = response.choices[0].message.content.strip()
         sql, sql_type = _parse_sql_response(raw)
         return {

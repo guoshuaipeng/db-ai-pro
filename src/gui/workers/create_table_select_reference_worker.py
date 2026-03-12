@@ -57,25 +57,16 @@ class CreateTableSelectReferenceWorker(QThread):
 根据用户想要创建的表的需求描述，从上述表名列表中选择最相关、匹配度最高的表作为参考（最多选择5个表）。
 这些表将作为参考，帮助AI生成与现有表结构风格一致的建表语句。"""
             
-            # 调用AI选择表
-            from openai import OpenAI
-            
-            client = OpenAI(
-                api_key=self.ai_client.api_key,
-                base_url=self.ai_client.base_url
-            )
-            
             if self.isInterruptionRequested() or self._should_stop:
                 return
             
-            response = client.chat.completions.create(
-                model=self.ai_client.turbo_model,  # 使用turbo模型
+            response = self.ai_client.chat_complete(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.1,
-                top_p=0.9,
+                model=self.ai_client.turbo_model,
+                caller="select_reference_table",
             )
             
             if self.isInterruptionRequested() or self._should_stop:

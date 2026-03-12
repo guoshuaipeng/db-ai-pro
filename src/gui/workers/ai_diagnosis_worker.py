@@ -39,26 +39,19 @@ class AIDiagnosisWorker(QThread):
             # 构建提示词
             prompt = self._build_diagnosis_prompt()
             
-            # 调用AI分析
-            client = self.ai_client._get_client()
-            
-            response = client.chat.completions.create(
-                model=self.ai_client.default_model,
+            response = self.ai_client.chat_complete(
                 messages=[
                     {"role": "system", "content": self._get_system_prompt()},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
                 ],
-                temperature=0.3
+                temperature=0.3,
+                caller="ai_diagnosis",
             )
             
             if self.isInterruptionRequested() or self._should_stop:
                 return
             
-            # 提取回复
             diagnosis_result = response.choices[0].message.content.strip()
-            
-            # 记录token使用情况
-            self.ai_client._record_token_usage(response, self.ai_client._current_model_id)
             
             # 发送结果
             self.diagnosis_ready.emit(diagnosis_result)

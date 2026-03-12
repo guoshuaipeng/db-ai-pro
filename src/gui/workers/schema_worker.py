@@ -222,7 +222,7 @@ class SchemaWorker(QThread):
             logger.info(f"SchemaWorker: schema_parts 列表长度: {len(schema_parts)}")
             logger.info(f"SchemaWorker: 表结构文本长度: {len(schema_text)}")
             if schema_text and schema_text.strip():
-                logger.info(f"SchemaWorker: 表结构前500字符:\n{schema_text[:500]}")
+                logger.info(f"SchemaWorker: 表结构:\n{schema_text}")
             else:
                 logger.warning("SchemaWorker: ⚠️ 表结构文本为空！")
                 logger.warning(f"SchemaWorker: schema_parts 内容: {schema_parts[:10] if schema_parts else '空列表'}")

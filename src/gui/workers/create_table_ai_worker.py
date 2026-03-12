@@ -101,24 +101,15 @@ class CreateTableAIWorker(QThread):
 如果提供了参考表结构，请保持与参考表结构一致的风格（命名规范、字段类型、主键设置等）。
 如果提供了当前的建表语句，请基于它进行修改和完善，而不是完全重新生成。"""
             
-            # 调用AI生成SQL
-            from openai import OpenAI
-            
-            client = OpenAI(
-                api_key=self.ai_client.api_key,
-                base_url=self.ai_client.base_url
-            )
-            
             if self.isInterruptionRequested() or self._should_stop:
                 return
             
-            response = client.chat.completions.create(
-                model=self.ai_client.default_model,  # 使用默认模型
+            response = self.ai_client.chat_complete(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.1,
+                caller="create_table_ai",
             )
             
             if self.isInterruptionRequested() or self._should_stop:

@@ -97,13 +97,12 @@ class CreateTableLangGraphWorker(QThread):
 
             if final_state.get("error"):
                 self.error_occurred.emit(final_state["error"])
-            elif final_state.get("generated_sql"):
+            else:
+                # sql 为空 = 纯聊天模式，UI 端只更新对话区
                 self.result_ready.emit(
-                    final_state["generated_sql"],
+                    final_state.get("generated_sql", ""),
                     final_state.get("assistant_message", ""),
                 )
-            else:
-                self.error_occurred.emit("AI未能生成建表语句，请重试")
 
         except Exception as e:
             logger.error(f"CreateTableLangGraphWorker 异常: {e}", exc_info=True)

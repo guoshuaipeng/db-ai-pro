@@ -110,9 +110,13 @@ def node_agent_alter_table(state: EditTableGraphState) -> dict:
 【输出格式】
 以 JSON 返回（不含任何额外文字）：
 {{
-  "sql": "<完整的 ALTER TABLE SQL，或者纯聊天时为空字符串 \"\">",
+  "type": "sql" | "chat",
+  "sql": "<完整的 ALTER TABLE SQL，纯聊天时为空字符串 \"\">",
   "message": "<自然语言回复：解释说明、追问、建议，或生成SQL后的说明>"
-}}"""
+}}
+type 说明：
+- "sql"  → 本次返回了变更 SQL（模式B），sql 字段有内容
+- "chat" → 本次仅对话（模式A），sql 字段为空字符串"""
 
     user_prompt = (
         f"【对话历史】\n{conv_text}\n"
@@ -151,16 +155,14 @@ def node_agent_alter_table(state: EditTableGraphState) -> dict:
 
     iterations = 0
     try:
-        client = ai_client._get_client()
-        call_kwargs = {"model": ai_client.default_model, "messages": messages, "temperature": 0.1}
-        if tools:
-            call_kwargs["tools"] = tools
-            call_kwargs["tool_choice"] = "auto"
-
         for iteration in range(MAX_AGENT_ITERATIONS):
             iterations = iteration + 1
-            response = client.chat.completions.create(**call_kwargs)
-            ai_client._record_token_usage(response)
+            response = ai_client.chat_complete(
+                messages=messages,
+                tools=tools or None,
+                tool_choice="auto" if tools else None,
+                caller="agent_alter_table",
+            )
             choice = response.choices[0]
             msg = choice.message
 
@@ -248,12 +250,20 @@ def _parse_json_response(raw: str):
     text = re.sub(r"\s*```$", "", text).strip()
     try:
         data = json.loads(text)
+        msg_type = data.get("type", "").strip().lower()
         sql = data.get("sql", "").strip()
         message = data.get("message", "").strip()
+        # 如果 type 明确为 chat，忽略 sql 字段（防止 AI 误填）
+        if msg_type == "chat":
+            sql = ""
         return sql, message
     except Exception:
-        sql = _strip_fence(raw)
-        return sql, ""
+        # JSON 解析失败：根据内容特征判断
+        candidate = _strip_fence(raw)
+        sql_keywords = ("ALTER ", "CREATE ", "DROP ", "MODIFY ", "ADD ", "RENAME ")
+        if any(candidate.upper().startswith(kw) for kw in sql_keywords):
+            return candidate, ""
+        return "", raw.strip()
 
 
 def _strip_fence(text: str) -> str:

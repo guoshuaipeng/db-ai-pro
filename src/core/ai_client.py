@@ -59,8 +59,77 @@ class AIClient:
             except Exception as e:
                 self.logger.error(f"初始化AI模型失败: {e}")
                 raise
-        
         return self._client
+
+    def chat_complete(self, messages: list, model: str = None, tools: list = None,
+                      tool_choice=None, temperature: float = 0.1, top_p: float = 0.9,
+                      caller: str = "") -> object:
+        """
+        统一的 chat.completions.create 封装，自动记录请求/响应日志。
+
+        :param messages:     对话消息列表
+        :param model:        模型名（默认 self.default_model）
+        :param tools:        工具定义列表（tool calling）
+        :param tool_choice:  工具选择策略
+        :param temperature:  温度
+        :param top_p:        top_p
+        :param caller:       调用方标识（用于日志区分，如 "agent_sql", "create_table" 等）
+        :return:             原始 response 对象
+        """
+        model = model or self.default_model
+        client = self._get_client()
+
+        # ── 请求日志 ──────────────────────────────────────────
+        tag = f"[{caller}] " if caller else ""
+        self.logger.info(
+            f"{tag}AI请求 → 模型={model}, 消息数={len(messages)}"
+            + (f", 工具数={len(tools)}" if tools else "")
+        )
+        for i, msg in enumerate(messages):
+            role = msg.get("role", "?")
+            content = msg.get("content") or ""
+            # tool_calls 消息可能无 content
+            if msg.get("tool_calls"):
+                calls = [tc.get("function", {}).get("name", "?")
+                         if isinstance(tc, dict) else tc.function.name
+                         for tc in msg["tool_calls"]]
+                self.logger.debug(f"{tag}  [{i}] {role}: [tool_calls] {calls}")
+            elif role == "tool":
+                self.logger.debug(f"{tag}  [{i}] tool(id={msg.get('tool_call_id','')}): {str(content)[:300]}")
+            else:
+                self.logger.debug(f"{tag}  [{i}] {role}: {str(content)[:500]}")
+
+        # ── 发起请求 ──────────────────────────────────────────
+        kwargs = dict(model=model, messages=messages, temperature=temperature, top_p=top_p)
+        if tools:
+            kwargs["tools"] = tools
+        if tool_choice is not None:
+            kwargs["tool_choice"] = tool_choice
+
+        response = client.chat.completions.create(**kwargs)
+
+        # ── 响应日志 ──────────────────────────────────────────
+        choice = response.choices[0]
+        finish = choice.finish_reason
+        usage = response.usage
+        usage_str = (f"tokens(in={usage.prompt_tokens}, out={usage.completion_tokens})"
+                     if usage else "tokens=N/A")
+
+        if finish == "tool_calls" and choice.message.tool_calls:
+            calls_info = [(tc.function.name, tc.function.arguments[:100])
+                          for tc in choice.message.tool_calls]
+            self.logger.info(f"{tag}AI响应 ← finish={finish}, {usage_str}, tool_calls={[n for n,_ in calls_info]}")
+            for name, args in calls_info:
+                self.logger.debug(f"{tag}  tool_call: {name}({args})")
+        else:
+            content = (choice.message.content or "").strip()
+            self.logger.info(f"{tag}AI响应 ← finish={finish}, {usage_str}, 内容长度={len(content)}")
+            self.logger.debug(f"{tag}  内容: {content[:800]}")
+
+        # ── 记录 Token 统计 ────────────────────────────────────
+        self._record_token_usage(response)
+
+        return response
     
     def _get_prompt_config(self):
         """懒加载提示词配置"""
@@ -245,30 +314,13 @@ class AIClient:
 - 仔细理解用户意图，生成最符合需求的SQL
 - 确保SQL语法正确，可以直接执行"""
             
-            # 记录发送给AI的完整内容（用于调试）
-            self.logger.info("=" * 80)
-            self.logger.info("发送给AI的完整提示词:")
-            self.logger.info("=" * 80)
-            self.logger.info(f"【系统提示词】\n{system_prompt}")
-            self.logger.info("-" * 80)
-            self.logger.info(f"【用户提示词】\n{user_prompt}")
-            self.logger.info("=" * 80)
-            
-            # 调用AI生成SQL
-            # 使用默认模型（更准确，因为这是最终输出）
-            response = client.chat.completions.create(
-                model=self.default_model,  # 使用配置的默认模型
+            response = self.chat_complete(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.1,  # 进一步降低随机性，生成更准确的SQL
-                top_p=0.9,  # 控制生成的多样性
+                caller="generate_sql",
             )
-            
-            # 记录token使用情况
-            self._record_token_usage(response)
-            
             sql = response.choices[0].message.content.strip()
             
             # 清理SQL（移除可能的markdown代码块标记）
@@ -279,10 +331,6 @@ class AIClient:
             if sql.endswith("```"):
                 sql = sql[:-3]
             sql = sql.strip()
-            
-            # 记录AI返回的完整内容
-            self.logger.info("-" * 80)
-            self.logger.info(f"AI返回的原始内容:\n{response.choices[0].message.content}")
             self.logger.info("-" * 80)
             self.logger.info(f"清理后的SQL: {sql}")
             self.logger.info("=" * 80)
@@ -345,29 +393,13 @@ class AIClient:
 - 使用SCAN命令而不是KEYS命令进行搜索（更安全）
 - 确保命令格式正确，可以直接执行"""
             
-            # 记录发送给AI的完整内容
-            self.logger.info("=" * 80)
-            self.logger.info("发送给AI的完整提示词（Redis命令生成）:")
-            self.logger.info("=" * 80)
-            self.logger.info(f"【系统提示词】\n{system_prompt}")
-            self.logger.info("-" * 80)
-            self.logger.info(f"【用户提示词】\n{user_prompt}")
-            self.logger.info("=" * 80)
-            
-            # 调用AI生成Redis命令
-            response = client.chat.completions.create(
-                model=self.default_model,
+            response = self.chat_complete(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.1,
-                top_p=0.9,
+                caller="generate_redis_command",
             )
-            
-            # 记录token使用情况
-            self._record_token_usage(response)
-            
             command = response.choices[0].message.content.strip()
             
             # 清理命令（移除可能的markdown代码块标记）
@@ -610,31 +642,15 @@ class AIClient:
 【输出要求】
 只返回选中的表名，每行一个，不要包含任何解释或注释。"""
             
-            self.logger.info("=" * 80)
-            self.logger.info("发送给AI选择表的提示词:")
-            self.logger.info("=" * 80)
-            self.logger.info(f"【系统提示词】\n{system_prompt}")
-            self.logger.info("-" * 80)
-            self.logger.info(f"【用户提示词】\n{user_prompt}")
-            self.logger.info("=" * 80)
-            
-            # 调用AI选择表
-            response = client.chat.completions.create(
-                model=self.turbo_model,  # 使用配置的turbo模型
+            response = self.chat_complete(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.1,
-                top_p=0.9,
+                model=self.turbo_model,
+                caller="select_tables",
             )
-            
-            # 记录token使用情况
-            self._record_token_usage(response)
-            
             selected_text = response.choices[0].message.content.strip()
-            
-            self.logger.info(f"AI返回的原始内容:\n{selected_text}")
             
             # 解析返回的表名
             selected_tables = []
@@ -734,31 +750,15 @@ orders.state
 【是否需要查询枚举值】
 需要"""
             
-            self.logger.info("=" * 80)
-            self.logger.info("发送给AI选择枚举字段并判断是否需要查询的提示词:")
-            self.logger.info("=" * 80)
-            self.logger.info(f"【系统提示词】\n{system_prompt}")
-            self.logger.info("-" * 80)
-            self.logger.info(f"【用户提示词】\n{user_prompt}")
-            self.logger.info("=" * 80)
-            
-            # 调用AI选择枚举字段并判断是否需要查询
-            response = client.chat.completions.create(
-                model=self.turbo_model,  # 使用配置的turbo模型
+            response = self.chat_complete(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.1,
-                top_p=0.9,
+                model=self.turbo_model,
+                caller="select_enum_columns",
             )
-            
-            # 记录token使用情况
-            self._record_token_usage(response)
-            
             response_text = response.choices[0].message.content.strip()
-            
-            self.logger.info(f"AI返回的原始内容:\n{response_text}")
             
             # 解析返回的内容
             enum_columns = {}  # {table_name: [column_names]}
@@ -890,31 +890,15 @@ orders.state
 
 只返回"需要"或"不需要"。"""
             
-            self.logger.info("=" * 80)
-            self.logger.info("发送给AI判断是否需要查询枚举值的提示词:")
-            self.logger.info("=" * 80)
-            self.logger.info(f"【系统提示词】\n{system_prompt}")
-            self.logger.info("-" * 80)
-            self.logger.info(f"【用户提示词】\n{user_prompt}")
-            self.logger.info("=" * 80)
-            
-            # 调用AI判断
-            response = client.chat.completions.create(
-                model=self.turbo_model,  # 使用配置的turbo模型
+            response = self.chat_complete(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.1,
-                top_p=0.9,
+                model=self.turbo_model,
+                caller="need_enum_values",
             )
-            
-            # 记录token使用情况
-            self._record_token_usage(response)
-            
             result_text = response.choices[0].message.content.strip().lower()
-            
-            self.logger.info(f"AI返回的判断结果: {result_text}")
             
             # 判断结果
             if "需要" in result_text or "yes" in result_text or "true" in result_text:
@@ -954,31 +938,15 @@ orders.state
 【你的任务】
 请从上述配置信息中提取数据库连接参数，并以JSON格式返回。"""
             
-            self.logger.info("=" * 80)
-            self.logger.info("发送给AI解析连接配置的提示词:")
-            self.logger.info("=" * 80)
-            self.logger.info(f"【系统提示词】\n{system_prompt}")
-            self.logger.info("-" * 80)
-            self.logger.info(f"【用户提示词】\n{user_prompt}")
-            self.logger.info("=" * 80)
-            
-            # 调用AI解析配置
-            response = client.chat.completions.create(
-                model=self.turbo_model,  # 使用配置的turbo模型
+            response = self.chat_complete(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.1,
-                top_p=0.9,
+                model=self.turbo_model,
+                caller="parse_connection_config",
             )
-            
-            # 记录token使用情况
-            self._record_token_usage(response)
-            
             result_text = response.choices[0].message.content.strip()
-            
-            self.logger.info(f"AI返回的原始内容:\n{result_text}")
             
             # 尝试解析JSON
             import json

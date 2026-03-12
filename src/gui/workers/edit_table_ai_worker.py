@@ -103,24 +103,15 @@ class EditTableAIWorker(QThread):
 根据上述对话历史，生成完整的ALTER TABLE语句来修改表结构。如果用户只是补充或修改，请基于之前的对话或当前的修改语句生成完整的ALTER TABLE语句。
 请确保生成的ALTER TABLE语句语法正确，可以直接执行。"""
             
-            # 调用AI生成SQL
-            from openai import OpenAI
-            
-            client = OpenAI(
-                api_key=self.ai_client.api_key,
-                base_url=self.ai_client.base_url
-            )
-            
             if self.isInterruptionRequested() or self._should_stop:
                 return
             
-            response = client.chat.completions.create(
-                model=self.ai_client.default_model,  # 使用默认模型
+            response = self.ai_client.chat_complete(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.1,
+                caller="edit_table_ai",
             )
             
             if self.isInterruptionRequested() or self._should_stop:
