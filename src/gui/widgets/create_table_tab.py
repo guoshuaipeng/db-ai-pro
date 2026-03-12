@@ -477,91 +477,81 @@ class CreateTableTab(QWidget):
         self.schema_worker.start()
     
     def generate_create_table_sql(self):
-        """使用AI生成建表语句（在后台线程中执行）"""
+        """使用 LangGraph 生成建表语句（单步到位，支持多轮）"""
         from src.core.ai_client import AIClient
         from src.core.ai_model_storage import AIModelStorage
-        
-        # 停止之前的AI工作线程
+
         if self.ai_worker:
             try:
                 if self.ai_worker.isRunning():
                     self.ai_worker.stop()
-                    if not self.ai_worker.wait(2000):
-                        self.ai_worker.terminate()
-                        self.ai_worker.wait(500)
+                    self.ai_worker.wait(2000)
                 try:
-                    self.ai_worker.sql_generated.disconnect()
+                    self.ai_worker.result_ready.disconnect()
                     self.ai_worker.error_occurred.disconnect()
-                except:
+                except Exception:
                     pass
                 safe_delete_thread(self.ai_worker)
             except RuntimeError:
                 pass
             self.ai_worker = None
-        
-        # 获取AI客户端
+
         ai_model_storage = AIModelStorage()
         default_model = ai_model_storage.get_default_model()
-        
         if not default_model:
             self.set_status("错误: 未配置AI模型", is_error=True)
             self.add_message_to_conversation("AI", "错误: 请先配置AI模型")
             return
-        
+
         self.set_status("AI正在生成建表语句...", timeout=0)
-        
-        # 创建AI客户端
+
         ai_client = AIClient(
             api_key=default_model.api_key.get_secret_value(),
             base_url=default_model.get_base_url(),
             default_model=default_model.default_model,
-            turbo_model=default_model.turbo_model
+            turbo_model=default_model.turbo_model,
         )
-        
-        # 获取右侧当前的建表语句
+
         current_sql = self.sql_edit.toPlainText().strip()
-        
-        # 获取数据库类型
         db_type = None
+        connection_string = ""
+        connect_args = {}
+        connection_id = self.connection_id
         if self.db_manager and self.connection_id:
             connection = self.db_manager.get_connection(self.connection_id)
             if connection:
                 db_type = connection.db_type.value
-        
-        # 判断是否是第一次对话（检查对话历史中是否已有AI的回复）
-        # 如果已有AI回复，说明第一次对话已完成，后续对话不再需要传递参考表结构
-        has_ai_response = any(msg.get('role') == 'assistant' for msg in self.conversation_history)
-        reference_schema_to_use = self.reference_schema if not has_ai_response else ""
-        
-        # 创建并启动AI工作线程
-        from src.gui.workers.create_table_ai_worker import CreateTableAIWorker
-        
-        self.ai_worker = CreateTableAIWorker(
-            ai_client,
-            self.conversation_history,
-            self.database,
-            reference_schema_to_use,  # 仅在第一次对话时传递参考表结构
-            current_sql,  # 传递当前的建表语句
-            db_type  # 传递数据库类型
+                connection_string = connection.get_connection_string()
+                connect_args = connection.get_connect_args()
+
+        from src.gui.workers.create_table_langgraph_worker import CreateTableLangGraphWorker
+
+        self.ai_worker = CreateTableLangGraphWorker(
+            ai_client=ai_client,
+            conversation_history=list(self.conversation_history),
+            database=self.database,
+            db_type=db_type,
+            connection_string=connection_string,
+            connect_args=connect_args,
+            connection_id=connection_id,
+            all_table_names=self.all_table_names,
+            current_sql=current_sql,
         )
-        self.ai_worker.sql_generated.connect(self.on_sql_generated)
+        self.ai_worker.result_ready.connect(self.on_sql_generated)
         self.ai_worker.error_occurred.connect(self.on_ai_error)
+        self.ai_worker.status_update.connect(lambda msg: self.set_status(msg, timeout=0))
+        self.ai_worker.finished.connect(self.ai_worker.deleteLater)
         self.ai_worker.start()
-    
-    def on_sql_generated(self, sql: str):
-        """AI生成SQL完成回调"""
-        # 显示AI回复
-        self.add_message_to_conversation("AI", f"已生成建表语句：\n\n```sql\n{sql}\n```")
-        
-        # 更新SQL编辑器
+
+    def on_sql_generated(self, sql: str, assistant_message: str = ""):
+        """AI 建表语句生成完成回调（含多轮自然语言回复）"""
+        display_msg = assistant_message if assistant_message else f"已生成建表语句：\n\n```sql\n{sql}\n```"
+        self.add_message_to_conversation("AI", display_msg)
+
         self.sql_edit.setPlainText(sql)
-        
-        # 添加到对话历史
         self.conversation_history.append({"role": "assistant", "content": sql})
-        
         self.set_status("建表语句生成成功")
-        
-        # 清理worker
+
         if self.ai_worker:
             safe_delete_thread(self.ai_worker)
             self.ai_worker = None

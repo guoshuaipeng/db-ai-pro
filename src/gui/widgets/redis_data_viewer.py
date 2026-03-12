@@ -818,25 +818,23 @@ class RedisDataViewer(QWidget):
         super().closeEvent(event)
     
     def generate_redis_command_from_ai(self):
-        """使用AI生成Redis命令并执行"""
+        """使用 LangGraph Redis 图生成 Redis 命令并执行"""
         user_query = self.ai_input.toPlainText().strip()
         if not user_query:
             QMessageBox.warning(self, "提示", "请输入中文描述")
             return
-        
+
         if not self.connection:
             QMessageBox.warning(self, "错误", "未连接到Redis")
             return
-        
-        # 更新按钮状态
+
         self.ai_generate_btn.setText("生成中...")
         self.ai_generate_btn.setEnabled(False)
-        
+
         try:
-            # 获取AI客户端
             from src.core.ai_client import AIClient
             from src.core.ai_model_storage import AIModelStorage
-            
+
             storage = AIModelStorage()
             default_model = storage.get_default_model()
             if not default_model:
@@ -844,78 +842,40 @@ class RedisDataViewer(QWidget):
                 self.ai_generate_btn.setText("AI查询")
                 self.ai_generate_btn.setEnabled(True)
                 return
-            
+
             ai_client = AIClient(
                 api_key=default_model.api_key.get_secret_value(),
                 base_url=default_model.get_base_url(),
                 default_model=default_model.default_model,
-                turbo_model=default_model.turbo_model
+                turbo_model=default_model.turbo_model,
             )
-            
-            # 获取当前可用的key列表（用于AI参考）
+
             available_keys = []
             if self.current_keys_data:
-                available_keys = [item.get('Key', '') for item in self.current_keys_data if item.get('Key')]
-            
-            # 在工作线程中生成Redis命令
-            from src.gui.workers.ai_worker import AIWorker
-            from PyQt6.QtCore import QThread
-            
-            class RedisAIWorker(QThread):
-                command_generated = pyqtSignal(str)
-                error_occurred = pyqtSignal(str)
-                
-                def __init__(self, ai_client, user_query, available_keys):
-                    super().__init__()
-                    self.setObjectName(f"RedisAIWorker-{id(self)}")  # 设置线程名称，便于调试
-                    self.ai_client = ai_client
-                    self.user_query = user_query
-                    self.available_keys = available_keys
-                    self._should_stop = False
-                
-                def stop(self):
-                    self._should_stop = True
-                    self.requestInterruption()
-                
-                def run(self):
-                    try:
-                        if self.isInterruptionRequested() or self._should_stop:
-                            return
-                        command = self.ai_client.generate_redis_command(self.user_query, self.available_keys)
-                        if not (self.isInterruptionRequested() or self._should_stop):
-                            self.command_generated.emit(command)
-                    except Exception as e:
-                        if not (self.isInterruptionRequested() or self._should_stop):
-                            self.error_occurred.emit(str(e))
-                    # 注意：QThread 的 run() 方法返回时，线程会自动结束，finished 信号会自动触发
-                    # 不需要调用 quit()，因为 QThread.run() 默认没有事件循环
-            
-            self.redis_ai_worker = RedisAIWorker(ai_client, user_query, available_keys)
-            
+                available_keys = [item.get("Key", "") for item in self.current_keys_data if item.get("Key")]
+
+            from src.gui.workers.redis_command_langgraph_worker import RedisCommandLangGraphWorker
+
+            self.redis_ai_worker = RedisCommandLangGraphWorker(ai_client, user_query, available_keys)
+
             def on_command_generated(command: str):
-                """命令生成完成回调"""
                 try:
                     self.ai_generate_btn.setText("AI查询")
                     self.ai_generate_btn.setEnabled(True)
-
-                    # 将 AI 生成的搜索命令/模式填入搜索框，便于查看与复用
                     command_text = command.strip()
                     if command_text:
                         parts = command_text.split()
-                        if parts and parts[0].upper() == 'SCAN':
-                            # SCAN 命令优先提取 MATCH 模式
+                        if parts and parts[0].upper() == "SCAN":
                             pattern = None
                             i = 1
                             while i < len(parts):
-                                if parts[i].upper() == 'MATCH' and i + 1 < len(parts):
+                                if parts[i].upper() == "MATCH" and i + 1 < len(parts):
                                     pattern = parts[i + 1]
                                     break
                                 i += 1
                             self.search_input.setText(pattern if pattern else command_text)
                         else:
                             self.search_input.setText(command_text)
-                    
-                    # 执行生成的Redis命令
                     self.execute_redis_command(command)
                 except Exception as e:
                     logger.error(f"执行AI生成的Redis命令失败: {e}", exc_info=True)
@@ -923,33 +883,23 @@ class RedisDataViewer(QWidget):
                     self.ai_generate_btn.setText("AI查询")
                     self.ai_generate_btn.setEnabled(True)
                 finally:
-                    # 延迟清理 worker 引用，确保线程完全结束
                     from PyQt6.QtCore import QTimer
-                    QTimer.singleShot(300, lambda: setattr(self, 'redis_ai_worker', None))
-            
+                    QTimer.singleShot(300, lambda: setattr(self, "redis_ai_worker", None))
+
             def on_ai_error(error_msg: str):
-                """AI生成失败回调"""
                 try:
                     QMessageBox.warning(self, "错误", f"AI生成Redis命令失败: {error_msg}")
                     self.ai_generate_btn.setText("AI查询")
                     self.ai_generate_btn.setEnabled(True)
                 finally:
-                    # 延迟清理 worker 引用，确保线程完全结束
                     from PyQt6.QtCore import QTimer
-                    QTimer.singleShot(300, lambda: setattr(self, 'redis_ai_worker', None))
-            
-            # 连接信号
+                    QTimer.singleShot(300, lambda: setattr(self, "redis_ai_worker", None))
+
             self.redis_ai_worker.command_generated.connect(on_command_generated)
             self.redis_ai_worker.error_occurred.connect(on_ai_error)
-            
-            # 注册线程到线程管理器，自动处理清理
-            # 注意：不需要提供 cleanup_callback，ThreadManager 会自动处理线程的清理
-            from src.utils.thread_manager import get_thread_manager
-            thread_manager = get_thread_manager()
-            thread_manager.register_thread(self.redis_ai_worker)
-            
+            self.redis_ai_worker.finished.connect(self.redis_ai_worker.deleteLater)
             self.redis_ai_worker.start()
-            
+
         except Exception as e:
             logger.error(f"生成Redis命令失败: {e}", exc_info=True)
             QMessageBox.warning(self, "错误", f"生成Redis命令失败: {str(e)}")

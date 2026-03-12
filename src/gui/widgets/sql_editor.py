@@ -652,9 +652,29 @@ class SQLEditor(QWidget):
                 # 等待表名列表获取完成
                 return
         
-        # 如果没有数据库连接，直接生成SQL（不带表结构）
+        # 如果没有数据库连接，直接走 LangGraph（空表结构）
         self.set_status("正在生成SQL...", timeout=0)
-        self._start_ai_generation(user_query, "", [], [])
+        from src.gui.workers.query_langgraph_worker import QueryLangGraphWorker
+        if self.ai_worker:
+            try:
+                self.ai_worker.sql_generated.disconnect()
+                self.ai_worker.error_occurred.disconnect()
+            except Exception:
+                pass
+            try:
+                self.ai_worker.finished.connect(self.ai_worker.deleteLater)
+            except Exception:
+                pass
+        self.ai_worker = QueryLangGraphWorker(
+            ai_client=self.ai_client,
+            user_query=user_query,
+            table_info_list=[],
+        )
+        self.ai_worker.sql_generated.connect(self.on_sql_generated)
+        self.ai_worker.error_occurred.connect(self.on_ai_error)
+        self.ai_worker.status_update.connect(lambda msg: self.set_status(msg, timeout=0))
+        self.ai_worker.finished.connect(self.ai_worker.deleteLater)
+        self.ai_worker.start()
     
     def _is_generating(self):
         """检查是否正在生成SQL"""
@@ -745,94 +765,72 @@ class SQLEditor(QWidget):
                 setattr(self, name, None)
     
     def on_tables_ready(self, table_info_list: list):
-        """表名列表获取完成回调（第二步：AI选择表）
-        
-        Args:
-            table_info_list: 表信息列表，格式为 [{"name": "table1", "comment": "注释1"}, ...]
-        """
+        """表名列表获取完成回调 → 启动 LangGraph 查询图（一步到位）"""
         import logging
         logger = logging.getLogger(__name__)
         logger.info(f"表名列表获取完成，共 {len(table_info_list)} 个表")
-        
+
         if not table_info_list:
             logger.warning("表名列表为空，无法继续")
             self.generate_btn.setEnabled(True)
             self.generate_btn.setText("直接查询")
             self.set_status("错误: 无法获取表名列表", is_error=True)
             return
-        
-        # 保存所有表名列表（用于后续传递给AI）
-        # 处理两种格式：字典列表 [{"name": "...", "comment": "..."}] 或字符串列表 ["table1", "table2"]
-        if table_info_list and isinstance(table_info_list[0], dict):
-            self._all_table_names = [table_info["name"] for table_info in table_info_list]
-        else:
-            self._all_table_names = table_info_list if table_info_list else []
-        logger.info(f"保存了 {len(self._all_table_names)} 个表名: {self._all_table_names[:10]}...")
-        
+
         user_query = self.ai_input.toPlainText().strip()
-        
-        # 优先检查：如果AI输入框中包含表名提示（如"查询 users 表"），优先使用这个表名
-        # 检查用户查询中是否包含表名（支持多种格式）
-        table_name_in_query = None
-        if user_query:
-            import re
-            # 检查用户查询是否包含表名（支持多种格式）
-            for table_info in table_info_list:
-                table_name = table_info.get("name", "") if isinstance(table_info, dict) else table_info
-                if table_name:
-                    # 格式1：用户查询就是表名
-                    if user_query.strip() == table_name:
-                        table_name_in_query = table_name
-                        logger.info(f"检测到AI输入框中的表名: {table_name_in_query}，优先使用此表")
-                        break
-                    
-                    # 格式2：用户查询以表名开头（后面可能有空格或其他查询条件）
-                    if user_query.strip().startswith(table_name + " ") or user_query.strip().startswith(table_name + "\n"):
-                        table_name_in_query = table_name
-                        logger.info(f"检测到AI输入框中的表名: {table_name_in_query}，优先使用此表")
-                        break
-                    
-                    # 格式3：用户查询包含"查询/操作/查看 表名 表"格式
-                    patterns = [
-                        rf'查询\s+{re.escape(table_name)}\s+表',
-                        rf'操作\s+{re.escape(table_name)}\s+表',
-                        rf'查看\s+{re.escape(table_name)}\s+表',
-                        rf'{re.escape(table_name)}\s+表',
-                    ]
-                    for pattern in patterns:
-                        if re.search(pattern, user_query.strip(), re.IGNORECASE):
-                            table_name_in_query = table_name
-                            logger.info(f"检测到AI输入框中的表名提示: {table_name_in_query}，优先使用此表")
-                            break
-                    
-                    if table_name_in_query:
-                        break
-        
-        self.set_status(f"步骤2/4: AI正在选择相关表（从 {len(table_info_list)} 个表中）...", timeout=0)
-        
-        # 不再使用SQL框中的SQL来选择表，只使用AI输入框中的内容
-        # 使用AI选择相关表（传递包含注释的表信息列表）
-        from src.gui.workers.ai_table_selector_worker import AITableSelectorWorker
-        
-        # 🎯 断开旧 worker 的信号连接，让它自然完成
-        if self.ai_table_selector_worker:
+
+        # 获取数据库连接信息（QueryLangGraphWorker 需要）
+        connection_string = ""
+        connect_args = {}
+        db_type = None
+        connection_id = self.current_connection_id
+        database = self.current_database
+
+        if self.db_manager and self.current_connection_id:
+            connection = self.db_manager.get_connection(self.current_connection_id)
+            if connection:
+                connection_string = connection.get_connection_string()
+                connect_args = connection.get_connect_args()
+                db_type = connection.db_type.value if hasattr(connection.db_type, 'value') else str(connection.db_type)
+
+        # 读取枚举查询配置
+        from src.core.prompt_config import PromptStorage
+        config_query_enum = PromptStorage().load_prompts().query_enum_values
+
+        self.set_status("AI正在分析查询，请稍候...", timeout=0)
+
+        from src.gui.workers.query_langgraph_worker import QueryLangGraphWorker
+        from src.utils.thread_utils import safe_delete_thread
+
+        # 停止并清理旧的 ai_worker
+        if self.ai_worker:
             try:
-                self.ai_table_selector_worker.tables_selected.disconnect()
-                self.ai_table_selector_worker.error_occurred.disconnect()
-            except:
+                self.ai_worker.sql_generated.disconnect()
+                self.ai_worker.error_occurred.disconnect()
+            except Exception:
                 pass
-            self.ai_table_selector_worker.finished.connect(self.ai_table_selector_worker.deleteLater)
-        
-        self.ai_table_selector_worker = AITableSelectorWorker(
-            self.ai_client,
-            user_query,
-            table_info_list,  # 传递包含表名和注释的列表
-            None  # 不再传递当前SQL，只根据AI输入框中的内容选择表
+            try:
+                self.ai_worker.finished.connect(self.ai_worker.deleteLater)
+            except Exception:
+                pass
+
+        self.ai_worker = QueryLangGraphWorker(
+            ai_client=self.ai_client,
+            user_query=user_query,
+            table_info_list=table_info_list,
+            db_type=db_type,
+            connection_string=connection_string,
+            connect_args=connect_args,
+            connection_id=connection_id,
+            database=database,
+            config_query_enum=config_query_enum,
         )
-        self.ai_table_selector_worker.tables_selected.connect(self.on_tables_selected)
-        self.ai_table_selector_worker.error_occurred.connect(self.on_ai_error)
-        self.ai_table_selector_worker.finished.connect(self.ai_table_selector_worker.deleteLater)
-        self.ai_table_selector_worker.start()
+        self.ai_worker.sql_generated.connect(self.on_sql_generated)
+        self.ai_worker.error_occurred.connect(self.on_ai_error)
+        self.ai_worker.status_update.connect(lambda msg: self.set_status(msg, timeout=0))
+        self.ai_worker.finished.connect(self.ai_worker.deleteLater)
+        self.ai_worker.start()
+        logger.info("QueryLangGraphWorker 已启动")
     
     def on_tables_selected(self, selected_tables: list):
         """AI选择表完成回调（第二步：获取选中表的结构，让AI选择枚举字段）"""
@@ -1114,30 +1112,22 @@ class SQLEditor(QWidget):
         self.ai_worker.start()
         logger.info("新的 AI worker 已启动")
     
-    def on_sql_generated(self, sql: str):
-        """AI生成SQL完成回调"""
-        # 将生成的SQL显示在SQL编辑器中
+    def on_sql_generated(self, sql: str, sql_type: str = "OTHER"):
+        """AI生成SQL完成回调（sql_type 由 AI 直接返回，无需代码推断）"""
         self.sql_edit.setPlainText(sql)
-        
-        # 恢复"直接查询"按钮状态
+
         self.generate_btn.setEnabled(True)
         self.generate_btn.setText("直接查询")
-        
-        # 判断SQL类型：只有查询语句才自动执行，增删改需要用户手动执行
-        sql_upper = sql.strip().upper()
-        is_query = sql_upper.startswith(("SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"))
-        
+
+        # 直接使用 AI 返回的 sql_type 判断是否自动执行
+        is_query = sql_type in ("SELECT",)
+
         if is_query:
-            # 查询语句：自动执行
             self.set_status("SQL生成成功，正在执行查询...", timeout=0)
-            # 更新执行按钮为"取消"状态
             self.execute_btn.setText("取消")
             self.execute_signal.emit(sql)
         else:
-            # 增删改语句：不自动执行，提示用户手动执行
-            self.set_status("SQL生成成功，请点击\"执行\"按钮执行（增删改操作需要确认后执行）", timeout=5000)
-        
-        # 🎯 不需要手动清理：worker 会通过 finished 信号自动 deleteLater()
+            self.set_status(f"SQL生成成功（{sql_type}），请确认后点击\"执行\"", timeout=5000)
     
     def on_ai_error(self, error: str):
         """AI生成SQL错误回调"""

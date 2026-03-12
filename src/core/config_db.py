@@ -1072,6 +1072,150 @@ class ConfigDB:
         return migrated_count
 
 
+    # ------------------------------------------------------------------ #
+    # 记忆系统方法                                                           #
+    # ------------------------------------------------------------------ #
+
+    def ensure_memory_tables(self):
+        """创建 AI 记忆相关表（幂等）"""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS memory_naming_conventions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    connection_id TEXT NOT NULL,
+                    database_name TEXT NOT NULL DEFAULT '',
+                    pattern TEXT NOT NULL,
+                    examples TEXT DEFAULT '[]',
+                    confidence REAL DEFAULT 1.0,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            """)
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS memory_query_patterns (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    connection_id TEXT NOT NULL,
+                    database_name TEXT NOT NULL DEFAULT '',
+                    user_intent TEXT NOT NULL,
+                    generated_sql TEXT NOT NULL,
+                    used_tables TEXT DEFAULT '[]',
+                    use_count INTEGER DEFAULT 1,
+                    last_used_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            """)
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS memory_corrections (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    connection_id TEXT NOT NULL,
+                    database_name TEXT NOT NULL DEFAULT '',
+                    user_query TEXT NOT NULL,
+                    ai_sql TEXT NOT NULL,
+                    corrected_sql TEXT NOT NULL,
+                    correction_note TEXT DEFAULT '',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            """)
+
+    def get_naming_conventions(self, connection_id: str, database_name: str, limit: int = 10):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT pattern FROM memory_naming_conventions "
+                "WHERE connection_id=? AND database_name=? "
+                "ORDER BY confidence DESC, updated_at DESC LIMIT ?",
+                (connection_id, database_name, limit),
+            )
+            return [row[0] for row in c.fetchall()]
+
+    def save_naming_convention(self, connection_id: str, database_name: str, pattern: str, examples: list):
+        import json
+        now = datetime.now().isoformat()
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT id FROM memory_naming_conventions "
+                "WHERE connection_id=? AND database_name=? AND pattern=?",
+                (connection_id, database_name, pattern),
+            )
+            row = c.fetchone()
+            if row:
+                c.execute(
+                    "UPDATE memory_naming_conventions SET examples=?, confidence=confidence+0.1, updated_at=? WHERE id=?",
+                    (json.dumps(examples, ensure_ascii=False), now, row[0]),
+                )
+            else:
+                c.execute(
+                    "INSERT INTO memory_naming_conventions(connection_id,database_name,pattern,examples,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+                    (connection_id, database_name, pattern, json.dumps(examples, ensure_ascii=False), now, now),
+                )
+
+    def search_query_patterns(self, connection_id: str, database_name: str, user_intent: str, top_k: int = 3):
+        words = user_intent.split()[:5]
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT user_intent, generated_sql, used_tables, use_count "
+                "FROM memory_query_patterns "
+                "WHERE connection_id=? AND database_name=? "
+                "ORDER BY use_count DESC, last_used_at DESC LIMIT 20",
+                (connection_id, database_name),
+            )
+            rows = [dict(zip(["user_intent", "generated_sql", "used_tables", "use_count"], r)) for r in c.fetchall()]
+            if not words:
+                return rows[:top_k]
+            scored = []
+            for r in rows:
+                score = sum(1 for w in words if w in r["user_intent"])
+                if score > 0:
+                    scored.append((score, r))
+            scored.sort(key=lambda x: x[0], reverse=True)
+            return [r for _, r in scored[:top_k]]
+
+    def upsert_query_pattern(self, connection_id: str, database_name: str, user_intent: str, generated_sql: str, used_tables: list):
+        import json
+        now = datetime.now().isoformat()
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT id, use_count FROM memory_query_patterns "
+                "WHERE connection_id=? AND database_name=? AND user_intent=?",
+                (connection_id, database_name, user_intent),
+            )
+            row = c.fetchone()
+            if row:
+                c.execute(
+                    "UPDATE memory_query_patterns SET generated_sql=?, used_tables=?, use_count=?, last_used_at=? WHERE id=?",
+                    (generated_sql, json.dumps(used_tables, ensure_ascii=False), row[1] + 1, now, row[0]),
+                )
+            else:
+                c.execute(
+                    "INSERT INTO memory_query_patterns(connection_id,database_name,user_intent,generated_sql,used_tables,last_used_at) VALUES(?,?,?,?,?,?)",
+                    (connection_id, database_name, user_intent, generated_sql, json.dumps(used_tables, ensure_ascii=False), now),
+                )
+
+    def get_recent_corrections(self, connection_id: str, database_name: str, limit: int = 3):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT user_query, ai_sql, corrected_sql, correction_note "
+                "FROM memory_corrections "
+                "WHERE connection_id=? AND database_name=? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (connection_id, database_name, limit),
+            )
+            return [dict(zip(["user_query", "ai_sql", "corrected_sql", "correction_note"], r)) for r in c.fetchall()]
+
+    def save_correction(self, connection_id: str, database_name: str, user_query: str, ai_sql: str, corrected_sql: str, note: str = ""):
+        now = datetime.now().isoformat()
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO memory_corrections(connection_id,database_name,user_query,ai_sql,corrected_sql,correction_note,created_at) VALUES(?,?,?,?,?,?,?)",
+                (connection_id, database_name, user_query, ai_sql, corrected_sql, note, now),
+            )
+
+
 # 全局实例
 _config_db_instance = None
 

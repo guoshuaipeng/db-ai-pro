@@ -708,43 +708,70 @@ class ConnectionDialog(QDialog):
         super().reject()
     
     def on_ai_parse_clicked(self):
-        """AI识别配置按钮点击事件"""
+        """AI识别配置按钮点击事件（使用 LangGraph ParseConnection 图）"""
         config_text = self.ai_config_edit.toPlainText().strip()
         if not config_text:
             QMessageBox.warning(self, "警告", "请输入配置信息")
             return
-        
-        # 禁用按钮，显示处理中
+
         self.ai_parse_btn.setEnabled(False)
         self.ai_parse_btn.setText("识别中...")
-        
-        # 创建并启动工作线程
-        # 尝试从parent获取主窗口引用
-        main_window = None
-        if self.parent():
-            # parent可能是主窗口
-            main_window = self.parent()
-            # 如果parent不是主窗口，尝试查找主窗口
-            while main_window and not hasattr(main_window, 'current_ai_model_id'):
-                main_window = main_window.parent()
-        
-        # 如果已有工作线程在运行，先停止它
+
         self._stop_worker()
-        
-        self.parse_worker = ConnectionParseWorker(config_text, main_window)
-        # 使用更安全的信号连接方式
-        self.parse_worker.finished.connect(self.on_ai_parse_finished)
+
+        # 构建 AI 客户端
+        from src.core.ai_client import AIClient
+        from src.core.ai_model_storage import AIModelStorage
+
+        ai_client = None
+        main_window = self.parent()
+        while main_window and not hasattr(main_window, "current_ai_model_id"):
+            main_window = main_window.parent()
+
+        if main_window and getattr(main_window, "current_ai_model_id", None):
+            try:
+                storage = AIModelStorage()
+                model_config = next(
+                    (m for m in storage.load_models() if m.id == main_window.current_ai_model_id), None
+                )
+                if model_config:
+                    ai_client = AIClient(
+                        api_key=model_config.api_key.get_secret_value(),
+                        base_url=model_config.get_base_url(),
+                        default_model=model_config.default_model,
+                        turbo_model=model_config.turbo_model,
+                    )
+            except Exception as e:
+                logger.warning(f"无法从主窗口获取AI模型配置: {e}")
+
+        if ai_client is None:
+            ai_client = AIClient()
+
+        from src.gui.workers.parse_connection_langgraph_worker import ParseConnectionLangGraphWorker
+
+        self.parse_worker = ParseConnectionLangGraphWorker(ai_client, config_text)
+        self.parse_worker.config_parsed.connect(self.on_ai_parse_finished)
+        self.parse_worker.error_occurred.connect(self._on_parse_error)
+        self.parse_worker.finished.connect(self.parse_worker.deleteLater)
         self.parse_worker.start()
+
+    def _on_parse_error(self, error_msg: str):
+        """LangGraph 解析错误回调"""
+        try:
+            self.ai_parse_btn.setEnabled(True)
+            self.ai_parse_btn.setText("✨ AI 智能识别并填充")
+            QMessageBox.warning(self, "识别失败", f"无法识别配置信息: {error_msg}")
+        except RuntimeError:
+            pass
     
     def on_ai_parse_finished(self, result: dict):
-        """AI识别完成回调"""
-        # 检查对话框是否仍然存在且有效
+        """AI识别完成回调（来自 LangGraph worker 的 config_parsed 信号）"""
         try:
-            if not self or not hasattr(self, 'ai_parse_btn') or not self.ai_parse_btn:
+            if not self or not hasattr(self, "ai_parse_btn") or not self.ai_parse_btn:
                 return
-            
+
             self.ai_parse_btn.setEnabled(True)
-            self.ai_parse_btn.setText("AI识别并填充")
+            self.ai_parse_btn.setText("✨ AI 智能识别并填充")
             
             if not result:
                 QMessageBox.warning(self, "识别失败", "无法识别配置信息，请检查格式是否正确")

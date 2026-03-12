@@ -828,78 +828,74 @@ class EditTableTab(QWidget):
         scrollbar.setValue(scrollbar.maximum())
     
     def generate_alter_table_sql(self):
-        """使用AI生成ALTER TABLE语句（在后台线程中执行）"""
+        """使用 LangGraph 生成 ALTER TABLE 语句（支持多轮对话）"""
         from src.core.ai_client import AIClient
         from src.core.ai_model_storage import AIModelStorage
-        
-        # 停止之前的AI工作线程
+
         if self.ai_worker:
             try:
                 if self.ai_worker.isRunning():
                     self.ai_worker.stop()
-                    if not self.ai_worker.wait(2000):
-                        self.ai_worker.terminate()
-                        self.ai_worker.wait(500)
+                    self.ai_worker.wait(2000)
                 try:
-                    self.ai_worker.sql_generated.disconnect()
+                    self.ai_worker.result_ready.disconnect()
                     self.ai_worker.error_occurred.disconnect()
-                except:
+                except Exception:
                     pass
                 safe_delete_thread(self.ai_worker)
             except RuntimeError:
                 pass
             self.ai_worker = None
-        
-        # 获取AI客户端
+
         ai_model_storage = AIModelStorage()
         default_model = ai_model_storage.get_default_model()
-        
         if not default_model:
             self.set_status("错误: 未配置AI模型", is_error=True)
             self.add_message_to_conversation("AI", "错误: 请先配置AI模型")
             return
-        
+
         self.set_status("AI正在生成修改表语句...", timeout=0)
-        
-        # 创建AI客户端
+
         ai_client = AIClient(
             api_key=default_model.api_key.get_secret_value(),
             base_url=default_model.get_base_url(),
             default_model=default_model.default_model,
-            turbo_model=default_model.turbo_model
+            turbo_model=default_model.turbo_model,
         )
-        
-        # 获取右侧当前的SQL语句
+
         current_sql = self.sql_edit.toPlainText().strip()
-        
-        # 创建并启动AI工作线程
-        from src.gui.workers.edit_table_ai_worker import EditTableAIWorker
-        
-        # 获取数据库类型
         db_type = None
+        connection_id = self.connection_id
         if self.db_manager and self.connection_id:
             connection = self.db_manager.get_connection(self.connection_id)
             if connection:
                 db_type = connection.db_type.value
-        
-        self.ai_worker = EditTableAIWorker(
-            ai_client,
-            self.conversation_history,
-            self.database,
-            self.table_name,
-            self.current_table_schema,
-            current_sql,
-            db_type  # 传递数据库类型
+
+        from src.gui.workers.edit_table_langgraph_worker import EditTableLangGraphWorker
+
+        self.ai_worker = EditTableLangGraphWorker(
+            ai_client=ai_client,
+            conversation_history=list(self.conversation_history),
+            database=self.database,
+            db_type=db_type,
+            table_name=self.table_name,
+            current_table_schema=self.current_table_schema,
+            current_sql=current_sql,
+            connection_id=connection_id,
         )
-        self.ai_worker.sql_generated.connect(self.on_sql_generated)
+        self.ai_worker.result_ready.connect(self.on_sql_generated)
         self.ai_worker.error_occurred.connect(self.on_ai_error)
+        self.ai_worker.status_update.connect(lambda msg: self.set_status(msg, timeout=0))
+        self.ai_worker.finished.connect(self.ai_worker.deleteLater)
         self.ai_worker.start()
-    
-    def on_sql_generated(self, sql: str):
-        """SQL生成完成回调"""
+
+    def on_sql_generated(self, sql: str, assistant_message: str = ""):
+        """SQL 生成完成回调（含多轮自然语言回复）"""
         self.sql_edit.setPlainText(sql)
         self.set_status("修改表语句生成成功")
-        self.add_message_to_conversation("AI", f"已生成修改表语句：\n\n```sql\n{sql}\n```")
+        display_msg = assistant_message if assistant_message else f"已生成修改表语句：\n\n```sql\n{sql}\n```"
+        self.add_message_to_conversation("AI", display_msg)
+        self.conversation_history.append({"role": "assistant", "content": sql})
     
     def on_ai_error(self, error_msg: str):
         """AI错误回调"""
@@ -1121,15 +1117,15 @@ class EditTableTab(QWidget):
                         self.ai_worker.terminate()
                         self.ai_worker.wait(500)
                 try:
-                    self.ai_worker.sql_generated.disconnect()
+                    self.ai_worker.result_ready.disconnect()
                     self.ai_worker.error_occurred.disconnect()
-                except:
+                except Exception:
                     pass
                 safe_delete_thread(self.ai_worker)
             except RuntimeError:
                 pass
             self.ai_worker = None
-        
+
         # 停止schema worker
         if self.schema_worker:
             try:

@@ -521,26 +521,35 @@ class AIClient:
                     table_names_only.append(item)
                     table_list_items.append(f'  - {item}')
             
-            # 优先检查1：如果用户查询就是表名（AI输入框中只有表名的情况），直接返回
+            import re
             user_query_stripped = user_query.strip()
-            if user_query_stripped in table_names_only:
+            user_query_lower = user_query_stripped.lower()
+
+            # 判断是否为多表关联意图（关联、和、与、多表、join 等）
+            multi_table_keywords = [
+                '和', '与', '及', '以及', '关联', '多表', 'join', '同时查', '一起查',
+                '联表', '连接', '跨表', '多张表', '几个表'
+            ]
+            multi_table_intent = any(kw in user_query_stripped or kw in user_query_lower for kw in multi_table_keywords)
+
+            # 优先检查1：如果用户查询就是表名（且非多表意图），直接返回
+            if not multi_table_intent and user_query_stripped in table_names_only:
                 self.logger.info(f"用户查询就是表名，直接返回: {user_query_stripped}")
                 return [user_query_stripped]
-            
-            # 优先检查2：检查用户查询中是否包含表名（支持多种格式）
+
+            # 优先检查2：检查用户查询中是否包含表名（支持多种格式）；多表意图时不短路，交给 AI 选多表
             # 格式1：以表名开头，如 "users 查询所有数据"
             # 格式2：包含"查询/操作/查看 表名 表"，如 "查询 users 表"
             # 格式3：包含"表名 表"，如 "users 表"
             table_name_in_query = None
             for table_name in table_names_only:
-                # 检查1：用户查询是否以表名开头（后面可能有空格、换行或其他查询条件）
                 if user_query_stripped.startswith(table_name + " ") or user_query_stripped.startswith(table_name + "\n"):
                     table_name_in_query = table_name
-                    self.logger.info(f"检测到用户查询以表名开头: {table_name_in_query}，直接返回此表")
-                    return [table_name_in_query]
-                
-                # 检查2：用户查询是否包含"查询/操作/查看 表名 表"格式
-                import re
+                    if not multi_table_intent:
+                        self.logger.info(f"检测到用户查询以表名开头: {table_name_in_query}，直接返回此表")
+                        return [table_name_in_query]
+                    self.logger.info(f"检测到用户查询以表名开头且有多表关联意图，交给AI选择多表，主表提示: {table_name_in_query}")
+                    break
                 patterns = [
                     rf'查询\s+{re.escape(table_name)}\s+表',
                     rf'操作\s+{re.escape(table_name)}\s+表',
@@ -550,8 +559,13 @@ class AIClient:
                 for pattern in patterns:
                     if re.search(pattern, user_query_stripped, re.IGNORECASE):
                         table_name_in_query = table_name
-                        self.logger.info(f"检测到用户查询包含表名提示: {table_name_in_query}，直接返回此表")
-                        return [table_name_in_query]
+                        if not multi_table_intent:
+                            self.logger.info(f"检测到用户查询包含表名提示: {table_name_in_query}，直接返回此表")
+                            return [table_name_in_query]
+                        self.logger.info(f"检测到用户查询包含表名且有多表关联意图，交给AI选择多表，主表提示: {table_name_in_query}")
+                        break
+                if table_name_in_query:
+                    break
             
             # 格式化表名列表（如果AI输入框中有表名，将其放在前面）
             priority_tables = []
@@ -573,9 +587,12 @@ class AIClient:
             # 构建提示词部分
             priority_section = ""
             if table_name_in_query:
-                # 如果AI输入框中有表名，优先使用这个表名
-                priority_section = f"""
-**⚠️ 重要提示**：用户查询以表名"{table_name_in_query}"开头，这表示用户希望优先操作这个表。请优先选择表"{table_name_in_query}"，除非用户明确指定了其他表。"""
+                if multi_table_intent:
+                    priority_section = f"""
+**⚠️ 重要提示**：用户查询涉及表"{table_name_in_query}"，且需求为多表关联。请将表"{table_name_in_query}"纳入选择，并选择所有关联查询所需的其他表（如外键关联表、统计所需表等）。"""
+                else:
+                    priority_section = f"""
+**⚠️ 重要提示**：用户查询以表名"{table_name_in_query}"开头，表示希望操作该表。请优先选择表"{table_name_in_query}"，除非用户明确指定了其他表。"""
             
             user_prompt = f"""【用户需求】
 {user_query}{priority_section}
@@ -585,8 +602,10 @@ class AIClient:
 {table_list_formatted}
 
 【你的任务】
-根据用户需求"{user_query}"，从上述表名列表中选择最相关的表（通常1-3个表）。
-{"**⚠️ 重要**：用户查询以表名开头，请优先选择该表。" if table_name_in_query else "**提示**：如果用户需求中明确提到了表名（如\"支付订单表\"、\"用户表\"等），应该优先选择用户需求中提到的表。"}
+根据用户需求"{user_query}"，从上述表名列表中选择最相关的表。
+- 单表需求：选 1 个最相关的表。
+- 多表/关联需求（如涉及「和」「与」「关联」「多表」等）：必须选择所有需要参与 JOIN 的表，可 2～10 个，不要漏掉关联所需的表。
+{"**⚠️ 重要**：用户查询以表名开头，请将该表纳入选择（若为关联查询，还需选择其他相关表）。" if table_name_in_query else "**提示**：若用户需求中明确提到表名（如\"支付订单表\"、\"用户表\"），应优先选择这些表；若涉及多表关联，选择所有相关表。"}
 
 【输出要求】
 只返回选中的表名，每行一个，不要包含任何解释或注释。"""
@@ -641,9 +660,9 @@ class AIClient:
                     if line in table_names_only:
                         selected_tables.append(line)
             
-            # 去重
-            selected_tables = list(dict.fromkeys(selected_tables))
-            
+            # 去重，多表关联时最多保留 10 个表
+            selected_tables = list(dict.fromkeys(selected_tables))[:10]
+
             self.logger.info(f"解析后的选中表名: {selected_tables}")
             self.logger.info("=" * 80)
             
