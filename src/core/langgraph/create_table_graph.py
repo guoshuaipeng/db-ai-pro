@@ -1,8 +1,14 @@
 """
-建表场景 LangGraph 状态图
-流程：recall_memory → select_reference_tables → fetch_reference_schema → generate_create_table → write_memory
+建表场景 LangGraph 状态图 —— Tool-calling Agent 版本
+流程：recall_memory → agent_create_table → write_memory
 多轮交互：每轮由 UI 传入新的 conversation_history，图每次独立 invoke
+
+agent_create_table 使用 tool calling：
+- AI 自主决定是否需要参考表结构（get_reference_schema）
+- 然后生成 CREATE TABLE + 自然语言回复
+- 多轮时 AI 可看到 conversation_history 做增量修改
 """
+import json
 import logging
 import re
 from typing import Any, Dict, List, Optional, TypedDict
@@ -16,30 +22,27 @@ DB_TYPE_MAP = {
     "oracle": "Oracle", "sqlserver": "SQL Server", "sqlite": "SQLite",
 }
 
+MAX_AGENT_ITERATIONS = 4
+
 
 # ──────────────────────────────────────────────
 # State
 # ──────────────────────────────────────────────
 class CreateTableGraphState(TypedDict, total=False):
-    # 输入
     ai_client: Any
-    conversation_history: List[Dict]   # [{"role":"user","content":"..."},...]
+    conversation_history: List[Dict]
     database: Optional[str]
     db_type: Optional[str]
     connection_string: str
     connect_args: Dict
     connection_id: Optional[str]
-    all_table_names: List[str]
-    current_sql: str                   # 当前已有的建表 SQL（多轮时传入）
+    all_table_names: List[Any]     # [{"name":..,"comment":..}] 或字符串列表
+    current_sql: str
 
-    # 中间结果
-    selected_reference_tables: List[str]
-    reference_schema: str
     memory_context: str
-
-    # 输出
     generated_sql: str
-    assistant_message: str             # AI 的自然语言回复（用于对话气泡）
+    assistant_message: str
+    agent_iterations: int
     error: Optional[str]
     current_step: str
 
@@ -58,124 +61,144 @@ def node_recall_memory(state: CreateTableGraphState) -> dict:
         return {"memory_context": "", "current_step": "recall_memory"}
 
 
-def node_select_reference_tables(state: CreateTableGraphState) -> dict:
-    """AI 从所有表中选出参考表（最多5个）"""
-    try:
-        ai_client = state["ai_client"]
-        all_table_names = state.get("all_table_names", [])
-        if not all_table_names:
-            return {"selected_reference_tables": [], "current_step": "select_reference_tables"}
+def node_agent_create_table(state: CreateTableGraphState) -> dict:
+    """
+    Tool-calling Agent：AI 自主决定是否参考已有表结构，然后生成 CREATE TABLE
+    """
+    ai_client = state["ai_client"]
+    db_type = state.get("db_type", "")
+    db_name = DB_TYPE_MAP.get((db_type or "").lower(), db_type or "")
+    memory_context = state.get("memory_context", "")
+    all_table_names = state.get("all_table_names", [])
+    connection_string = state.get("connection_string", "")
 
-        history = state.get("conversation_history", [])
-        latest_user = next((m["content"] for m in reversed(history) if m["role"] == "user"), "")
+    # 构建表概览（帮 AI 知道可以参考哪些表）
+    if all_table_names and connection_string:
+        lines = []
+        for item in all_table_names[:100]:
+            name = item["name"] if isinstance(item, dict) else item
+            comment = item.get("comment", "") if isinstance(item, dict) else ""
+            lines.append(f"  - {name}" + (f"  # {comment}" if comment else ""))
+        table_overview = "【数据库现有表（可作为参考）】\n" + "\n".join(lines)
+    else:
+        table_overview = ""
 
-        selected = ai_client.select_tables(latest_user, all_table_names)
-        selected = selected[:5]
-        logger.info(f"select_reference_tables: {selected}")
-        return {"selected_reference_tables": selected, "current_step": "select_reference_tables"}
-    except Exception as e:
-        logger.warning(f"select_reference_tables 失败（跳过）: {e}")
-        return {"selected_reference_tables": [], "current_step": "select_reference_tables"}
+    db_type_hint = f"\n【数据库类型】{db_name}，请严格使用 {db_name} 语法。" if db_name else ""
+    memory_hint = f"\n\n【历史命名规范（请遵循）】\n{memory_context}" if memory_context else ""
 
+    # 对话历史文本
+    history = state.get("conversation_history", [])
+    conv_text = "\n".join(
+        f"{'用户' if m['role'] == 'user' else 'AI'}: {m['content']}"
+        for m in history[-12:]
+    )
 
-def node_fetch_reference_schema(state: CreateTableGraphState) -> dict:
-    """拉取参考表结构"""
-    try:
-        selected = state.get("selected_reference_tables", [])
-        if not selected:
-            return {"reference_schema": "", "current_step": "fetch_reference_schema"}
+    current_sql = state.get("current_sql", "")
+    current_sql_section = f"\n\n【当前建表语句（在此基础上修改）】\n{current_sql}" if current_sql.strip() else ""
 
-        from src.core.langgraph.schema_service import fetch_schema_sync
-        schema_text, _ = fetch_schema_sync(
-            connection_string=state.get("connection_string", ""),
-            connect_args=state.get("connect_args", {}),
-            selected_tables=selected,
-            connection_id=state.get("connection_id"),
-            database=state.get("database"),
-        )
-        return {"reference_schema": schema_text, "current_step": "fetch_reference_schema"}
-    except Exception as e:
-        logger.warning(f"fetch_reference_schema 失败（跳过）: {e}")
-        return {"reference_schema": "", "current_step": "fetch_reference_schema"}
+    system_prompt = f"""你是一个智能建表助手，根据用户的多轮对话需求生成 CREATE TABLE 语句。{db_type_hint}{memory_hint}
 
+{table_overview}
 
-def node_generate_create_table(state: CreateTableGraphState) -> dict:
-    """AI 多轮生成建表 SQL，同时返回自然语言回复"""
-    try:
-        ai_client = state["ai_client"]
-        from src.core.prompt_config import PromptStorage
-        prompt_config = PromptStorage().load_prompts()
-
-        db_type = state.get("db_type", "")
-        db_name = DB_TYPE_MAP.get((db_type or "").lower(), db_type or "")
-
-        system_prompt = prompt_config.create_table_generate_sql_system
-        if db_name:
-            system_prompt += (f"\n\n【重要】当前数据库类型: {db_name}\n"
-                              f"请使用 {db_name} 的SQL语法规范生成CREATE TABLE语句。")
-
-        system_prompt += """
+【工具使用原则】
+- 如果用户要求参考某个已有表的风格/结构 → 调用 get_reference_schema 获取参考
+- 如果你已有足够信息（用户描述了所有字段）→ 直接生成，不必调用工具
+- 最少调用原则：信息够了就不再查询
 
 【输出格式】
-以 JSON 返回，不含任何额外文字或 markdown：
-{
+完成工具调用后，以 JSON 返回（不含任何额外文字）：
+{{
   "sql": "<完整的 CREATE TABLE SQL>",
-  "message": "<自然语言回复，说明你做了什么或还需要什么信息（可为空字符串）>"
-}"""
+  "message": "<自然语言回复，说明你做了什么，或者询问用户还需要什么补充信息>"
+}}"""
 
-        memory_context = state.get("memory_context", "")
-        if memory_context:
-            system_prompt += f"\n\n【用户历史命名规范（请遵循）】\n{memory_context}"
+    user_prompt = (
+        f"【对话历史】\n{conv_text}\n"
+        f"\n【数据库】{state.get('database') or '未指定'}"
+        + (f"\n数据库类型: {db_name}" if db_name else "")
+        + current_sql_section
+        + "\n\n请根据以上对话历史，生成或修改 CREATE TABLE 语句，以 JSON 返回。"
+    )
 
-        history = state.get("conversation_history", [])
-        conv_text = "\n".join(
-            f"{'用户' if m['role'] == 'user' else 'AI'}: {m['content']}"
-            for m in history[-10:]
-        )
+    # 工具：获取参考表结构
+    tools = []
+    if all_table_names and connection_string:
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "get_reference_schema",
+                "description": "获取数据库中已有表的结构，作为建表的命名和类型参考。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "table_names": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "要获取结构的参考表名列表（最多5个）"
+                        }
+                    },
+                    "required": ["table_names"]
+                }
+            }
+        })
 
-        reference_section = ""
-        ref_schema = state.get("reference_schema", "")
-        if ref_schema and ref_schema.strip():
-            reference_section = f"\n\n【参考表结构（请保持一致的命名/类型风格）】\n{ref_schema}"
+    messages: List[dict] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
 
-        current_sql_section = ""
-        current_sql = state.get("current_sql", "")
-        if current_sql and current_sql.strip():
-            current_sql_section = (f"\n\n【当前建表语句（如用户要求修改，基于此调整）】\n{current_sql}")
-
-        db_info = f"\n数据库名: {state.get('database') or '未指定'}"
-        if db_name:
-            db_info += f"\n数据库类型: {db_name}"
-
-        user_prompt = (
-            f"【对话历史】\n{conv_text}\n"
-            f"\n【当前数据库】{db_info}"
-            f"{reference_section}{current_sql_section}"
-            f"\n\n【任务】根据对话历史生成或修改完整的 CREATE TABLE 语句，以 JSON 返回。"
-        )
-
+    iterations = 0
+    try:
         client = ai_client._get_client()
-        response = client.chat.completions.create(
-            model=ai_client.default_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.1,
-        )
-        ai_client._record_token_usage(response)
-        raw = response.choices[0].message.content.strip()
 
-        sql, message = _parse_create_response(raw)
-        return {
-            "generated_sql": sql,
-            "assistant_message": message,
-            "error": None,
-            "current_step": "generate_create_table",
-        }
+        call_kwargs = {"model": ai_client.default_model, "messages": messages, "temperature": 0.1}
+        if tools:
+            call_kwargs["tools"] = tools
+            call_kwargs["tool_choice"] = "auto"
+
+        for iteration in range(MAX_AGENT_ITERATIONS):
+            iterations = iteration + 1
+            response = client.chat.completions.create(**call_kwargs)
+            ai_client._record_token_usage(response)
+            choice = response.choices[0]
+            msg = choice.message
+
+            if choice.finish_reason == "tool_calls" and msg.tool_calls:
+                messages.append({
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [
+                        {"id": tc.id, "type": "function",
+                         "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                        for tc in msg.tool_calls
+                    ]
+                })
+                for tc in msg.tool_calls:
+                    args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                    if tc.function.name == "get_reference_schema":
+                        result = _exec_get_reference_schema(args, state)
+                    else:
+                        result = f"未知工具: {tc.function.name}"
+                    logger.info(f"agent_create_table 工具 {tc.function.name}: {result[:100]}")
+                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+
+            elif choice.finish_reason in ("stop", "length", None):
+                raw = (msg.content or "").strip()
+                sql, message = _parse_json_response(raw)
+                return {
+                    "generated_sql": sql,
+                    "assistant_message": message,
+                    "agent_iterations": iterations,
+                    "error": None,
+                    "current_step": "agent_create_table",
+                }
+            else:
+                break
+
+        return {"error": "AI 未能完成建表语句生成", "current_step": "agent_create_table"}
     except Exception as e:
-        logger.error(f"generate_create_table 异常: {e}")
-        return {"error": f"AI生成建表语句失败: {e}", "current_step": "generate_create_table"}
+        logger.error(f"agent_create_table 异常: {e}", exc_info=True)
+        return {"error": f"AI生成建表语句失败: {e}", "current_step": "agent_create_table"}
 
 
 def node_write_memory(state: CreateTableGraphState) -> dict:
@@ -187,7 +210,7 @@ def node_write_memory(state: CreateTableGraphState) -> dict:
         store.write_query_pattern(
             user_intent="建表",
             generated_sql=state.get("generated_sql", ""),
-            used_tables=state.get("selected_reference_tables", []),
+            used_tables=[],
         )
     except Exception as e:
         logger.warning(f"write_memory 失败: {e}")
@@ -195,10 +218,30 @@ def node_write_memory(state: CreateTableGraphState) -> dict:
 
 
 # ──────────────────────────────────────────────
+# 工具实现
+# ──────────────────────────────────────────────
+def _exec_get_reference_schema(args: dict, state: CreateTableGraphState) -> str:
+    table_names = args.get("table_names", [])[:5]
+    if not table_names:
+        return "请提供表名"
+    try:
+        from src.core.langgraph.schema_service import fetch_schema_sync
+        schema_text, _ = fetch_schema_sync(
+            connection_string=state.get("connection_string", ""),
+            connect_args=state.get("connect_args", {}),
+            selected_tables=table_names,
+            connection_id=state.get("connection_id"),
+            database=state.get("database"),
+        )
+        return schema_text if schema_text.strip() else f"未找到表 {table_names} 的结构"
+    except Exception as e:
+        return f"获取参考表结构失败: {e}"
+
+
+# ──────────────────────────────────────────────
 # 辅助
 # ──────────────────────────────────────────────
-def _parse_create_response(raw: str):
-    import json
+def _parse_json_response(raw: str):
     text = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.IGNORECASE)
     text = re.sub(r"\s*```$", "", text).strip()
     try:
@@ -207,17 +250,16 @@ def _parse_create_response(raw: str):
         message = data.get("message", "").strip()
         return sql, message
     except Exception:
-        # 降级：整体当 SQL
-        sql = _strip_code_fence(raw)
+        sql = _strip_fence(raw)
         return sql, ""
 
 
-def _strip_code_fence(text: str) -> str:
+def _strip_fence(text: str) -> str:
     text = text.strip()
-    if text.startswith("```sql"):
-        text = text[6:]
-    elif text.startswith("```"):
-        text = text[3:]
+    for prefix in ("```sql", "```"):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+            break
     if text.endswith("```"):
         text = text[:-3]
     return text.strip()
@@ -226,10 +268,8 @@ def _strip_code_fence(text: str) -> str:
 # ──────────────────────────────────────────────
 # 条件边
 # ──────────────────────────────────────────────
-def _route_after_select_ref(state: CreateTableGraphState) -> str:
-    if state.get("selected_reference_tables"):
-        return "fetch_reference_schema"
-    return "generate_create_table"
+def _route_after_agent(state: CreateTableGraphState) -> str:
+    return END if state.get("error") else "write_memory"
 
 
 # ──────────────────────────────────────────────
@@ -239,18 +279,13 @@ def build_create_table_graph() -> StateGraph:
     g = StateGraph(CreateTableGraphState)
 
     g.add_node("recall_memory", node_recall_memory)
-    g.add_node("select_reference_tables", node_select_reference_tables)
-    g.add_node("fetch_reference_schema", node_fetch_reference_schema)
-    g.add_node("generate_create_table", node_generate_create_table)
+    g.add_node("agent_create_table", node_agent_create_table)
     g.add_node("write_memory", node_write_memory)
 
     g.add_edge(START, "recall_memory")
-    g.add_edge("recall_memory", "select_reference_tables")
-    g.add_conditional_edges("select_reference_tables", _route_after_select_ref,
-                            {"fetch_reference_schema": "fetch_reference_schema",
-                             "generate_create_table": "generate_create_table"})
-    g.add_edge("fetch_reference_schema", "generate_create_table")
-    g.add_edge("generate_create_table", "write_memory")
+    g.add_edge("recall_memory", "agent_create_table")
+    g.add_conditional_edges("agent_create_table", _route_after_agent,
+                            {"write_memory": "write_memory", END: END})
     g.add_edge("write_memory", END)
 
     return g

@@ -33,6 +33,8 @@ class EditTableLangGraphWorker(QThread):
         current_table_schema: str = "",
         current_sql: str = "",
         connection_id: Optional[str] = None,
+        connection_string: str = "",
+        connect_args: Optional[Dict] = None,
     ):
         super().__init__()
         self.ai_client = ai_client
@@ -43,6 +45,8 @@ class EditTableLangGraphWorker(QThread):
         self.current_table_schema = current_table_schema
         self.current_sql = current_sql
         self.connection_id = connection_id
+        self.connection_string = connection_string
+        self.connect_args = connect_args or {}
         self._should_stop = False
 
     def stop(self):
@@ -67,17 +71,19 @@ class EditTableLangGraphWorker(QThread):
                 "current_table_schema": self.current_table_schema,
                 "current_sql": self.current_sql,
                 "connection_id": self.connection_id,
+                "connection_string": self.connection_string,
+                "connect_args": self.connect_args,
                 "memory_context": "",
                 "generated_sql": "",
                 "assistant_message": "",
+                "agent_iterations": 0,
                 "error": None,
                 "current_step": "",
-                "retry_count": 0,
             }
 
             step_msgs = {
                 "recall_memory": "正在召回历史记忆...",
-                "generate_alter_table": "AI正在生成改表语句...",
+                "agent_alter_table": "AI Agent 正在分析并生成改表语句...",
                 "write_memory": "正在写入记忆...",
             }
 

@@ -150,43 +150,47 @@ class QueryGraphState(TypedDict, total=False):
 - 若使用 reducer（如对 `error` 做覆盖），在 StateGraph 构造时指定即可。
 - **`sql_type`** 由 AI 在 `generate_sql` 节点中一并返回，UI 不需要再用 `startswith("SELECT")` 之类的字符串硬判断；AI 比代码更懂「这是查询还是修改」。
 
-### 3A.3 图结构（节点与边）
+### 3A.3 图结构（Tool-calling Agent 版本）✅ 已实现
 
-建议的节点与流程：
+**旧版**：固定多步流水线，AI 串联多个节点，每步都调用一次 LLM。  
+**新版（当前实现）**：极简 3 节点 + Tool-calling Agent，AI 自主决策。
 
 ```
 START
-  → select_tables          # 调用 LLM 选表，写入 selected_tables
-  → fetch_schema           # 根据 selected_tables 拉表结构，写入 table_schema（内部调 DB，无 LLM）
-  → should_do_enum        # 条件边：若 config_query_enum 为 False，跳到 generate_sql
-  → select_enum_columns   # 调用 LLM：选枚举列 + 是否查枚举，写入 enum_columns, should_query_enum
-  → [条件] need_enum_values ?
-       → fetch_enum_values # 查库拿枚举值，拼成 table_schema_with_enum（无 LLM）
-       → generate_sql     # 使用 table_schema_with_enum
-  → generate_sql          # 使用 table_schema（无枚举值）或 table_schema_with_enum
-  → validate_sql          # 可选：检查表名/列名/DDL，失败写 state.error 并决定是否重试
-  → [条件] has_error && retry_count < N ?
-       → generate_sql     # 重试（可把 validation 错误写入 state 给 LLM 修正）
+  → recall_memory        # 从 SQLite 召回用户历史记忆，注入 memory_context（无 LLM）
+  → agent_sql            # ★ Tool-calling Agent：AI 自主决定调用哪些工具，最终输出 SQL
+  → [条件] 有 error → END
+  → write_memory         # 将成功查询写入长期记忆（无 LLM）
   → END
 ```
 
-- **select_tables**：封装现有 `ai_client.select_tables(...)`，入参从 state 取，结果写回 `selected_tables`；若表列表为空可写 `error` 并直接 END。
-- **fetch_schema**：同步调用现有「按表名拉 schema」的逻辑（可抽自 SchemaWorker 的同步版本或 database_manager），结果写 `table_schema`。
-- **select_enum_columns**：封装 `ai_client.select_enum_columns(...)`，写 `enum_columns`、`should_query_enum`。
-- **fetch_enum_values**：调用现有查枚举值的逻辑，拼出 `table_schema_with_enum`。
-- **generate_sql**：封装 `ai_client.generate_sql(...)`，读 `table_schema` 或 `table_schema_with_enum` 以及 `selected_tables` 等；**要求 AI 一次返回 SQL 与语句类型**，写 `generated_sql` 与 `sql_type`（`SELECT` / `INSERT` / `UPDATE` / `DELETE` / `OTHER`）。详见 3A.7。
-- **validate_sql**（可选）：用现有 `_validate_sql_tables` / `_validate_sql_columns` 逻辑，失败时写 `state["error"]` 和校验信息，并设置 `retry_count` 等。
+**agent_sql 内部自主循环**（最多 6 轮）：
 
-边：
+```
+AI 收到 [系统提示 + 数据库概览 + 历史记忆 + 用户问题]
+  ↓ AI 决策 → 直接返回 JSON {sql_type, sql}？
+    ↓ 是 → 循环结束
+    ↓ 否 → AI 调用工具（可选）
+           ├── search_relevant_tables(query)    # 从所有表中找相关表
+           ├── get_table_schema(table_names)   # 获取指定表的完整字段结构
+           └── get_enum_values(columns)        # 获取枚举列的实际值
+         ↓ Python 执行工具，结果回传给 AI
+  ↓ AI 再次决策（循环继续或输出 SQL）
+```
 
-- `START → select_tables`
-- `select_tables → fetch_schema`（若 `error` 已 set 可 → END）
-- `fetch_schema → select_enum_columns` 或 `fetch_schema → generate_sql`（由 `config_query_enum` 条件边）
-- `select_enum_columns → fetch_enum_values`（条件：`should_query_enum`）或 `select_enum_columns → generate_sql`
-- `fetch_enum_values → generate_sql`
-- `generate_sql → validate_sql` → 条件：有 error 且 retry_count < N 则回到 `generate_sql`，否则 → END
+**AI 决策示例**：
 
-这样，**所有「和 AI 交互」的步骤**（选表、选枚举、生成 SQL、可选重试）都在一张图里，非 AI 的步骤（拉 schema、拉枚举值）作为图内节点，便于后续加观测或人工介入点。
+| 用户输入 | AI 决策 | 工具调用 |
+|---|---|---|
+| `SELECT * FROM users WHERE id=1` | 直接返回 | 0 次 |
+| `查询 users 表今天的数据` | 直接查结构 | `get_table_schema(["users"])` |
+| `帮我查下单量最高的用户` | 先搜表再查结构 | `search_relevant_tables` → `get_table_schema` |
+| `查询状态为已完成的订单` | 查结构+枚举值 | `get_table_schema` → `get_enum_values` |
+
+**优势**：
+- 简单查询 0 工具调用，速度媲美直接 API 调用
+- 复杂查询 AI 自主获取所有需要的上下文，不遗漏
+- 彻底消灭固定流水线的「多余步骤」
 
 ### 3A.7 AI 同时返回 SQL 与语句类型（sql_type）
 

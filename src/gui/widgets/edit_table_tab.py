@@ -866,10 +866,14 @@ class EditTableTab(QWidget):
         current_sql = self.sql_edit.toPlainText().strip()
         db_type = None
         connection_id = self.connection_id
+        connection_string = ""
+        connect_args = {}
         if self.db_manager and self.connection_id:
             connection = self.db_manager.get_connection(self.connection_id)
             if connection:
                 db_type = connection.db_type.value
+                connection_string = connection.get_connection_string()
+                connect_args = connection.get_connect_args()
 
         from src.gui.workers.edit_table_langgraph_worker import EditTableLangGraphWorker
 
@@ -882,6 +886,8 @@ class EditTableTab(QWidget):
             current_table_schema=self.current_table_schema,
             current_sql=current_sql,
             connection_id=connection_id,
+            connection_string=connection_string,
+            connect_args=connect_args,
         )
         self.ai_worker.result_ready.connect(self.on_sql_generated)
         self.ai_worker.error_occurred.connect(self.on_ai_error)

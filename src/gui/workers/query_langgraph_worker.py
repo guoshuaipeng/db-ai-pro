@@ -1,6 +1,11 @@
 """
-基于 LangGraph 的查询 AI 工作线程
-替代原来的 AITableSelectorWorker + SchemaWorker + AIEnumSelectorWorker + AIWorker 多步串联
+基于 LangGraph Tool-calling Agent 的查询工作线程
+AI 自主决定调用哪些工具（搜索表/获取结构/查枚举值），按需执行，最终生成 SQL
+
+信号：
+  sql_generated(sql: str, sql_type: str)   -- 成功
+  error_occurred(error: str)               -- 失败
+  status_update(message: str)              -- 进度（显示在状态栏）
 """
 import logging
 from typing import Any, Dict, List, Optional
@@ -11,14 +16,6 @@ logger = logging.getLogger(__name__)
 
 
 class QueryLangGraphWorker(QThread):
-    """
-    一次性运行查询图，通过信号回传结果。
-    信号：
-      sql_generated(sql: str, sql_type: str)   -- 成功
-      error_occurred(error: str)               -- 失败
-      status_update(message: str)              -- 步骤进度（可选，供状态栏显示）
-    """
-
     sql_generated = pyqtSignal(str, str)   # (sql, sql_type)
     error_occurred = pyqtSignal(str)
     status_update = pyqtSignal(str)
@@ -55,7 +52,7 @@ class QueryLangGraphWorker(QThread):
         if self.isInterruptionRequested() or self._should_stop:
             return
 
-        self.status_update.emit("AI正在分析查询意图...")
+        self.status_update.emit("AI Agent 正在分析查询意图...")
 
         try:
             from src.core.langgraph.query_graph import get_query_graph
@@ -70,52 +67,56 @@ class QueryLangGraphWorker(QThread):
                 "database": self.database,
                 "config_query_enum": self.config_query_enum,
                 "ai_client": self.ai_client,
-                "retry_count": 0,
-                "selected_tables": [],
-                "table_schema": "",
-                "enum_columns": {},
-                "should_query_enum": False,
-                "table_schema_with_enum": "",
                 "memory_context": "",
                 "generated_sql": "",
                 "sql_type": "OTHER",
+                "selected_tables": [],
+                "agent_iterations": 0,
                 "error": None,
                 "current_step": "",
             }
 
             graph = get_query_graph()
+            final_state = initial_state.copy()
 
-            # 逐步 stream 以便更新状态栏
             step_msgs = {
                 "recall_memory": "正在召回历史记忆...",
-                "select_tables": "AI正在选择相关表...",
-                "fetch_schema": "正在获取表结构...",
-                "select_enum_columns": "AI正在识别枚举字段...",
-                "fetch_enum_values": "正在查询枚举字段值...",
-                "generate_sql": "AI正在生成SQL...",
+                "agent_sql": "AI Agent 正在推理，按需调用工具...",
                 "write_memory": "正在写入记忆...",
             }
 
-            final_state = initial_state.copy()
             for chunk in graph.stream(initial_state, stream_mode="updates"):
                 if self.isInterruptionRequested() or self._should_stop:
                     return
                 for node_name, updates in chunk.items():
                     final_state.update(updates)
-                    msg = step_msgs.get(node_name, f"执行 {node_name}...")
-                    self.status_update.emit(msg)
-                    logger.debug(f"QueryLangGraph [{node_name}]: {updates}")
+                    # 显示更详细的状态
+                    if node_name == "agent_sql":
+                        iters = final_state.get("agent_iterations", 0)
+                        if iters > 0:
+                            self.status_update.emit(
+                                f"AI Agent 完成推理（调用了 {iters} 次工具），正在整理结果..."
+                            )
+                        else:
+                            self.status_update.emit("AI Agent 正在推理中...")
+                    else:
+                        self.status_update.emit(step_msgs.get(node_name, f"执行 {node_name}..."))
 
             if final_state.get("error"):
                 self.error_occurred.emit(final_state["error"])
             elif final_state.get("generated_sql"):
+                iters = final_state.get("agent_iterations", 0)
+                logger.info(
+                    f"QueryLangGraphWorker 成功: sql_type={final_state.get('sql_type')}, "
+                    f"工具调用={iters}次, 表={final_state.get('selected_tables')}"
+                )
                 self.sql_generated.emit(
                     final_state["generated_sql"],
                     final_state.get("sql_type", "OTHER"),
                 )
             else:
-                self.error_occurred.emit("AI未能生成SQL，请重试")
+                self.error_occurred.emit("AI 未能生成 SQL，请重试")
 
         except Exception as e:
             logger.error(f"QueryLangGraphWorker 异常: {e}", exc_info=True)
-            self.error_occurred.emit(f"AI生成SQL失败: {e}")
+            self.error_occurred.emit(f"AI 生成 SQL 失败: {e}")

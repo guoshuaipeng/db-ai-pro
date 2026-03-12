@@ -1,6 +1,19 @@
 """
-查询场景 LangGraph 状态图
-流程：recall_memory → select_tables → fetch_schema → [select_enum_columns] → [fetch_enum_values] → generate_sql → write_memory
+查询场景 LangGraph 状态图 —— Tool-calling Agent 版本
+
+架构：recall_memory → agent_sql → write_memory
+
+agent_sql 是一个真正的 AI Agent：
+- AI 拿到用户问题 + 可用工具描述
+- 自主决定调用哪些工具（搜索表/拉结构/拿枚举值），或直接生成 SQL
+- 工具调用在 Python 循环内执行，结果追加到对话，再让 AI 决定下一步
+- AI 输出 JSON {sql_type, sql} 时循环结束
+
+决策智能示例：
+  "SELECT * FROM users WHERE id=1"    → AI 直接返回，不调用任何工具
+  "查询users表今天的注册用户"           → AI 直接调 get_table_schema(["users"])，跳过搜索
+  "帮我查一下今天下单金额最高的用户"    → AI 先 search_tables，再 get_schema，再按需 get_enum_values
+  "查询状态为已完成的订单"              → AI 调 get_schema + get_enum_values 获取实际状态值
 """
 import json
 import logging
@@ -16,43 +29,205 @@ DB_TYPE_MAP = {
     "oracle": "Oracle", "sqlserver": "SQL Server", "sqlite": "SQLite",
 }
 
+MAX_AGENT_ITERATIONS = 6      # 最多工具调用轮次（防止死循环）
+MAX_ENUM_COLUMNS = 5          # 单次最多查几列枚举值
 
-# ──────────────────────────────────────────────
+
+# ──────────────────────────────────────────────────────────────
 # State
-# ──────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
 class QueryGraphState(TypedDict, total=False):
-    # 输入
+    # ── 输入（由 Worker 注入）──────────────────────────────────
     user_query: str
-    table_info_list: List[Any]          # [{"name":"t1","comment":"..."}, ...]
+    table_info_list: List[Any]     # [{"name":"t1","comment":"..."}, ...]
     db_type: Optional[str]
     connection_string: str
     connect_args: Dict
     connection_id: Optional[str]
     database: Optional[str]
-    config_query_enum: bool
-    ai_client: Any                      # AIClient 实例，由 Worker 注入
+    config_query_enum: bool        # 用户配置：是否允许查枚举值
+    ai_client: Any                 # AIClient 实例
 
-    # 中间结果
-    selected_tables: List[str]
-    table_schema: str
-    enum_columns: Dict[str, List[str]]
-    should_query_enum: bool
-    table_schema_with_enum: str
+    # ── 记忆 ──────────────────────────────────────────────────
     memory_context: str
 
-    # 输出
+    # ── 输出 ──────────────────────────────────────────────────
     generated_sql: str
-    sql_type: str                       # SELECT / INSERT / UPDATE / DELETE / OTHER
+    sql_type: str                  # SELECT / INSERT / UPDATE / DELETE / OTHER
+    selected_tables: List[str]     # Agent 实际用到的表（写记忆用）
     error: Optional[str]
-
-    # 控制
+    agent_iterations: int          # 实际工具调用次数（可观测）
     current_step: str
-    retry_count: int
 
 
-# ──────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
+# Tool 定义（OpenAI Function Calling 格式）
+# ──────────────────────────────────────────────────────────────
+def _build_tools(config_query_enum: bool = True) -> list:
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_relevant_tables",
+                "description": (
+                    "当你不确定用户问的是哪张表时，用此工具从数据库所有表中搜索最相关的表。"
+                    "如果用户已明确提到表名，无需调用此工具。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "用自然语言描述你要找的表的用途或包含的数据"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_table_schema",
+                "description": (
+                    "获取指定表的完整结构（列名、字段类型、是否可空、主键、注释等）。"
+                    "当你知道要用哪些表但需要了解具体字段时，调用此工具。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "table_names": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "需要获取结构的表名列表，可同时传多张表"
+                        }
+                    },
+                    "required": ["table_names"]
+                }
+            }
+        },
+    ]
+    if config_query_enum:
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "get_enum_values",
+                "description": (
+                    "获取某列的实际枚举值（从数据库查 DISTINCT 值）。"
+                    "当 WHERE 条件涉及状态、类型、分类等字段，且你不确定实际值时使用。"
+                    f"每次最多传 {MAX_ENUM_COLUMNS} 个字段。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "columns": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "table": {"type": "string", "description": "表名"},
+                                    "column": {"type": "string", "description": "列名"}
+                                },
+                                "required": ["table", "column"]
+                            },
+                            "description": "需要查询枚举值的字段列表"
+                        }
+                    },
+                    "required": ["columns"]
+                }
+            }
+        })
+    return tools
+
+
+# ──────────────────────────────────────────────────────────────
+# Tool 执行函数（在 Python 层调用，结果回传给 AI）
+# ──────────────────────────────────────────────────────────────
+def _exec_search_tables(args: dict, state: QueryGraphState) -> str:
+    """search_relevant_tables 工具实现"""
+    query = args.get("query", "")
+    table_info_list = state.get("table_info_list", [])
+    if not table_info_list:
+        return "【当前数据库没有可用的表信息】"
+    try:
+        ai_client = state["ai_client"]
+        selected = ai_client.select_tables(query, table_info_list)
+        if selected:
+            lines = []
+            for t in selected:
+                comment = ""
+                for info in table_info_list:
+                    if isinstance(info, dict) and info.get("name") == t:
+                        comment = info.get("comment", "")
+                        break
+                lines.append(f"  - {t}" + (f"  # {comment}" if comment else ""))
+            return f"找到以下相关表：\n" + "\n".join(lines)
+        return "未找到相关表，请尝试换个描述方式"
+    except Exception as e:
+        logger.warning(f"search_relevant_tables 失败: {e}")
+        # 降级：返回前10个表名
+        all_names = [
+            (i["name"] if isinstance(i, dict) else i)
+            for i in table_info_list[:10]
+        ]
+        return f"搜索失败，返回前10个表供参考：{', '.join(all_names)}"
+
+
+def _exec_get_schema(args: dict, state: QueryGraphState) -> str:
+    """get_table_schema 工具实现"""
+    table_names = args.get("table_names", [])
+    if not table_names:
+        return "请提供至少一个表名"
+    try:
+        from src.core.langgraph.schema_service import fetch_schema_sync
+        schema_text, _ = fetch_schema_sync(
+            connection_string=state.get("connection_string", ""),
+            connect_args=state.get("connect_args", {}),
+            selected_tables=table_names,
+            connection_id=state.get("connection_id"),
+            database=state.get("database"),
+        )
+        return schema_text if schema_text.strip() else f"未能获取表 {table_names} 的结构（可能表不存在）"
+    except Exception as e:
+        logger.warning(f"get_table_schema 失败: {e}")
+        return f"获取表结构失败: {e}"
+
+
+def _exec_get_enum_values(args: dict, state: QueryGraphState) -> str:
+    """get_enum_values 工具实现"""
+    columns = args.get("columns", [])[:MAX_ENUM_COLUMNS]
+    if not columns:
+        return "请提供至少一个字段"
+
+    connection_string = state.get("connection_string", "")
+    connect_args = state.get("connect_args", {})
+    if not connection_string:
+        return "无数据库连接，无法查询枚举值"
+
+    try:
+        from src.core.langgraph.schema_service import _get_field_unique_values
+        from sqlalchemy import create_engine
+        engine = create_engine(connection_string, connect_args=connect_args,
+                               pool_pre_ping=True, echo=False, poolclass=None)
+        results = []
+        try:
+            for item in columns:
+                table = item.get("table", "")
+                col = item.get("column", "")
+                if table and col:
+                    values = _get_field_unique_values(engine, table, col, max_values=20)
+                    results.append(f"  {table}.{col} 的枚举值: {values}")
+        finally:
+            engine.dispose()
+        return "\n".join(results) if results else "未查询到枚举值"
+    except Exception as e:
+        logger.warning(f"get_enum_values 失败: {e}")
+        return f"查询枚举值失败: {e}"
+
+
+# ──────────────────────────────────────────────────────────────
 # 节点
-# ──────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
 def node_recall_memory(state: QueryGraphState) -> dict:
     """召回长期记忆，注入 memory_context"""
     try:
@@ -68,184 +243,183 @@ def node_recall_memory(state: QueryGraphState) -> dict:
         return {"memory_context": "", "current_step": "recall_memory"}
 
 
-def node_select_tables(state: QueryGraphState) -> dict:
-    """调用 AI 选择相关表"""
-    try:
-        ai_client = state["ai_client"]
-        selected = ai_client.select_tables(
-            state["user_query"],
-            state.get("table_info_list", []),
-        )
-        if not selected:
-            # 降级：取前 10 个表名
-            info_list = state.get("table_info_list", [])
-            selected = [
-                (item["name"] if isinstance(item, dict) else item)
-                for item in info_list[:10]
-            ]
-        logger.info(f"select_tables: 选中 {len(selected)} 个表: {selected}")
-        return {"selected_tables": selected, "current_step": "select_tables"}
-    except Exception as e:
-        logger.error(f"select_tables 异常: {e}")
-        return {"error": f"选表失败: {e}", "selected_tables": [], "current_step": "select_tables"}
+def node_agent_sql(state: QueryGraphState) -> dict:
+    """
+    Tool-calling Agent 核心节点
+    AI 自主决定调用哪些工具，最终返回 JSON {sql_type, sql}
+    """
+    ai_client = state["ai_client"]
+    user_query = state.get("user_query", "")
+    db_type = state.get("db_type", "")
+    db_name = DB_TYPE_MAP.get((db_type or "").lower(), db_type or "")
+    memory_context = state.get("memory_context", "")
+    config_query_enum = state.get("config_query_enum", True)
+    table_info_list = state.get("table_info_list", [])
 
+    # ── 系统提示词 ──────────────────────────────────────────
+    db_type_hint = f"\n【数据库类型】当前数据库：{db_name}，请严格使用 {db_name} 的语法。" if db_name else ""
+    memory_hint = f"\n\n【用户历史记忆（优先参考）】\n{memory_context}" if memory_context else ""
 
-def node_fetch_schema(state: QueryGraphState) -> dict:
-    """同步拉取选中表的结构"""
-    try:
-        from src.core.langgraph.schema_service import fetch_schema_sync
-        schema_text, table_names = fetch_schema_sync(
-            connection_string=state["connection_string"],
-            connect_args=state.get("connect_args", {}),
-            selected_tables=state.get("selected_tables", []),
-            connection_id=state.get("connection_id"),
-            database=state.get("database"),
-        )
-        logger.info(f"fetch_schema: schema 长度={len(schema_text)}, 表数={len(table_names)}")
-        return {"table_schema": schema_text, "current_step": "fetch_schema"}
-    except Exception as e:
-        logger.error(f"fetch_schema 异常: {e}")
-        return {"error": f"拉取表结构失败: {e}", "table_schema": "", "current_step": "fetch_schema"}
+    # 构建可用表概览（帮 AI 感知数据库规模和表名）
+    if table_info_list:
+        table_overview_lines = []
+        for item in table_info_list[:200]:  # 最多列出200个给 AI 参考
+            name = item["name"] if isinstance(item, dict) else item
+            comment = item.get("comment", "") if isinstance(item, dict) else ""
+            table_overview_lines.append(f"  - {name}" + (f"  # {comment}" if comment else ""))
+        table_overview = "【数据库所有表（概览）】\n" + "\n".join(table_overview_lines)
+        if len(table_info_list) > 200:
+            table_overview += f"\n  ...（共 {len(table_info_list)} 个表，其余可用 search_relevant_tables 搜索）"
+    else:
+        table_overview = "【当前无可用表信息，请直接根据用户需求生成 SQL】"
 
+    system_prompt = f"""你是一个智能 SQL 生成助手，擅长根据用户需求生成精准的 SQL 语句。{db_type_hint}{memory_hint}
 
-def node_select_enum_columns(state: QueryGraphState) -> dict:
-    """AI 识别枚举字段并判断是否需要查询枚举值"""
-    try:
-        ai_client = state["ai_client"]
-        enum_columns, should_query = ai_client.select_enum_columns(
-            state["user_query"],
-            state.get("table_schema", ""),
-        )
-        logger.info(f"select_enum_columns: enum_columns={enum_columns}, should_query={should_query}")
-        return {
-            "enum_columns": enum_columns,
-            "should_query_enum": should_query,
-            "current_step": "select_enum_columns",
-        }
-    except Exception as e:
-        logger.warning(f"select_enum_columns 失败（跳过）: {e}")
-        return {"enum_columns": {}, "should_query_enum": False, "current_step": "select_enum_columns"}
+{table_overview}
 
-
-def node_fetch_enum_values(state: QueryGraphState) -> dict:
-    """同步查询枚举字段值，增强 table_schema"""
-    try:
-        from src.core.langgraph.schema_service import fetch_enum_values_sync
-        enhanced = fetch_enum_values_sync(
-            connection_string=state["connection_string"],
-            connect_args=state.get("connect_args", {}),
-            table_schema=state.get("table_schema", ""),
-            enum_columns=state.get("enum_columns", {}),
-        )
-        return {"table_schema_with_enum": enhanced, "current_step": "fetch_enum_values"}
-    except Exception as e:
-        logger.warning(f"fetch_enum_values 失败（跳过）: {e}")
-        return {"table_schema_with_enum": state.get("table_schema", ""), "current_step": "fetch_enum_values"}
-
-
-def node_generate_sql(state: QueryGraphState) -> dict:
-    """调用 AI 生成 SQL，要求 JSON 格式返回 {sql_type, sql}"""
-    try:
-        ai_client = state["ai_client"]
-        user_query = state["user_query"]
-        db_type = state.get("db_type", "")
-        selected_tables = state.get("selected_tables", [])
-        # 优先用带枚举值的 schema
-        table_schema = state.get("table_schema_with_enum") or state.get("table_schema", "")
-        memory_context = state.get("memory_context", "")
-        retry_count = state.get("retry_count", 0)
-
-        from src.core.prompt_config import PromptStorage
-        prompt_config = PromptStorage().load_prompts()
-
-        # ── 系统提示词 ──
-        system_prompt = prompt_config.generate_sql_system
-        if db_type:
-            db_name = DB_TYPE_MAP.get(db_type.lower(), db_type)
-            system_prompt += f"\n\n【数据库类型】当前数据库类型: {db_name}"
-        system_prompt += """
+【工具使用决策原则】
+1. 用户已给出完整 SQL → 直接返回，无需调用任何工具
+2. 用户明确指定了表名（如"查询 users 表"）→ 直接调用 get_table_schema，跳过 search_relevant_tables
+3. 用户描述模糊，不知道用哪张表 → 先调用 search_relevant_tables 搜索，再调用 get_table_schema
+4. WHERE 条件涉及状态/类型/分类等枚举字段，且你不确定实际值 → 调用 get_enum_values
+5. 最少调用原则：已有足够信息就直接生成，不要过度查询
+6. 只生成 DML/DQL 语句，拒绝生成 DDL（CREATE/ALTER/DROP）
 
 【输出格式】
-只返回如下 JSON，不要任何额外文字、解释或 markdown 代码块：
-{
+工具调用完成后（或直接生成时），必须只返回以下 JSON，不含任何其他文字或 markdown：
+{{
   "sql_type": "<类型>",
-  "sql": "<SQL语句>"
-}
-sql_type 必须是：SELECT / INSERT / UPDATE / DELETE / OTHER
-- SELECT：查询/只读操作（含 SHOW、DESC、EXPLAIN）
-- INSERT：插入数据
-- UPDATE：更新数据
-- DELETE：删除数据
-- OTHER：其他"""
+  "sql": "<完整SQL>"
+}}
+sql_type 枚举：SELECT（含只读操作）/ INSERT / UPDATE / DELETE / OTHER"""
 
-        if memory_context:
-            system_prompt += f"\n\n【用户历史记忆（优先参考）】\n{memory_context}"
+    user_message = f"用户需求：{user_query}"
 
-        # ── 用户提示词 ──
-        db_info = ""
-        if db_type:
-            db_name = DB_TYPE_MAP.get(db_type.lower(), db_type)
-            db_info = f"\n【数据库类型】\n当前数据库类型: {db_name}\n请使用 {db_name} 的SQL语法规范。\n"
+    # ── 工具列表 ──────────────────────────────────────────────
+    tools = _build_tools(config_query_enum)
 
-        if table_schema and table_schema.strip():
-            if selected_tables:
-                table_list = "\n".join(f"  - {t}" for t in selected_tables)
-            else:
-                table_list = "  (从表结构中获取)"
+    # ── 对话消息历史 ──────────────────────────────────────────
+    messages: List[dict] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message},
+    ]
 
-            user_prompt = f"""【用户需求】
-{user_query}{db_info}
-【数据库表结构】
-{table_schema}
+    # ── Agent 循环 ────────────────────────────────────────────
+    selected_tables: List[str] = []
+    iterations = 0
 
-【可用表名列表】（你生成的SQL只能使用这些表）
-{table_list}
-
-⚠️ 重要：表名和列名必须完全匹配表结构中的名称，不能使用不存在的列名。
-UPDATE/INSERT 后请附加 SELECT 查询查看结果（用分号分隔）。"""
-        else:
-            user_prompt = f"【用户需求】\n{user_query}\n\n请生成对应的SQL语句。"
-
-        if retry_count > 0:
-            user_prompt += f"\n\n【注意】这是第 {retry_count + 1} 次尝试，请仔细检查表名和列名是否正确。"
-
-        # ── 调用 AI ──
+    try:
         client = ai_client._get_client()
-        response = client.chat.completions.create(
-            model=ai_client.default_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.1,
-            top_p=0.9,
-        )
-        ai_client._record_token_usage(response)
-        raw = response.choices[0].message.content.strip()
 
-        # ── 解析 JSON ──
-        sql, sql_type = _parse_sql_response(raw)
-        logger.info(f"generate_sql: sql_type={sql_type}, sql 前100字符: {sql[:100]}")
+        for iteration in range(MAX_AGENT_ITERATIONS):
+            iterations = iteration + 1
+            logger.info(f"agent_sql 第 {iterations} 轮调用")
 
-        # DDL 拦截
-        sql_upper = sql.strip().upper()
-        ddl_keywords = ["CREATE TABLE", "CREATE DATABASE", "ALTER TABLE", "DROP TABLE",
-                        "DROP DATABASE", "TRUNCATE TABLE", "TRUNCATE"]
-        if any(sql_upper.startswith(k) for k in ddl_keywords):
-            return {
-                "error": "查询功能不支持 DDL 语句，如需建表/改表请使用对应功能",
-                "current_step": "generate_sql",
-            }
+            try:
+                response = client.chat.completions.create(
+                    model=ai_client.default_model,
+                    messages=messages,
+                    tools=tools,
+                    tool_choice="auto",
+                    temperature=0.1,
+                    top_p=0.9,
+                )
+            except Exception as api_err:
+                # 某些模型不支持 tools 参数，降级到无工具模式
+                if "tool" in str(api_err).lower() or "function" in str(api_err).lower():
+                    logger.warning(f"模型不支持 tool calling，降级到直接生成: {api_err}")
+                    return _fallback_generate_sql(state, client, ai_client, system_prompt, user_message)
+                raise
 
-        return {
-            "generated_sql": sql,
-            "sql_type": sql_type,
-            "error": None,
-            "current_step": "generate_sql",
-        }
+            ai_client._record_token_usage(response)
+            choice = response.choices[0]
+            msg = choice.message
+
+            # ── 情况1：AI 调用工具 ──────────────────────────
+            if choice.finish_reason == "tool_calls" and msg.tool_calls:
+                # 把 AI 的消息追加到对话
+                messages.append({
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            }
+                        }
+                        for tc in msg.tool_calls
+                    ]
+                })
+
+                # 执行每个工具调用
+                for tc in msg.tool_calls:
+                    tool_name = tc.function.name
+                    try:
+                        args = json.loads(tc.function.arguments)
+                    except json.JSONDecodeError:
+                        args = {}
+
+                    logger.info(f"agent_sql 调用工具: {tool_name}({args})")
+
+                    if tool_name == "search_relevant_tables":
+                        result = _exec_search_tables(args, state)
+                    elif tool_name == "get_table_schema":
+                        result = _exec_get_schema(args, state)
+                        # 记录 AI 实际用到的表
+                        selected_tables.extend(args.get("table_names", []))
+                    elif tool_name == "get_enum_values":
+                        result = _exec_get_enum_values(args, state)
+                    else:
+                        result = f"未知工具: {tool_name}"
+
+                    logger.debug(f"工具 {tool_name} 返回: {result[:200]}")
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": result,
+                    })
+
+            # ── 情况2：AI 完成，生成最终输出 ──────────────────
+            elif choice.finish_reason in ("stop", "length", None):
+                raw = (msg.content or "").strip()
+                sql, sql_type = _parse_sql_response(raw)
+
+                if not sql:
+                    logger.warning(f"agent_sql: AI 输出内容无法解析为 SQL: {raw[:300]}")
+                    return {"error": "AI 未能生成有效的 SQL，请重试", "current_step": "agent_sql"}
+
+                # DDL 拦截
+                upper = sql.strip().upper()
+                ddl_kws = ["CREATE TABLE", "CREATE DATABASE", "ALTER TABLE",
+                           "DROP TABLE", "DROP DATABASE", "TRUNCATE"]
+                if any(upper.startswith(k) for k in ddl_kws):
+                    return {
+                        "error": "查询功能不支持 DDL 语句，请使用建表/改表功能",
+                        "current_step": "agent_sql",
+                    }
+
+                logger.info(f"agent_sql 完成: sql_type={sql_type}, 迭代={iterations}, 表={selected_tables}")
+                return {
+                    "generated_sql": sql,
+                    "sql_type": sql_type,
+                    "selected_tables": list(set(selected_tables)),
+                    "agent_iterations": iterations,
+                    "error": None,
+                    "current_step": "agent_sql",
+                }
+            else:
+                logger.warning(f"agent_sql: 未知 finish_reason={choice.finish_reason}")
+                break
+
+        return {"error": f"AI 在 {MAX_AGENT_ITERATIONS} 轮内未完成生成，请重试", "current_step": "agent_sql"}
+
     except Exception as e:
-        logger.error(f"generate_sql 异常: {e}")
-        return {"error": f"AI生成SQL失败: {e}", "current_step": "generate_sql"}
+        logger.error(f"agent_sql 异常: {e}", exc_info=True)
+        return {"error": f"AI生成SQL失败: {e}", "current_step": "agent_sql"}
 
 
 def node_write_memory(state: QueryGraphState) -> dict:
@@ -268,9 +442,42 @@ def node_write_memory(state: QueryGraphState) -> dict:
     return {"current_step": "write_memory"}
 
 
-# ──────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
+# 降级：模型不支持 tool calling 时直接生成（保留兼容性）
+# ──────────────────────────────────────────────────────────────
+def _fallback_generate_sql(state: QueryGraphState, client, ai_client, system_prompt: str, user_message: str) -> dict:
+    """当模型不支持 tool calling 时，用传统方式生成 SQL"""
+    logger.info("降级到无工具模式生成 SQL")
+    try:
+        from src.core.prompt_config import PromptStorage
+        prompt_config = PromptStorage().load_prompts()
+        sys_p = prompt_config.generate_sql_system + "\n\n【输出格式】以 JSON 返回：{\"sql_type\":\"...\",\"sql\":\"...\"}"
+        response = client.chat.completions.create(
+            model=ai_client.default_model,
+            messages=[
+                {"role": "system", "content": sys_p},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.1,
+        )
+        ai_client._record_token_usage(response)
+        raw = response.choices[0].message.content.strip()
+        sql, sql_type = _parse_sql_response(raw)
+        return {
+            "generated_sql": sql,
+            "sql_type": sql_type,
+            "selected_tables": [],
+            "agent_iterations": 1,
+            "error": None,
+            "current_step": "agent_sql",
+        }
+    except Exception as e:
+        return {"error": f"降级生成失败: {e}", "current_step": "agent_sql"}
+
+
+# ──────────────────────────────────────────────────────────────
 # 辅助：解析 JSON 响应
-# ──────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
 def _parse_sql_response(raw: str):
     text = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.IGNORECASE)
     text = re.sub(r"\s*```$", "", text).strip()
@@ -280,82 +487,45 @@ def _parse_sql_response(raw: str):
         sql_type = data.get("sql_type", "OTHER").upper()
         return sql, sql_type
     except json.JSONDecodeError:
-        # 降级：把整体当作 SQL，类型靠关键字判断
+        # 降级：整体当 SQL，类型靠关键字判断
         sql = text
         upper = text.strip().upper()
-        for t in ["SELECT", "INSERT", "UPDATE", "DELETE"]:
+        for t in ("SELECT", "INSERT", "UPDATE", "DELETE"):
             if upper.startswith(t):
                 return sql, t
         return sql, "OTHER"
 
 
-# ──────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
 # 条件边
-# ──────────────────────────────────────────────
-def _route_after_select_tables(state: QueryGraphState) -> str:
+# ──────────────────────────────────────────────────────────────
+def _route_after_agent(state: QueryGraphState) -> str:
     if state.get("error"):
-        return END
-    return "fetch_schema"
-
-
-def _route_after_fetch_schema(state: QueryGraphState) -> str:
-    if state.get("error"):
-        return END
-    if state.get("config_query_enum", False) and state.get("table_schema", "").strip():
-        return "select_enum_columns"
-    return "generate_sql"
-
-
-def _route_after_select_enum(state: QueryGraphState) -> str:
-    if state.get("should_query_enum") and state.get("enum_columns"):
-        return "fetch_enum_values"
-    return "generate_sql"
-
-
-def _route_after_generate_sql(state: QueryGraphState) -> str:
-    if state.get("error"):
-        retry = state.get("retry_count", 0)
-        if retry < 1:
-            return "generate_sql"  # 最多重试1次
         return END
     return "write_memory"
 
 
-# ──────────────────────────────────────────────
-# 图构建
-# ──────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
+# 图构建（极简：recall → agent → write_memory）
+# ──────────────────────────────────────────────────────────────
 def build_query_graph() -> StateGraph:
     g = StateGraph(QueryGraphState)
 
     g.add_node("recall_memory", node_recall_memory)
-    g.add_node("select_tables", node_select_tables)
-    g.add_node("fetch_schema", node_fetch_schema)
-    g.add_node("select_enum_columns", node_select_enum_columns)
-    g.add_node("fetch_enum_values", node_fetch_enum_values)
-    g.add_node("generate_sql", node_generate_sql)
+    g.add_node("agent_sql", node_agent_sql)
     g.add_node("write_memory", node_write_memory)
 
     g.add_edge(START, "recall_memory")
-    g.add_edge("recall_memory", "select_tables")
-    g.add_conditional_edges("select_tables", _route_after_select_tables,
-                            {"fetch_schema": "fetch_schema", END: END})
-    g.add_conditional_edges("fetch_schema", _route_after_fetch_schema,
-                            {"select_enum_columns": "select_enum_columns",
-                             "generate_sql": "generate_sql"})
-    g.add_conditional_edges("select_enum_columns", _route_after_select_enum,
-                            {"fetch_enum_values": "fetch_enum_values",
-                             "generate_sql": "generate_sql"})
-    g.add_edge("fetch_enum_values", "generate_sql")
-    g.add_conditional_edges("generate_sql", _route_after_generate_sql,
-                            {"generate_sql": "generate_sql",
-                             "write_memory": "write_memory",
-                             END: END})
+    g.add_edge("recall_memory", "agent_sql")
+    g.add_conditional_edges(
+        "agent_sql", _route_after_agent,
+        {"write_memory": "write_memory", END: END}
+    )
     g.add_edge("write_memory", END)
 
     return g
 
 
-# 编译后的图（单例）
 _compiled_query_graph = None
 
 

@@ -81,9 +81,7 @@ class CreateTableLangGraphWorker(QThread):
 
             step_msgs = {
                 "recall_memory": "正在召回历史记忆...",
-                "select_reference_tables": "AI正在选择参考表...",
-                "fetch_reference_schema": "正在获取参考表结构...",
-                "generate_create_table": "AI正在生成建表语句...",
+                "agent_create_table": "AI Agent 正在分析并生成建表语句...",
                 "write_memory": "正在写入记忆...",
             }
 
