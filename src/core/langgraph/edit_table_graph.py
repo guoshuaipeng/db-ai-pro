@@ -87,9 +87,20 @@ def node_agent_alter_table(state: EditTableGraphState) -> dict:
     current_sql = state.get("current_sql", "")
     current_sql_section = f"\n\n【当前 ALTER 语句（在此基础上修改）】\n{current_sql}" if current_sql.strip() else ""
 
-    system_prompt = f"""你是一个智能改表助手，根据用户需求生成 ALTER TABLE 语句。{db_type_hint}{memory_hint}
+    system_prompt = f"""你是一个智能改表助手，通过多轮对话帮助用户修改表结构并生成 ALTER TABLE 语句。{db_type_hint}{memory_hint}
 
 {current_schema_section}
+
+【对话模式判断 —— 核心规则】
+根据用户的意图决定回复模式：
+
+模式A【纯聊天/需求探讨】：用户在询问、讨论、表达想法，还没有明确要执行变更
+  → "sql" 字段返回空字符串 ""，只在 "message" 中自然对话回复
+  → 示例触发：「这个字段改成什么类型好？」「加索引有什么影响？」「我想了解一下」「有几种方式？」
+
+模式B【生成 ALTER SQL】：用户明确要求修改、或描述了具体的变更操作
+  → "sql" 字段返回完整的 ALTER TABLE SQL（多条用分号分隔）
+  → 示例触发：「添加一个 email 字段」「把 name 改成 VARCHAR(200)」「删除 status 字段」「帮我生成」
 
 【工具使用原则】
 - 如果当前表结构已提供 → 通常无需调用工具，直接生成 ALTER TABLE
@@ -99,8 +110,8 @@ def node_agent_alter_table(state: EditTableGraphState) -> dict:
 【输出格式】
 以 JSON 返回（不含任何额外文字）：
 {{
-  "sql": "<完整的 ALTER TABLE SQL>",
-  "message": "<自然语言回复，说明做了哪些修改，或询问用户还需要什么>"
+  "sql": "<完整的 ALTER TABLE SQL，或者纯聊天时为空字符串 \"\">",
+  "message": "<自然语言回复：解释说明、追问、建议，或生成SQL后的说明>"
 }}"""
 
     user_prompt = (

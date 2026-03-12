@@ -544,13 +544,28 @@ class CreateTableTab(QWidget):
         self.ai_worker.start()
 
     def on_sql_generated(self, sql: str, assistant_message: str = ""):
-        """AI 建表语句生成完成回调（含多轮自然语言回复）"""
-        display_msg = assistant_message if assistant_message else f"已生成建表语句：\n\n```sql\n{sql}\n```"
-        self.add_message_to_conversation("AI", display_msg)
+        """AI 建表语句生成完成回调（含多轮自然语言回复）
 
-        self.sql_edit.setPlainText(sql)
-        self.conversation_history.append({"role": "assistant", "content": sql})
-        self.set_status("建表语句生成成功")
+        sql 为空 → 纯聊天模式，只更新对话区，不覆盖 sql_edit
+        sql 非空 → 生成了建表语句，同时更新对话区和 sql_edit
+        """
+        has_sql = bool(sql and sql.strip())
+
+        if has_sql:
+            # 有 SQL：显示 AI 说明 + SQL 预览
+            display_msg = assistant_message if assistant_message else f"已生成建表语句：\n\n```sql\n{sql}\n```"
+            self.add_message_to_conversation("AI", display_msg)
+            self.sql_edit.setPlainText(sql)
+            # 对话历史记录 SQL（下轮 AI 可基于此修改）
+            self.conversation_history.append({"role": "assistant", "content": sql})
+            self.set_status("建表语句生成成功")
+        else:
+            # 纯聊天：只显示 AI 的自然语言回复，不动 sql_edit
+            display_msg = assistant_message or "（AI 无回复）"
+            self.add_message_to_conversation("AI", display_msg)
+            # 对话历史记录 message（让 AI 下轮知道上轮说了什么）
+            self.conversation_history.append({"role": "assistant", "content": display_msg})
+            self.set_status("就绪")
 
         if self.ai_worker:
             safe_delete_thread(self.ai_worker)

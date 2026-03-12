@@ -96,20 +96,31 @@ def node_agent_create_table(state: CreateTableGraphState) -> dict:
     current_sql = state.get("current_sql", "")
     current_sql_section = f"\n\n【当前建表语句（在此基础上修改）】\n{current_sql}" if current_sql.strip() else ""
 
-    system_prompt = f"""你是一个智能建表助手，根据用户的多轮对话需求生成 CREATE TABLE 语句。{db_type_hint}{memory_hint}
+    system_prompt = f"""你是一个智能建表助手，通过多轮对话帮助用户设计并生成 CREATE TABLE 语句。{db_type_hint}{memory_hint}
 
 {table_overview}
 
+【对话模式判断 —— 核心规则】
+根据用户的意图决定回复模式：
+
+模式A【纯聊天/需求探讨】：用户在描述想法、询问建议、讨论字段、还没有明确要生成 SQL
+  → "sql" 字段返回空字符串 ""，只在 "message" 中自然对话
+  → 示例触发：「我想建一个用户表」「字段类型用什么好？」「需要加索引吗？」「帮我规划一下」
+
+模式B【生成/更新 SQL】：用户明确要求生成、或对话中已明确字段，可以产出完整建表语句
+  → "sql" 字段返回完整的 CREATE TABLE SQL
+  → 示例触发：「帮我生成建表语句」「就按这个来」「生成 SQL」「确定了」
+
 【工具使用原则】
 - 如果用户要求参考某个已有表的风格/结构 → 调用 get_reference_schema 获取参考
-- 如果你已有足够信息（用户描述了所有字段）→ 直接生成，不必调用工具
+- 如果你已有足够信息且用户要求生成 → 直接生成，不必调用工具
 - 最少调用原则：信息够了就不再查询
 
 【输出格式】
-完成工具调用后，以 JSON 返回（不含任何额外文字）：
+以 JSON 返回（不含任何额外文字）：
 {{
-  "sql": "<完整的 CREATE TABLE SQL>",
-  "message": "<自然语言回复，说明你做了什么，或者询问用户还需要什么补充信息>"
+  "sql": "<完整的 CREATE TABLE SQL，或者纯聊天时为空字符串 \"\">",
+  "message": "<自然语言回复：解释说明、追问、建议，或生成SQL后的说明>"
 }}"""
 
     user_prompt = (

@@ -896,12 +896,28 @@ class EditTableTab(QWidget):
         self.ai_worker.start()
 
     def on_sql_generated(self, sql: str, assistant_message: str = ""):
-        """SQL 生成完成回调（含多轮自然语言回复）"""
-        self.sql_edit.setPlainText(sql)
-        self.set_status("修改表语句生成成功")
-        display_msg = assistant_message if assistant_message else f"已生成修改表语句：\n\n```sql\n{sql}\n```"
-        self.add_message_to_conversation("AI", display_msg)
-        self.conversation_history.append({"role": "assistant", "content": sql})
+        """SQL 生成完成回调（含多轮自然语言回复）
+
+        sql 为空 → 纯聊天模式，只更新对话区，不覆盖 sql_edit
+        sql 非空 → 生成了 ALTER 语句，同时更新对话区和 sql_edit
+        """
+        has_sql = bool(sql and sql.strip())
+
+        if has_sql:
+            # 有 ALTER SQL：更新编辑器 + 对话区
+            display_msg = assistant_message if assistant_message else f"已生成修改表语句：\n\n```sql\n{sql}\n```"
+            self.add_message_to_conversation("AI", display_msg)
+            self.sql_edit.setPlainText(sql)
+            # 对话历史记录 SQL（让 AI 下轮知道当前的变更）
+            self.conversation_history.append({"role": "assistant", "content": sql})
+            self.set_status("修改表语句生成成功")
+        else:
+            # 纯聊天：只显示 AI 的自然语言回复，保留 sql_edit 现有内容
+            display_msg = assistant_message or "（AI 无回复）"
+            self.add_message_to_conversation("AI", display_msg)
+            # 对话历史记录 message
+            self.conversation_history.append({"role": "assistant", "content": display_msg})
+            self.set_status("就绪")
     
     def on_ai_error(self, error_msg: str):
         """AI错误回调"""
