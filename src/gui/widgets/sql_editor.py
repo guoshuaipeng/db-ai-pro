@@ -800,7 +800,6 @@ class SQLEditor(QWidget):
         self.set_status("AI正在分析查询，请稍候...", timeout=0)
 
         from src.gui.workers.query_langgraph_worker import QueryLangGraphWorker
-        from src.utils.thread_utils import safe_delete_thread
 
         # 停止并清理旧的 ai_worker
         if self.ai_worker:

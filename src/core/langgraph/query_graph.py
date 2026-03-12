@@ -285,13 +285,14 @@ def node_agent_sql(state: QueryGraphState) -> dict:
 5. 最少调用原则：已有足够信息就直接生成，不要过度查询
 6. 只生成 DML/DQL 语句，拒绝生成 DDL（CREATE/ALTER/DROP）
 
-【输出格式】
-工具调用完成后（或直接生成时），必须只返回以下 JSON，不含任何其他文字或 markdown：
+【输出格式 —— 极其重要，违反即为错误】
+工具调用完成后（或直接生成时），你的回复必须且只能是以下 JSON，不得包含任何分析过程、解释说明、markdown 标记或其他文字：
 {{
   "sql_type": "<类型>",
   "sql": "<完整SQL>"
 }}
-sql_type 枚举：SELECT（含只读操作）/ INSERT / UPDATE / DELETE / OTHER"""
+sql_type 枚举：SELECT（含只读操作）/ INSERT / UPDATE / DELETE / OTHER
+⚠️ 禁止：在 JSON 前后输出任何文字、禁止用 ```json 包裹、禁止输出思考过程"""
 
     user_message = f"用户需求：{user_query}"
 
@@ -389,8 +390,17 @@ sql_type 枚举：SELECT（含只读操作）/ INSERT / UPDATE / DELETE / OTHER"
                 sql, sql_type = _parse_sql_response(raw)
 
                 if not sql:
-                    logger.warning(f"agent_sql: AI 输出内容无法解析为 SQL: {raw[:300]}")
-                    return {"error": "AI 未能生成有效的 SQL，请重试", "current_step": "agent_sql"}
+                    logger.warning(f"agent_sql: AI 输出内容无法解析为 SQL，将重试。原文前300字: {raw[:300]}")
+                    # 把 AI 的回复以及重试要求追加到对话，让 AI 再次输出
+                    messages.append({"role": "assistant", "content": raw})
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            "你的回复格式不正确。请只输出以下格式的 JSON，不要任何其他文字：\n"
+                            '{"sql_type": "SELECT", "sql": "你的SQL语句"}'
+                        )
+                    })
+                    continue  # 继续循环让 AI 重新输出
 
                 # DDL 拦截
                 upper = sql.strip().upper()
@@ -479,21 +489,63 @@ def _fallback_generate_sql(state: QueryGraphState, client, ai_client, system_pro
 # 辅助：解析 JSON 响应
 # ──────────────────────────────────────────────────────────────
 def _parse_sql_response(raw: str):
-    text = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.IGNORECASE)
-    text = re.sub(r"\s*```$", "", text).strip()
+    """
+    从 AI 响应中提取 {sql_type, sql} JSON。
+    兼容以下情况：
+    1. 纯 JSON
+    2. ```json ... ``` 代码块
+    3. 混合文字 + JSON（AI 多输出了解释性内容）
+    4. 完全没有 JSON（降级为关键字判断）
+    """
+    text = raw.strip()
+
+    # ── 策略1：直接 json.loads 整体 ──────────────────────────
+    cleaned = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
     try:
-        data = json.loads(text)
-        sql = data.get("sql", "").strip()
-        sql_type = data.get("sql_type", "OTHER").upper()
-        return sql, sql_type
-    except json.JSONDecodeError:
-        # 降级：整体当 SQL，类型靠关键字判断
-        sql = text
-        upper = text.strip().upper()
+        data = json.loads(cleaned)
+        if "sql" in data:
+            return data.get("sql", "").strip(), data.get("sql_type", "OTHER").upper()
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # ── 策略2：在混合文本中寻找最后一个 {...} JSON 块 ─────────
+    # 用贪心匹配，从右往左找完整 JSON 对象
+    brace_matches = list(re.finditer(r'\{[^{}]*"sql"[^{}]*\}', text, re.DOTALL))
+    if brace_matches:
+        for m in reversed(brace_matches):
+            try:
+                data = json.loads(m.group())
+                if "sql" in data:
+                    sql = data.get("sql", "").strip()
+                    sql_type = data.get("sql_type", "OTHER").upper()
+                    logger.info("_parse_sql_response: 从混合文本中提取到 JSON")
+                    return sql, sql_type
+            except (json.JSONDecodeError, ValueError):
+                continue
+
+    # ── 策略3：在代码块中找 SQL ──────────────────────────────
+    code_block = re.search(r"```(?:sql)?\s*(SELECT|INSERT|UPDATE|DELETE|WITH|SHOW|DESC).*?```",
+                           text, re.IGNORECASE | re.DOTALL)
+    if code_block:
+        sql = code_block.group().strip()
+        sql = re.sub(r"^```(?:sql)?\s*", "", sql, flags=re.IGNORECASE)
+        sql = re.sub(r"\s*```$", "", sql).strip()
+        upper = sql.upper()
         for t in ("SELECT", "INSERT", "UPDATE", "DELETE"):
             if upper.startswith(t):
                 return sql, t
         return sql, "OTHER"
+
+    # ── 策略4：降级，把文本当 SQL（仅在以 SQL 关键字开头时）──
+    upper = cleaned.upper().lstrip()
+    for t in ("SELECT", "INSERT", "UPDATE", "DELETE", "SHOW", "DESC", "WITH"):
+        if upper.startswith(t):
+            return cleaned, t
+
+    # ── 最终降级：返回空，让外层报错 ─────────────────────────
+    logger.warning(f"_parse_sql_response: 无法从响应中提取 SQL，原始内容前200字: {raw[:200]}")
+    return "", "OTHER"
 
 
 # ──────────────────────────────────────────────────────────────
