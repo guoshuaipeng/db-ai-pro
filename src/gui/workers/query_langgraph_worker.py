@@ -31,6 +31,8 @@ class QueryLangGraphWorker(QThread):
         connection_id: Optional[str] = None,
         database: Optional[str] = None,
         config_query_enum: bool = True,
+        execution_error: Optional[str] = None,
+        failed_sql: Optional[str] = None,
     ):
         super().__init__()
         self.ai_client = ai_client
@@ -42,6 +44,8 @@ class QueryLangGraphWorker(QThread):
         self.connection_id = connection_id
         self.database = database
         self.config_query_enum = config_query_enum
+        self.execution_error = execution_error or ""
+        self.failed_sql = failed_sql or ""
         self._should_stop = False
 
     def stop(self):
@@ -67,6 +71,8 @@ class QueryLangGraphWorker(QThread):
                 "database": self.database,
                 "config_query_enum": self.config_query_enum,
                 "ai_client": self.ai_client,
+                "execution_error": self.execution_error,
+                "failed_sql": self.failed_sql,
                 "memory_context": "",
                 "generated_sql": "",
                 "sql_type": "OTHER",

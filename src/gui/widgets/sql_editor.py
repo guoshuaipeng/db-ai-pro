@@ -263,6 +263,11 @@ class SQLEditor(QWidget):
         self.ai_worker = None          # QueryLangGraphWorker
         self.table_list_worker = None  # TableListWorker（获取表名列表）
         self._all_table_names = []     # 保存所有表名列表
+
+        # SQL执行错误自动修复状态
+        self._auto_fix_retries = 0     # 当前已自动重试次数
+        self._MAX_AUTO_FIX = 1         # 最多自动修复次数（防死循环）
+        self._last_user_query = ""     # 保存最后一次 AI 查询（修复时带上）
     
     def setup_completer(self):
         """设置自动完成"""
@@ -563,6 +568,10 @@ class SQLEditor(QWidget):
         if not user_query:
             self.set_status("错误: 请输入中文描述", is_error=True)
             return
+
+        # 新的用户主动查询：重置自动修复计数
+        self._auto_fix_retries = 0
+        self._last_user_query = user_query
         
         # 检查是否选择了连接
         if not self.current_connection_id:
@@ -748,6 +757,7 @@ class SQLEditor(QWidget):
         import logging
         logger = logging.getLogger(__name__)
         logger.info(f"表名列表获取完成，共 {len(table_info_list)} 个表")
+        self._last_table_info_list = table_info_list  # 保存供 AI 修复时复用
 
         if not table_info_list:
             logger.warning("表名列表为空，无法继续")
@@ -809,6 +819,76 @@ class SQLEditor(QWidget):
         self.ai_worker.finished.connect(self.ai_worker.deleteLater)
         self.ai_worker.start()
         logger.info("QueryLangGraphWorker 已启动")
+
+    def on_execute_error(self, failed_sql: str, error_msg: str):
+        """SQL执行报错回调：自动触发 AI 修复（最多重试 _MAX_AUTO_FIX 次）"""
+        if self._auto_fix_retries >= self._MAX_AUTO_FIX:
+            self.set_status(f"执行失败（AI修复已达上限）: {error_msg}", is_error=True)
+            return
+
+        self._auto_fix_retries += 1
+        logger.info(f"SQL执行报错，触发AI修复（第{self._auto_fix_retries}次）: {error_msg[:100]}")
+        self.set_status(f"执行报错，AI正在分析并修复SQL（第{self._auto_fix_retries}次）...", timeout=0)
+        self._fix_sql_with_ai(failed_sql, error_msg)
+
+    def _fix_sql_with_ai(self, failed_sql: str, error_msg: str):
+        """用 AI 修复执行失败的 SQL（带错误上下文重新走 LangGraph）"""
+        if not self.ai_client:
+            self.set_status("AI修复失败: AI客户端未初始化", is_error=True)
+            return
+
+        # 复用最后一次的用户查询意图作为背景
+        user_query = self._last_user_query or "修复下面执行报错的SQL"
+
+        # 获取连接信息
+        connection_string = ""
+        connect_args = {}
+        db_type = None
+        connection_id = self.current_connection_id
+        database = self.current_database
+        table_info_list = getattr(self, '_last_table_info_list', [])
+
+        if self.db_manager and self.current_connection_id:
+            connection = self.db_manager.get_connection(self.current_connection_id)
+            if connection:
+                connection_string = connection.get_connection_string()
+                connect_args = connection.get_connect_args()
+                db_type = connection.db_type.value if hasattr(connection.db_type, 'value') else str(connection.db_type)
+
+        from src.core.prompt_config import PromptStorage
+        config_query_enum = PromptStorage().load_prompts().query_enum_values
+
+        from src.gui.workers.query_langgraph_worker import QueryLangGraphWorker
+
+        if self.ai_worker:
+            try:
+                self.ai_worker.sql_generated.disconnect()
+                self.ai_worker.error_occurred.disconnect()
+            except Exception:
+                pass
+            try:
+                self.ai_worker.finished.connect(self.ai_worker.deleteLater)
+            except Exception:
+                pass
+
+        self.ai_worker = QueryLangGraphWorker(
+            ai_client=self.ai_client,
+            user_query=user_query,
+            table_info_list=table_info_list,
+            db_type=db_type,
+            connection_string=connection_string,
+            connect_args=connect_args,
+            connection_id=connection_id,
+            database=database,
+            config_query_enum=config_query_enum,
+            execution_error=error_msg,
+            failed_sql=failed_sql,
+        )
+        self.ai_worker.sql_generated.connect(self.on_sql_generated)
+        self.ai_worker.error_occurred.connect(self.on_ai_error)
+        self.ai_worker.status_update.connect(lambda msg: self.set_status(msg, timeout=0))
+        self.ai_worker.finished.connect(self.ai_worker.deleteLater)
+        self.ai_worker.start()
 
     def on_sql_generated(self, sql: str, sql_type: str = "OTHER"):
         """AI生成SQL完成回调（sql_type 由 AI 直接返回，无需代码推断）"""

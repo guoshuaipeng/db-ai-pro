@@ -704,11 +704,9 @@ class AIClient:
                 self.logger.warning("表结构为空，无法选择枚举字段")
                 return {}, False
             
-            client = self._get_client()
-            prompt_config = self._get_prompt_config()
-            
-            # 使用配置的提示词，并添加判断是否需要查询的逻辑
-            system_prompt = prompt_config.select_enum_columns_system
+            # 此方法已由 LangGraph Agent 内置工具替代，提示词不再外部可配置
+            from src.core.prompts import SELECT_ENUM_COLUMNS_SYSTEM_PROMPT
+            system_prompt = SELECT_ENUM_COLUMNS_SYSTEM_PROMPT
             
             user_prompt = f"""【用户需求】
 {user_query}
@@ -843,9 +841,7 @@ orders.state
                 self.logger.info("没有枚举字段，不需要查询枚举值")
                 return False
             
-            client = self._get_client()
-            prompt_config = self._get_prompt_config()
-            
+            # 此方法已由 LangGraph Agent 内置工具替代
             # 构建枚举字段列表
             enum_fields_list = []
             for table_name, columns in enum_columns.items():

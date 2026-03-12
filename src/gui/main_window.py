@@ -1958,6 +1958,9 @@ class MainWindow(QMainWindow):
                     else:
                         result_table.add_result(query_sql, None, error, None, None, connection_id=current_conn_id)
                         sql_editor.set_status(f"执行失败: {error}", is_error=True)
+                        # 如果这次 SQL 是由 AI 生成的，自动触发 AI 修复
+                        if hasattr(sql_editor, 'on_execute_error') and getattr(sql_editor, '_last_user_query', ''):
+                            sql_editor.on_execute_error(query_sql, str(error))
                     
                     # 恢复执行按钮状态
                     if hasattr(sql_editor, 'execute_btn'):

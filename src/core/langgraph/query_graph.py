@@ -47,6 +47,8 @@ class QueryGraphState(TypedDict, total=False):
     database: Optional[str]
     config_query_enum: bool        # 用户配置：是否允许查枚举值
     ai_client: Any                 # AIClient 实例
+    execution_error: Optional[str]  # 上一次执行报错信息（用于 AI 自动修复）
+    failed_sql: Optional[str]       # 上一次执行失败的 SQL
 
     # ── 记忆 ──────────────────────────────────────────────────
     memory_context: str
@@ -294,7 +296,20 @@ def node_agent_sql(state: QueryGraphState) -> dict:
 sql_type 枚举：SELECT（含只读操作）/ INSERT / UPDATE / DELETE / OTHER
 ⚠️ 禁止：在 JSON 前后输出任何文字、禁止用 ```json 包裹、禁止输出思考过程"""
 
-    user_message = f"用户需求：{user_query}"
+    # ── 错误修复上下文（自动重试时注入）──────────────────────
+    execution_error = state.get("execution_error", "")
+    failed_sql = state.get("failed_sql", "")
+    if execution_error and failed_sql:
+        user_message = (
+            f"用户需求：{user_query}\n\n"
+            f"【注意：以下 SQL 执行时报错，请分析原因并修复】\n"
+            f"错误 SQL：\n```sql\n{failed_sql}\n```\n"
+            f"数据库报错：{execution_error}\n\n"
+            f"请根据报错信息和表结构（可调用工具重新获取），生成修复后的正确 SQL。"
+        )
+        logger.info(f"agent_sql 进入修复模式，错误: {execution_error[:100]}")
+    else:
+        user_message = f"用户需求：{user_query}"
 
     # ── 工具列表 ──────────────────────────────────────────────
     tools = _build_tools(config_query_enum)

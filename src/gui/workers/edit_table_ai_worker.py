@@ -37,11 +37,9 @@ class EditTableAIWorker(QThread):
             if self.isInterruptionRequested() or self._should_stop:
                 return
             
-            # 从配置中加载提示词
-            from src.core.prompt_config import PromptStorage
-            prompt_storage = PromptStorage()
-            prompt_config = prompt_storage.load_prompts()
-            system_prompt = prompt_config.edit_table_generate_sql_system
+            # 此 Worker 已被 EditTableLangGraphWorker 替代，提示词使用内置常量
+            from src.core.prompts import EDIT_TABLE_GENERATE_SQL_SYSTEM_PROMPT
+            system_prompt = EDIT_TABLE_GENERATE_SQL_SYSTEM_PROMPT
             
             # 添加数据库类型信息到系统提示词
             if self.db_type:

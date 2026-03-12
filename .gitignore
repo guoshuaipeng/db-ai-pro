@@ -161,3 +161,7 @@ temp/
 /tests/test_openapi_client.py
 /tests/test_openapi_broker.py
 /tests/test_openapi_member_client.py
+
+# Gitee token cache
+.release_token
+.release_github_token
