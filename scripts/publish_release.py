@@ -139,29 +139,24 @@ def github_api(method: str, path: str, data: dict = None, token: str = "") -> di
 
 
 def upload_asset_to_github(upload_url_template: str, file_path: Path, token: str):
-    """上传 exe 到 GitHub Release"""
-    # upload_url 形如：https://uploads.github.com/repos/.../assets{?name,label}
+    """上传 exe 到 GitHub Release（流式上传，避免超时）"""
+    import requests as req_lib
+
     base_url = upload_url_template.split("{")[0]
     url = f"{base_url}?name={urllib.parse.quote(file_path.name)}"
-
-    file_data = file_path.read_bytes()
-    req = urllib.request.Request(
-        url,
-        data=file_data,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json",
-            "Content-Type": "application/octet-stream",
-            "User-Agent": "DataAI-Publisher/1.0",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"GitHub 上传文件失败 {e.code}: {body}") from e
+    file_size = file_path.stat().st_size
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "Content-Type": "application/octet-stream",
+        "Content-Length": str(file_size),
+        "User-Agent": "DataAI-Publisher/1.0",
+    }
+    with open(file_path, "rb") as f:
+        resp = req_lib.post(url, data=f, headers=headers, timeout=600)
+    if resp.status_code not in (200, 201):
+        raise RuntimeError(f"GitHub 上传文件失败 {resp.status_code}: {resp.text}")
+    return resp.json()
 
 
 # ──────────────────────────── Gitee REST API ──────────────────────

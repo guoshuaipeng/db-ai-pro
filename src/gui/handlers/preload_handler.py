@@ -26,8 +26,6 @@ class PreloadHandler:
     
     def __init__(self, main_window: 'MainWindow'):
         self.main_window = main_window
-        from src.core.tree_cache import TreeCache
-        self.tree_cache = TreeCache()
     
     def start_preload(self):
         """启动预加载（在后台线程中加载所有数据库和表列表）"""
@@ -63,14 +61,7 @@ class PreloadHandler:
         worker.start()
     
     def on_preload_databases_loaded(self, connection_id: str, databases: List[str]):
-        """预加载获取到数据库列表的回调 - 保存到缓存并更新UI"""
-        # 保存到缓存
-        try:
-            self.tree_cache.set_databases(connection_id, databases)
-            logger.info(f"✅ [PreloadHandler] 已缓存连接的数据库列表: {connection_id} ({len(databases)} 个数据库)")
-        except Exception as e:
-            logger.error(f"❌ [PreloadHandler] 保存数据库列表缓存失败: {e}")
-        
+        """预加载获取到数据库列表的回调 - 更新UI"""
         # 更新UI：添加数据库项到树视图
         def update_tree():
             # 检查窗口是否正在关闭
@@ -148,9 +139,6 @@ class PreloadHandler:
                         font = db_item.font(0)
                         font.setBold(True)
                         db_item.setFont(0, font)
-                    
-                    # 尝试从缓存加载表列表（如果已经预加载）
-                    self._load_tables_from_cache_for_preload(db_item, connection_id, db_name)
                 
                 # 如果是 Redis 连接，查询每个数据库的 key 数量并更新显示
                 if connection and connection.db_type == DatabaseType.REDIS:
@@ -174,74 +162,48 @@ class PreloadHandler:
         except:
             pass
     
-    def _load_tables_from_cache_for_preload(self, db_item: QTreeWidgetItem, connection_id: str, database: str):
-        """从缓存加载表列表（用于预加载时）"""
+    def _populate_tables_for_preload(self, db_item: QTreeWidgetItem, connection_id: str, database: str, tables: List[str]):
+        """将表列表直接填充到树节点（预加载回调）"""
         try:
-            cached_tables = self.tree_cache.get_tables(connection_id, database)
-            if cached_tables is None:
-                return  # 还没有缓存
-            
-            # 检查是否为 Redis 数据库
             connection = self.main_window.db_manager.get_connection(connection_id)
             is_redis = connection and connection.db_type == DatabaseType.REDIS
-            
-            # Redis 数据库特殊处理
+
             if is_redis:
-                # 创建"表"分类项
                 tables_category = QTreeWidgetItem(db_item)
                 tables_category.setText(0, "表")
                 TreeItemData.set_item_type_and_data(tables_category, TreeItemType.TABLE_CATEGORY)
                 tables_category.setIcon(0, get_category_icon("表", 16))
                 tables_category.setFlags(Qt.ItemFlag.ItemIsEnabled)
-                
-                # 创建"所有数据"节点
+
                 all_data_item = QTreeWidgetItem(tables_category)
                 all_data_item.setText(0, "所有数据")
                 TreeItemData.set_item_type_and_data(all_data_item, TreeItemType.REDIS_ALL_DATA, database)
                 all_data_item.setIcon(0, get_table_icon(16))
                 all_data_item.setToolTip(0, f"Redis 数据库: {database}\n点击查询前100条数据")
-                all_data_item.setFlags(
-                    Qt.ItemFlag.ItemIsEnabled
-                    | Qt.ItemFlag.ItemIsSelectable
-                )
+                all_data_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
                 return
-            
-            # 非 Redis 数据库：添加表项
-            if not cached_tables:
-                return  # 没有表，不创建"表"分类
-            
-            # 创建"表"分类项
+
+            if not tables:
+                return
+
             tables_category = QTreeWidgetItem(db_item)
             tables_category.setText(0, "表")
             TreeItemData.set_item_type_and_data(tables_category, TreeItemType.TABLE_CATEGORY)
             tables_category.setIcon(0, get_category_icon("表", 16))
             tables_category.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            
-            # 添加表项（按字母顺序排序）
-            for table_name in sorted(cached_tables):
+
+            for table_name in sorted(tables):
                 table_item = QTreeWidgetItem(tables_category)
                 table_item.setText(0, table_name)
-                # 设置节点类型和数据（表项）
                 TreeItemData.set_item_type_and_data(table_item, TreeItemType.TABLE, (database, table_name))
                 table_item.setToolTip(0, f"表: {database}.{table_name}\n双击或单击查询前100条数据")
                 table_item.setIcon(0, get_table_icon(16))
-                # 确保表项本身是可选中的
-                table_item.setFlags(
-                    Qt.ItemFlag.ItemIsEnabled
-                    | Qt.ItemFlag.ItemIsSelectable
-                )
+                table_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
         except Exception as e:
-            logger.warning(f"从缓存加载表列表失败: {str(e)}")
+            logger.warning(f"填充预加载表列表失败: {str(e)}")
     
     def on_preload_connection_loaded(self, connection_id: str, database: str, tables: List[str]):
-        """预加载完成一个数据库的回调 - 保存到缓存并更新UI"""
-        # 保存到缓存
-        try:
-            self.tree_cache.set_tables(connection_id, database, tables)
-            logger.debug(f"✅ [PreloadHandler] 已缓存表列表: {connection_id}.{database} ({len(tables)} 个表)")
-        except Exception as e:
-            logger.error(f"❌ [PreloadHandler] 保存表列表缓存失败: {e}")
-        
+        """预加载完成一个数据库的回调 - 更新UI"""
         # 更新UI：找到对应的数据库项，添加表项
         def update_tree():
             # 检查窗口是否正在关闭
@@ -304,8 +266,8 @@ class PreloadHandler:
                 if has_tables_category:
                     return
                 
-                # 从缓存加载表列表（这会创建表项）
-                self._load_tables_from_cache_for_preload(db_item, connection_id, database)
+                # 直接填充表项
+                self._populate_tables_for_preload(db_item, connection_id, database, tables)
                 
             except RuntimeError:
                 # 树结构已改变，忽略

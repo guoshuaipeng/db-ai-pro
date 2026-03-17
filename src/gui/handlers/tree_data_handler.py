@@ -7,7 +7,6 @@ from typing import List, TYPE_CHECKING
 import logging
 
 from src.core.database_connection import DatabaseType
-from src.core.tree_cache import TreeCache
 from src.gui.utils.tree_item_types import TreeItemType, TreeItemData
 from src.utils.ui_helpers import (
     get_database_icon_simple,
@@ -29,7 +28,6 @@ class TreeDataHandler:
     
     def __init__(self, main_window: 'MainWindow'):
         self.main_window = main_window
-        self.tree_cache = TreeCache()
         self.thread_manager = get_thread_manager()
     
     def _safe_delete_worker(self, worker):
@@ -312,17 +310,7 @@ class TreeDataHandler:
         
         # 获取连接信息（connection_id 现在作为参数传入）
         connection = self.main_window.db_manager.get_connection(connection_id) if connection_id else None
-        
-        # 保存到缓存
-        if connection_id:
-            try:
-                self.tree_cache.set_databases(connection_id, databases)
-                logger.info(f"✅ 已成功缓存连接 {connection_id} 的 {len(databases)} 个数据库")
-            except Exception as e:
-                logger.error(f"❌ 保存数据库缓存失败: connection_id={connection_id}, error={e}")
-        else:
-            logger.warning(f"⚠️ connection_id 为空，无法保存数据库缓存")
-        
+
         # 清理worker引用（线程会通过finished信号自动清理，这里只清理字典引用）
         # 注意：不要在这里断开信号或删除 worker，让 cleanup_worker（通过 finished 信号）来处理
         # ThreadManager 会自动处理信号断开和对象删除
@@ -683,48 +671,6 @@ class TreeDataHandler:
         if has_tables and not force_reload:
             return
         
-        # 尝试从缓存加载表列表（立即显示）
-        # 注意：Redis 数据库不应该使用缓存逻辑，因为它在 load_tables_for_database 开头就已经处理并返回了
-        # 但为了安全，再次检查是否为 Redis
-        if is_redis:
-            # Redis 数据库不应该走到这里，但如果走到了，直接返回
-            logger.warning(f"Redis 数据库不应该走到缓存逻辑，可能代码逻辑有问题")
-            return
-        
-        from src.core.tree_cache import TreeCache
-        tree_cache = TreeCache()
-        cached_tables = tree_cache.get_tables(connection_id, database)
-        
-        if cached_tables and not force_reload:
-            # 有缓存，立即显示
-            if not tables_category:
-                tables_category = QTreeWidgetItem(db_item)
-                tables_category.setText(0, "表")
-                TreeItemData.set_item_type_and_data(tables_category, TreeItemType.TABLE_CATEGORY)
-                tables_category.setIcon(0, get_category_icon("表", 16))
-                tables_category.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            
-            # 立即显示缓存的表
-            for table_name in sorted(cached_tables):
-                table_item = QTreeWidgetItem(tables_category)
-                table_item.setText(0, table_name)
-                TreeItemData.set_item_type_and_data(table_item, TreeItemType.TABLE, (database, table_name))
-                table_item.setToolTip(0, f"表: {database}.{table_name}\n双击或单击查询前100条数据")
-                table_item.setIcon(0, get_table_icon(16))
-                table_item.setFlags(
-                    Qt.ItemFlag.ItemIsEnabled
-                    | Qt.ItemFlag.ItemIsSelectable
-                )
-            
-            # 自动展开"表"分类
-            if db_item.isExpanded():
-                tables_category.setExpanded(True)
-            
-            logger.debug(f"从缓存立即显示了 {len(cached_tables)} 个表")
-            # 缓存显示后，仍然在后台刷新（静默更新），但不再显示"加载中..."
-            # 这样用户体验更好，不会感觉卡顿
-            return
-        
         # 移除旧的表项、加载项、错误项
         for item in items_to_remove:
             db_item.removeChild(item)
@@ -968,30 +914,11 @@ class TreeDataHandler:
         
         # 非 Redis 数据库的处理逻辑
         if not tables:
-            
-            # 非 Redis 数据库：显示"无表"
-            # 没有表，保存空列表到缓存
-            if connection_id and database:
-                logger.info(f"保存空表列表缓存: {connection_id}.{database}")
-                self.tree_cache.set_tables(connection_id, database, [])
-            else:
-                logger.warning(f"无法保存空表列表缓存: connection_id={connection_id}, database={database}")
-            
             no_table_item = QTreeWidgetItem(tables_category)
             no_table_item.setText(0, "无表")
             TreeItemData.set_item_type_and_data(no_table_item, TreeItemType.EMPTY)
             no_table_item.setFlags(Qt.ItemFlag.NoItemFlags)  # 禁用交互
             return
-        
-        # 保存到缓存
-        if connection_id and database:
-            try:
-                self.tree_cache.set_tables(connection_id, database, tables)
-                logger.info(f"已成功缓存数据库 {database} 的 {len(tables)} 个表")
-            except Exception as e:
-                logger.error(f"保存表缓存失败: {str(e)}", exc_info=True)
-        else:
-            logger.warning(f"无法保存表缓存 (缺少必要信息): connection_id={connection_id}, database={database}")
         
         # 添加表项（按字母顺序排序）
         for table_name in sorted(tables):
@@ -1125,121 +1052,6 @@ class TreeDataHandler:
                     self.main_window.statusBar().showMessage(f"正在刷新数据库 '{database}' 的表列表...", 3000)
                     return
     
-    def _load_databases_from_cache(self, connection_item: QTreeWidgetItem, connection_id: str):
-        """从缓存加载数据库列表（如果有）"""
-        cached_databases = self.tree_cache.get_databases(connection_id)
-        if not cached_databases:
-            return
-        
-        logger.debug(f"从缓存加载连接 {connection_id} 的 {len(cached_databases)} 个数据库")
-        
-        # 获取连接信息
-        connection = self.main_window.db_manager.get_connection(connection_id)
-        
-        # 添加数据库项（排序）
-        # 对于 Redis 连接，按数字排序；其他数据库按字母顺序排序
-        if connection and connection.db_type == DatabaseType.REDIS:
-            # Redis 数据库按数字排序
-            sorted_databases = sorted(cached_databases, key=lambda x: int(x) if x.isdigit() else float('inf'))
-        else:
-            # 其他数据库按字母顺序排序
-            sorted_databases = sorted(cached_databases)
-        
-        for db_name in sorted_databases:
-            db_item = QTreeWidgetItem(connection_item)
-            db_item.setText(0, db_name)
-            TreeItemData.set_item_type_and_data(db_item, TreeItemType.DATABASE, db_name)
-            db_item.setIcon(0, get_database_icon_simple(18))
-            db_item.setToolTip(0, f"数据库: {db_name}\n双击展开表列表")
-            
-            # 如果是当前连接的数据库，标记为已选中
-            if connection and connection.database == db_name:
-                font = db_item.font(0)
-                font.setBold(True)
-                db_item.setFont(0, font)
-            
-            # 从缓存加载表列表（如果有）
-            self._load_tables_from_cache(db_item, connection_id, db_name)
-        
-        # 如果是 Redis 连接，查询每个数据库的 key 数量并更新显示
-        if connection and connection.db_type == DatabaseType.REDIS:
-            logger.info(f"✅ 从缓存加载 Redis 数据库，启动 key 数量查询")
-            self._query_redis_dbsizes(connection_item, connection_id, connection, cached_databases)
-        
-        # 后台异步刷新数据库列表（无感更新）
-        def async_refresh():
-            if not (hasattr(self.main_window, '_is_closing') and self.main_window._is_closing):
-                self._async_refresh_databases(connection_item, connection_id)
-        QTimer.singleShot(100, async_refresh)
-    
-    def _load_tables_from_cache(self, db_item: QTreeWidgetItem, connection_id: str, database: str):
-        """从缓存加载表列表（如果有缓存的话）"""
-        logger.debug(f"尝试从缓存加载: connection_id={connection_id}, database={database}")
-        
-        # 检查是否为 Redis 数据库
-        connection = self.main_window.db_manager.get_connection(connection_id)
-        is_redis = connection and connection.db_type == DatabaseType.REDIS
-        
-        # Redis 数据库不应该从缓存加载表，而是应该创建"所有数据"节点
-        if is_redis:
-            logger.debug(f"✅ _load_tables_from_cache: Redis 数据库，创建'所有数据'节点")
-            # 创建"表"分类项
-            tables_category = QTreeWidgetItem(db_item)
-            tables_category.setText(0, "表")
-            TreeItemData.set_item_type_and_data(tables_category, TreeItemType.TABLE_CATEGORY)
-            tables_category.setIcon(0, get_category_icon("表", 16))
-            tables_category.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            
-            # 创建"所有数据"节点
-            all_data_item = QTreeWidgetItem(tables_category)
-            all_data_item.setText(0, "所有数据")
-            TreeItemData.set_item_type_and_data(all_data_item, TreeItemType.REDIS_ALL_DATA, database)
-            all_data_item.setIcon(0, get_table_icon(16))
-            all_data_item.setToolTip(0, f"Redis 数据库: {database}\n点击查询前100条数据")
-            all_data_item.setFlags(
-                Qt.ItemFlag.ItemIsEnabled
-                | Qt.ItemFlag.ItemIsSelectable
-            )
-            logger.debug(f"✅ Redis '所有数据' 节点已创建")
-            return
-        
-        cached_tables = self.tree_cache.get_tables(connection_id, database)
-        logger.debug(f"缓存结果: {cached_tables}")
-        
-        # 只有缓存存在时才加载（首次打开不自动加载）
-        # None表示没有缓存，[]表示缓存为空表
-        if cached_tables is None:
-            logger.debug(f"数据库 {database} 没有表缓存，等待用户手动展开")
-            return
-        
-        if not cached_tables:  # 空列表
-            logger.debug(f"数据库 {database} 缓存为空表列表")
-            return
-        
-        logger.debug(f"从缓存加载数据库 {database} 的 {len(cached_tables)} 个表")
-        
-        # 创建"表"分类项
-        tables_category = QTreeWidgetItem(db_item)
-        tables_category.setText(0, "表")
-        TreeItemData.set_item_type_and_data(tables_category, TreeItemType.TABLE_CATEGORY)
-        tables_category.setIcon(0, get_category_icon("表", 16))
-        tables_category.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        
-        # 添加表项
-        for table_name in sorted(cached_tables):
-            table_item = QTreeWidgetItem(tables_category)
-            table_item.setText(0, table_name)
-            TreeItemData.set_item_type_and_data(table_item, TreeItemType.TABLE, (database, table_name))
-            table_item.setToolTip(0, f"表: {database}.{table_name}\n双击或单击查询前100条数据")
-            table_item.setIcon(0, get_table_icon(16))
-            table_item.setFlags(
-                Qt.ItemFlag.ItemIsEnabled
-                | Qt.ItemFlag.ItemIsSelectable
-            )
-        
-        # 后台异步刷新表列表（无感更新），稍微延迟一点避免启动时过多请求
-        QTimer.singleShot(500, lambda: self._async_refresh_tables(db_item, connection_id, database))
-    
     def _async_refresh_databases(self, connection_item: QTreeWidgetItem, connection_id: str):
         """后台异步刷新数据库列表（无感更新）"""
         # 检查窗口是否正在关闭
@@ -1338,10 +1150,6 @@ class TreeDataHandler:
                 return
         except RuntimeError:
             return
-        
-        # 保存到缓存
-        self.tree_cache.set_databases(connection_id, databases)
-        logger.debug(f"后台刷新完成，已更新缓存: {len(databases)} 个数据库")
         
         # 获取当前已有的数据库项
         existing_databases = {}
@@ -1481,10 +1289,6 @@ class TreeDataHandler:
         if is_redis:
             logger.info(f"⚠️ _on_tables_refreshed: Redis 数据库不应该走到这里，跳过处理")
             return
-        
-        # 保存到缓存
-        self.tree_cache.set_tables(connection_id, database, tables)
-        logger.debug(f"后台刷新完成，已更新缓存: 数据库 {database} 的 {len(tables)} 个表")
         
         # 获取当前已有的表项
         existing_tables = {}

@@ -45,7 +45,7 @@ class TableStructureHandler:
         create_table_tab.execute_sql_signal.connect(self.main_window.execute_query)
         
         # 添加到tab控件（使用"新增表-库名"格式）
-        tab_index = self.main_window.right_tab_widget.addTab(create_table_tab, f"新增表-{self.main_window.current_database}")
+        tab_index = self.main_window.right_tab_widget.addTab(create_table_tab, f"新增表 › {self.main_window.current_database}")
         self.main_window.right_tab_widget.setCurrentIndex(tab_index)
     
     def copy_table_structure(self, connection_id: str, database: str, table_name: str):
@@ -126,7 +126,7 @@ class TableStructureHandler:
         connection_name = connection.name if connection else connection_id
         
         # 检查是否已经存在该表的编辑tab（使用"编辑表-连接名-库名-表名"格式，区分不同连接）
-        tab_title = f"编辑表-{connection_name}-{database}-{table_name}"
+        tab_title = f"编辑表 › {connection_name} › {database} › {table_name}"
         for i in range(self.main_window.right_tab_widget.count()):
             tab_widget = self.main_window.right_tab_widget.widget(i)
             # 检查tab标题和连接ID是否匹配

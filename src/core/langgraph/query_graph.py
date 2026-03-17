@@ -386,8 +386,6 @@ sql_type 枚举：SELECT（含只读操作）/ INSERT / UPDATE / DELETE / OTHER
                     else:
                         result = f"未知工具: {tool_name}"
 
-                    logger.debug(f"工具 {tool_name} 返回: {result[:200]}")
-
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -443,7 +441,7 @@ sql_type 枚举：SELECT（含只读操作）/ INSERT / UPDATE / DELETE / OTHER
 
 
 def node_write_memory(state: QueryGraphState) -> dict:
-    """将本次成功的查询写入长期记忆"""
+    """将本次成功的查询写入长期记忆，并在条件满足时触发压缩"""
     try:
         if state.get("error") or not state.get("generated_sql"):
             return {"current_step": "write_memory"}
@@ -457,6 +455,8 @@ def node_write_memory(state: QueryGraphState) -> dict:
             generated_sql=state.get("generated_sql", ""),
             used_tables=state.get("selected_tables", []),
         )
+        # 写入后检查是否需要压缩（传入 ai_client 供 AI 生成摘要，无则降级统计摘要）
+        store.compress_if_needed(ai_client=state.get("ai_client"))
     except Exception as e:
         logger.warning(f"write_memory 失败（跳过）: {e}")
     return {"current_step": "write_memory"}

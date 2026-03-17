@@ -677,9 +677,9 @@ class MainWindow(QMainWindow):
         connection = self.db_manager.get_connection(connection_id)
         connection_name = connection.name if connection else connection_id
         if database:
-            tab_title = f"进程监控-{connection_name}-{database}"
+            tab_title = f"进程监控 › {connection_name} › {database}"
         else:
-            tab_title = f"进程监控-{connection_name}(全部数据库)"
+            tab_title = f"进程监控 › {connection_name}"
         
         # 添加到tab
         tab_index = self.right_tab_widget.addTab(monitor_tab, tab_title)
@@ -833,8 +833,9 @@ class MainWindow(QMainWindow):
             # 明确传递 database，不使用默认数据库
             self.set_current_connection(self.current_connection_id, database=database, from_combo=True)
     
-    def load_databases_for_combo(self, connection_id: str):
+    def load_databases_for_combo(self, connection_id: str, target_database: str = None):
         """加载连接的数据库列表到下拉框（异步执行，不阻塞UI）"""
+        logger.debug(f"load_databases_for_combo: connection_id={connection_id}, target_database={target_database}")
         # 检查窗口是否正在关闭
         if self._is_closing:
             logger.debug("窗口正在关闭，跳过加载数据库列表")
@@ -914,45 +915,36 @@ class MainWindow(QMainWindow):
                 return
             
             try:
-                logger.info(f"获取到 {len(databases)} 个数据库: {databases[:5] if len(databases) > 5 else databases}")
+                logger.info(f"on_databases_ready: 获取到 {len(databases)} 个数据库, target_database={target_database}, current_database={self.current_database}")
+                logger.debug(f"on_databases_ready: 数据库列表={databases[:5] if len(databases) > 5 else databases}")
                 for db in databases:
                     self.database_combo.addItem(db, db)
                 
-                # 设置当前数据库（只有在信号已断开时才设置，避免触发循环）
+                # 设置当前数据库，先确保信号断开（load_databases_for_combo 已断开，这里再保险断一次）
                 try:
-                    # 检查信号是否已断开（通常在load_databases_for_combo开始时断开）
                     self.database_combo.currentTextChanged.disconnect()
-                    signal_was_connected = False
-                except:
-                    signal_was_connected = True
-                
-                # 只有在信号已断开时才设置当前项（避免触发on_database_combo_changed）
-                if not signal_was_connected:
-                    if self.current_database:
-                        index = self.database_combo.findData(self.current_database)
-                        if index >= 0:
-                            self.database_combo.setCurrentIndex(index)
-                            logger.info(f"已设置当前数据库: {self.current_database}")
-                        elif databases:
-                            # 如果找不到，默认选择第一个
-                            self.database_combo.setCurrentIndex(0)
-                            logger.info(f"默认选择第一个数据库: {databases[0]}")
+                except Exception:
+                    pass  # 已断开时 disconnect 会抛异常，属正常情况，忽略即可
+
+                # 优先用调用时捕获的 target_database，防止回调执行时 self.current_database 已被覆盖
+                select_db = target_database or self.current_database
+                if select_db:
+                    index = self.database_combo.findData(select_db)
+                    if index >= 0:
+                        self.database_combo.setCurrentIndex(index)
+                        logger.info(f"已设置当前数据库: {select_db}")
                     elif databases:
-                        # 如果没有指定当前数据库，默认选择第一个
                         self.database_combo.setCurrentIndex(0)
-                        logger.info(f"默认选择第一个数据库: {databases[0]}")
-                    
-                    # 重新连接信号
-                    try:
-                        self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
-                    except:
-                        pass
-                elif signal_was_connected:
-                    # 如果信号本来就是连接的，重新连接
-                    try:
-                        self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
-                    except:
-                        pass
+                        logger.info(f"目标库未找到，默认选择第一个: {databases[0]}")
+                elif databases:
+                    self.database_combo.setCurrentIndex(0)
+                    logger.info(f"未指定数据库，默认选择第一个: {databases[0]}")
+
+                # 重新连接信号
+                try:
+                    self.database_combo.currentTextChanged.connect(self.on_database_combo_changed)
+                except Exception:
+                    pass
             except Exception as e:
                 logger.error(f"更新数据库下拉框失败: {e}", exc_info=True)
                 # 确保信号重新连接
@@ -1060,13 +1052,12 @@ class MainWindow(QMainWindow):
             # 如果不是来自下拉框选择，或者下拉框为空，才加载数据库列表（避免循环调用）
             if not from_combo or self.database_combo.count() == 0:
                 # 加载并同步数据库下拉框
-                # 先设置数据库下拉框的选中项（在加载完成后）
-                # 这里先断开信号，等待load_databases_for_combo的回调来设置当前项
                 try:
                     self.database_combo.currentTextChanged.disconnect()
                 except:
                     pass
-                self.load_databases_for_combo(connection_id)
+                # 把目标数据库传给 load_databases_for_combo，防止回调执行时 current_database 被覆盖
+                self.load_databases_for_combo(connection_id, target_database=database)
             else:
                 # 来自下拉框选择，只需要更新当前项（不重新加载列表，避免循环）
                 try:
@@ -1812,9 +1803,9 @@ class MainWindow(QMainWindow):
                 new_connection = self.db_manager.get_connection(new_connection_id)
                 connection_name = new_connection.name if new_connection else new_connection_id
                 if query_tab._table_query_database:
-                    new_tab_title = f"{connection_name}-{query_tab._table_query_database}-{query_tab._table_query_table_name}"
+                    new_tab_title = f"{connection_name} › {query_tab._table_query_database} › {query_tab._table_query_table_name}"
                 else:
-                    new_tab_title = f"{connection_name}-{query_tab._table_query_table_name}"
+                    new_tab_title = f"{connection_name} › {query_tab._table_query_table_name}"
                 # 找到当前tab的索引并更新标题
                 for i in range(self.right_tab_widget.count()):
                     if self.right_tab_widget.widget(i) == query_tab:
@@ -1838,9 +1829,9 @@ class MainWindow(QMainWindow):
                 connection = self.db_manager.get_connection(query_tab._connection_id)
                 connection_name = connection.name if connection else query_tab._connection_id
                 if new_database:
-                    new_tab_title = f"{connection_name}-{new_database}-{query_tab._table_query_table_name}"
+                    new_tab_title = f"{connection_name} › {new_database} › {query_tab._table_query_table_name}"
                 else:
-                    new_tab_title = f"{connection_name}-{query_tab._table_query_table_name}"
+                    new_tab_title = f"{connection_name} › {query_tab._table_query_table_name}"
                 # 找到当前tab的索引并更新标题
                 for i in range(self.right_tab_widget.count()):
                     if self.right_tab_widget.widget(i) == query_tab:
@@ -2029,12 +2020,12 @@ class MainWindow(QMainWindow):
             ai_hint_text = f"目标表 : {table_name}\n"
             sql_editor.ai_input.setPlainText(ai_hint_text)
         
-        # 添加新tab（使用"连接名-库名-表名"格式，区分不同连接的相同数据库和表）
+        # 添加新tab（使用"连接 › 库 › 表"面包屑格式）
         connection_name = connection.name if connection else connection_id
         if database:
-            tab_title = f"{connection_name}-{database}-{table_name}"
+            tab_title = f"{connection_name} › {database} › {table_name}"
         else:
-            tab_title = f"{connection_name}-{table_name}"
+            tab_title = f"{connection_name} › {table_name}"
         tab_index = self.right_tab_widget.addTab(query_tab, tab_title)
         
         # 切换到新tab

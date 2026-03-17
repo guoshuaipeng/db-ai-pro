@@ -40,7 +40,7 @@ class RedisHandler:
         
         # 先检查是否已有对应的 Redis tab（需要检查连接ID，避免不同连接的相同数据库混淆）
         connection_name = connection.name if connection else connection_id
-        redis_tab_title = f"Redis: {connection_name}-{database}"
+        redis_tab_title = f"Redis › {connection_name} › {database}"
         existing_tab_index = None
         for i in range(self.main_window.right_tab_widget.count()):
             tab_widget = self.main_window.right_tab_widget.widget(i)
@@ -126,7 +126,7 @@ class RedisHandler:
             def on_redis_data_ready(data, columns):
                 # 查找对应的 Redis 数据查看器 tab（应该已经存在）
                 connection_name = connection.name if connection else connection_id
-                redis_tab_title = f"Redis: {connection_name}-{db_name}"
+                redis_tab_title = f"Redis › {connection_name} › {db_name}"
                 existing_tab_index = None
                 for i in range(self.main_window.right_tab_widget.count()):
                     tab_widget = self.main_window.right_tab_widget.widget(i)
@@ -184,7 +184,7 @@ class RedisHandler:
         
         # 先检查是否已有对应的 Redis tab（需要检查连接ID，避免不同连接的相同数据库混淆）
         connection_name = connection.name if connection else connection_id
-        redis_tab_title = f"Redis: {connection_name}-{database}"
+        redis_tab_title = f"Redis › {connection_name} › {database}"
         existing_tab_index = None
         for i in range(self.main_window.right_tab_widget.count()):
             tab_widget = self.main_window.right_tab_widget.widget(i)
@@ -262,7 +262,7 @@ class RedisHandler:
             def on_redis_data_ready(data, columns):
                 # 查找对应的 Redis 数据查看器 tab（应该已经存在）
                 connection_name = connection.name if connection else connection_id
-                redis_tab_title = f"Redis: {connection_name}-{db_name}"
+                redis_tab_title = f"Redis › {connection_name} › {db_name}"
                 existing_tab_index = None
                 for i in range(self.main_window.right_tab_widget.count()):
                     tab_widget = self.main_window.right_tab_widget.widget(i)

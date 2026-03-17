@@ -141,13 +141,25 @@ class TreeHandler:
         # 使用QTimer延迟执行耗时操作，确保双击事件处理函数快速返回
         # 根据节点类型执行不同的操作
         if item_type == TreeItemType.CONNECTION:
-            # 双击连接项本身，切换展开状态（这个操作很快，可以直接执行）
-            logger.info(f"[UI线程] on_item_double_clicked 双击连接项本身，切换展开状态: {item.text(0)}")
-            if item.isExpanded():
-                item.setExpanded(False)
-            else:
-                item.setExpanded(True)
-                # 展开时会自动触发 on_item_expanded，加载数据库列表（已经在on_item_expanded中使用延迟执行）
+            # 双击连接项本身，只更新 connection_combo（展开/折叠已由 connection_tree.py 处理）
+            logger.info(f"[UI线程] on_item_double_clicked 双击连接项本身: {item.text(0)}")
+            # 只切换 connection_combo，不触发 load_databases_for_combo，避免 database_combo 变空
+            def switch_connection_combo_only():
+                try:
+                    self.main_window.connection_combo.currentTextChanged.disconnect()
+                except Exception:
+                    pass
+                for i in range(self.main_window.connection_combo.count()):
+                    if self.main_window.connection_combo.itemData(i) == connection_id:
+                        self.main_window.connection_combo.setCurrentIndex(i)
+                        break
+                try:
+                    self.main_window.connection_combo.currentTextChanged.connect(
+                        self.main_window.on_connection_combo_changed
+                    )
+                except Exception:
+                    pass
+            QTimer.singleShot(0, switch_connection_combo_only)
         elif item_type == TreeItemType.DATABASE:
             # 双击数据库项，切换展开状态，并切换到该数据库
             database = TreeItemData.get_item_data(item)
@@ -158,22 +170,55 @@ class TreeHandler:
                 
                 # 切换到该连接和数据库（使用延迟执行，避免阻塞）
                 def switch_and_expand():
-                    self.main_window.set_current_connection(connection_id, database=database, from_combo=True)
-                    # 如果表已经加载，自动展开"表"分类（Redis 和其他数据库都使用"表"分类）
+                    mw = self.main_window
+                    prev_conn_id = mw.current_connection_id  # 记录切换前的连接
+
+                    # 先切换连接（更新 connection_combo、current_database 等）
+                    mw.set_current_connection(connection_id, database=database, from_combo=False)
+
+                    # 同步尝试直接选中 database_combo
+                    # 若是同一连接，combo 数据未被清空，可立即选中
+                    # 若是不同连接，combo 已被清空，findData 返回 -1，走异步加载路径
+                    idx = mw.database_combo.findData(database)
+                    if idx >= 0:
+                        try:
+                            mw.database_combo.currentTextChanged.disconnect()
+                        except Exception:
+                            pass
+                        mw.database_combo.setCurrentIndex(idx)
+                        logger.info(f"database_combo 直接选中: {database}")
+                        try:
+                            mw.database_combo.currentTextChanged.connect(mw.on_database_combo_changed)
+                        except Exception:
+                            pass
+                    elif prev_conn_id != connection_id:
+                        # 切换了不同连接，combo 正在异步加载中
+                        # 200ms 后再尝试一次同步选中（兜底：异步加载通常 < 200ms）
+                        def _retry_select():
+                            idx2 = mw.database_combo.findData(database)
+                            if idx2 >= 0:
+                                try:
+                                    mw.database_combo.currentTextChanged.disconnect()
+                                except Exception:
+                                    pass
+                                mw.database_combo.setCurrentIndex(idx2)
+                                logger.info(f"database_combo 延迟选中: {database}")
+                                try:
+                                    mw.database_combo.currentTextChanged.connect(mw.on_database_combo_changed)
+                                except Exception:
+                                    pass
+                            else:
+                                logger.warning(f"database_combo 延迟选中失败，未找到: {database}")
+                        QTimer.singleShot(500, _retry_select)
+
+                    # 展开"表"分类
                     for i in range(item.childCount()):
                         child = item.child(i)
                         if TreeItemData.get_item_type(child) == TreeItemType.TABLE_CATEGORY:
                             child.setExpanded(True)
                             break
                 QTimer.singleShot(0, switch_and_expand)
-            
-            # 切换展开状态（这个操作很快，可以直接执行）
-            if item.isExpanded():
-                item.setExpanded(False)
-            else:
-                item.setExpanded(True)
-                # 展开时会自动触发 on_item_expanded，加载表列表（已经在on_item_expanded中使用延迟执行）
-                # Redis 数据库会直接显示"所有数据"节点，不需要加载表列表
+            # 展开/折叠已由 connection_tree.py 处理，此处不再重复调用 setExpanded
         elif item_type == TreeItemType.TABLE:
             # 双击表项，在新标签页中查询表数据
             table_info = TreeItemData.get_table_info(item)
@@ -182,7 +227,7 @@ class TreeHandler:
                 # 在新标签页中查询表数据（使用延迟执行，避免阻塞）
                 def query_data():
                     # 先切换到该连接和数据库
-                    self.main_window.set_current_connection(connection_id, database=database, from_combo=True)
+                    self.main_window.set_current_connection(connection_id, database=database, from_combo=False)
                     # 然后在新标签页中查询表数据
                     self.main_window.query_table_data_in_new_tab(connection_id, table_name, database)
                 QTimer.singleShot(0, query_data)

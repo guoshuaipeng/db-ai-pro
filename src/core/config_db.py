@@ -104,28 +104,7 @@ class ConfigDB:
                 )
             """)
             
-            # 3. 树视图缓存表 - 数据库列表
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS tree_cache_databases (
-                    connection_id TEXT NOT NULL,
-                    database_name TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    PRIMARY KEY (connection_id, database_name)
-                )
-            """)
-            
-            # 4. 树视图缓存表 - 表列表
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS tree_cache_tables (
-                    connection_id TEXT NOT NULL,
-                    database_name TEXT NOT NULL,
-                    table_name TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    PRIMARY KEY (connection_id, database_name, table_name)
-                )
-            """)
-            
-            # 5. 应用设置表
+            # 3. 应用设置表
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS settings (
                     key TEXT PRIMARY KEY,
@@ -243,17 +222,6 @@ class ConfigDB:
                     except:
                         pass
             
-            # 创建索引
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_tree_cache_databases_connection 
-                ON tree_cache_databases(connection_id)
-            """)
-            
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_tree_cache_tables_connection_db 
-                ON tree_cache_tables(connection_id, database_name)
-            """)
-            
             logger.info("数据库表结构已初始化")
     
     # ==================== 连接配置管理 ====================
@@ -367,10 +335,7 @@ class ConfigDB:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM connections WHERE id = ?", (connection_id,))
-            # 同时清理该连接的缓存
-            cursor.execute("DELETE FROM tree_cache_databases WHERE connection_id = ?", (connection_id,))
-            cursor.execute("DELETE FROM tree_cache_tables WHERE connection_id = ?", (connection_id,))
-            logger.debug(f"删除连接配置及缓存: {connection_id}")
+            logger.debug(f"删除连接配置: {connection_id}")
     
     # ==================== 提示词配置管理 ====================
     
@@ -416,122 +381,6 @@ class ConfigDB:
             cursor.execute("SELECT prompt_type, content FROM prompts")
             rows = cursor.fetchall()
             return {row['prompt_type']: row['content'] for row in rows}
-    
-    # ==================== 树视图缓存管理 ====================
-    
-    def save_databases_cache(self, connection_id: str, databases: List[str]):
-        """
-        保存数据库列表缓存
-        
-        :param connection_id: 连接ID
-        :param databases: 数据库名列表
-        """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            now = datetime.now().isoformat()
-            
-            # 先删除旧缓存
-            cursor.execute("DELETE FROM tree_cache_databases WHERE connection_id = ?", (connection_id,))
-            
-            # 批量插入新缓存
-            for db_name in databases:
-                cursor.execute("""
-                    INSERT INTO tree_cache_databases (connection_id, database_name, updated_at)
-                    VALUES (?, ?, ?)
-                """, (connection_id, db_name, now))
-            
-            logger.debug(f"保存数据库列表缓存: {connection_id}, {len(databases)} 个数据库")
-    
-    def get_databases_cache(self, connection_id: str) -> Optional[List[str]]:
-        """
-        获取数据库列表缓存
-        
-        :param connection_id: 连接ID
-        :return: 数据库名列表，无缓存返回 None
-        """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT database_name FROM tree_cache_databases 
-                WHERE connection_id = ?
-                ORDER BY database_name
-            """, (connection_id,))
-            rows = cursor.fetchall()
-            return [row['database_name'] for row in rows] if rows else None
-    
-    def save_tables_cache(self, connection_id: str, database: str, tables: List[str]):
-        """
-        保存表列表缓存
-        
-        :param connection_id: 连接ID
-        :param database: 数据库名
-        :param tables: 表名列表
-        """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            now = datetime.now().isoformat()
-            
-            # 先删除旧缓存
-            cursor.execute("""
-                DELETE FROM tree_cache_tables 
-                WHERE connection_id = ? AND database_name = ?
-            """, (connection_id, database))
-            
-            # 批量插入新缓存
-            for table_name in tables:
-                cursor.execute("""
-                    INSERT INTO tree_cache_tables 
-                    (connection_id, database_name, table_name, updated_at)
-                    VALUES (?, ?, ?, ?)
-                """, (connection_id, database, table_name, now))
-            
-            # 如果表列表为空，插入一个占位符来标记"已缓存"
-            if not tables:
-                cursor.execute("""
-                    INSERT INTO tree_cache_tables 
-                    (connection_id, database_name, table_name, updated_at)
-                    VALUES (?, ?, ?, ?)
-                """, (connection_id, database, '__EMPTY_MARKER__', now))
-                logger.debug(f"💾 插入空表占位符: {connection_id}.{database}")
-            
-            logger.debug(f"ConfigDB 保存表列表缓存: {connection_id}.{database}, {len(tables)} 个表")
-    
-    def get_tables_cache(self, connection_id: str, database: str) -> Optional[List[str]]:
-        """
-        获取表列表缓存
-        
-        :param connection_id: 连接ID
-        :param database: 数据库名
-        :return: 表名列表，无缓存返回 None，空数据库返回 []
-        """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT table_name FROM tree_cache_tables 
-                WHERE connection_id = ? AND database_name = ?
-                ORDER BY table_name
-            """, (connection_id, database))
-            rows = cursor.fetchall()
-            
-            if not rows:
-                # 没有任何记录，说明从未缓存过
-                return None
-            
-            # 过滤掉占位符，返回实际的表列表
-            tables = [row['table_name'] for row in rows if row['table_name'] != '__EMPTY_MARKER__']
-            return tables
-    
-    def clear_connection_cache(self, connection_id: str):
-        """
-        清除指定连接的所有缓存
-        
-        :param connection_id: 连接ID
-        """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM tree_cache_databases WHERE connection_id = ?", (connection_id,))
-            cursor.execute("DELETE FROM tree_cache_tables WHERE connection_id = ?", (connection_id,))
-            logger.debug(f"清除连接缓存: {connection_id}")
     
     # ==================== 应用设置管理 ====================
     
@@ -1005,14 +854,14 @@ class ConfigDB:
             logger.error(f"迁移AI模型配置失败: {str(e)}")
             return 0
     
-    def migrate_from_json(self, connections_file: str = None, 
+    def migrate_from_json(self, connections_file: str = None,
                          tree_cache_file: str = None, ai_models_file: str = None):
         """
         从 JSON 文件迁移数据到 SQLite
         迁移成功后自动将 JSON 文件重命名为 .backup
         
         :param connections_file: 连接配置 JSON 文件路径
-        :param tree_cache_file: 树缓存 JSON 文件路径
+        :param tree_cache_file: 已废弃，保留参数以兼容旧调用方
         :param ai_models_file: AI模型配置 JSON 文件路径
         """
         migrated_count = 0
@@ -1034,28 +883,6 @@ class ConfigDB:
                 migrated_files.append(connections_file)
             except Exception as e:
                 logger.error(f"迁移连接配置失败: {str(e)}")
-        
-        # 迁移树缓存
-        if tree_cache_file and os.path.exists(tree_cache_file):
-            try:
-                with open(tree_cache_file, 'r', encoding='utf-8') as f:
-                    cache_data = json.load(f)
-                    for conn_id, conn_cache in cache_data.items():
-                        # 迁移数据库列表
-                        databases = conn_cache.get('databases', [])
-                        if databases:
-                            self.save_databases_cache(conn_id, databases)
-                        
-                        # 迁移表列表
-                        tables_dict = conn_cache.get('tables', {})
-                        for db_name, tables in tables_dict.items():
-                            self.save_tables_cache(conn_id, db_name, tables)
-                        
-                        migrated_count += 1
-                logger.info(f"已迁移 {len(cache_data)} 个连接的树缓存")
-                migrated_files.append(tree_cache_file)
-            except Exception as e:
-                logger.error(f"迁移树缓存失败: {str(e)}")
         
         # 迁移成功后，重命名 JSON 文件为 .backup
         for file_path in migrated_files:
@@ -1116,6 +943,30 @@ class ConfigDB:
                     created_at TEXT NOT NULL DEFAULT (datetime('now'))
                 )
             """)
+            # 表级摘要：将大量原始 pattern 压缩成表使用规律，注入 prompt 效率更高
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS memory_table_summaries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    connection_id TEXT NOT NULL,
+                    database_name TEXT NOT NULL DEFAULT '',
+                    table_key TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    pattern_count INTEGER DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    UNIQUE(connection_id, database_name, table_key)
+                )
+            """)
+            # 压缩日志：记录上次压缩时间，避免频繁触发
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS memory_compression_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    connection_id TEXT NOT NULL,
+                    database_name TEXT NOT NULL DEFAULT '',
+                    compressed_at TEXT NOT NULL,
+                    pattern_count INTEGER DEFAULT 0,
+                    UNIQUE(connection_id, database_name)
+                )
+            """)
 
     def get_naming_conventions(self, connection_id: str, database_name: str, limit: int = 10):
         with self._get_connection() as conn:
@@ -1151,9 +1002,19 @@ class ConfigDB:
                 )
 
     def search_query_patterns(self, connection_id: str, database_name: str, user_intent: str, top_k: int = 3):
-        words = user_intent.split()[:5]
+        # 提取关键字符：字符二元组（bigram），兼容中英文，无需分词库
+        def bigrams(text: str):
+            t = text.strip()
+            if len(t) <= 1:
+                return list(t)
+            return [t[i:i+2] for i in range(len(t) - 1)]
+
+        query_bigrams = bigrams(user_intent)
+
         with self._get_connection() as conn:
             c = conn.cursor()
+
+            # ── 第一路：热门记录（按使用频率+时间，保底候选）──────────
             c.execute(
                 "SELECT user_intent, generated_sql, used_tables, use_count "
                 "FROM memory_query_patterns "
@@ -1161,16 +1022,54 @@ class ConfigDB:
                 "ORDER BY use_count DESC, last_used_at DESC LIMIT 20",
                 (connection_id, database_name),
             )
-            rows = [dict(zip(["user_intent", "generated_sql", "used_tables", "use_count"], r)) for r in c.fetchall()]
-            if not words:
-                return rows[:top_k]
-            scored = []
-            for r in rows:
-                score = sum(1 for w in words if w in r["user_intent"])
-                if score > 0:
-                    scored.append((score, r))
-            scored.sort(key=lambda x: x[0], reverse=True)
-            return [r for _, r in scored[:top_k]]
+            hot_rows = c.fetchall()
+
+            # ── 第二路：关键字相关记录（全表 LIKE 搜索，不受TOP20限制）──
+            # 策略：跳过头部动词bigram，取尾部名词bigram，用 AND 精确匹配
+            # 例："统计订单总金额" → 跳过"统计""计订"，取"总金""金额" AND 条件
+            like_rows = []
+            if len(query_bigrams) >= 2:
+                # 跳过前2个bigram（通常是"统计""查询"等动词），取后半段中最具体的
+                content_bigrams = query_bigrams[2:] if len(query_bigrams) > 3 else query_bigrams
+                # 最多取2个做 AND 条件：既精确又不会过于苛刻
+                key_bigrams = content_bigrams[-2:] if len(content_bigrams) >= 2 else content_bigrams
+                # AND 条件：同时包含多个关键bigram，避免"统计"一词命中所有记录
+                and_conditions = " AND ".join(["user_intent LIKE ?" for _ in key_bigrams])
+                like_params = [f"%{bg}%" for bg in key_bigrams]
+                c.execute(
+                    f"SELECT user_intent, generated_sql, used_tables, use_count "
+                    f"FROM memory_query_patterns "
+                    f"WHERE connection_id=? AND database_name=? AND ({and_conditions}) "
+                    f"ORDER BY use_count DESC LIMIT 30",
+                    (connection_id, database_name, *like_params),
+                )
+                like_rows = c.fetchall()
+
+        # ── 合并去重，user_intent 为唯一键 ──────────────────────────
+        cols = ["user_intent", "generated_sql", "used_tables", "use_count"]
+        seen = {}
+        for r in hot_rows + like_rows:
+            d = dict(zip(cols, r))
+            if d["user_intent"] not in seen:
+                seen[d["user_intent"]] = d
+        candidates = list(seen.values())
+
+        if not query_bigrams:
+            return candidates[:top_k]
+
+        # ── bigram 相似度打分：命中二元组数 / 查询二元组总数 ──────────
+        query_bg_set = set(query_bigrams)
+        scored = []
+        for r in candidates:
+            record_bgs = set(bigrams(r["user_intent"]))
+            hit = len(query_bg_set & record_bgs)
+            if hit > 0:
+                # 归一化得分：命中率，避免长句子天然得分高
+                score = hit / len(query_bg_set)
+                scored.append((score, r))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [r for _, r in scored[:top_k]]
 
     def upsert_query_pattern(self, connection_id: str, database_name: str, user_intent: str, generated_sql: str, used_tables: list):
         import json
@@ -1214,6 +1113,120 @@ class ConfigDB:
                 "INSERT INTO memory_corrections(connection_id,database_name,user_query,ai_sql,corrected_sql,correction_note,created_at) VALUES(?,?,?,?,?,?,?)",
                 (connection_id, database_name, user_query, ai_sql, corrected_sql, note, now),
             )
+
+    # ------------------------------------------------------------------ #
+    # 记忆压缩：表级摘要                                                    #
+    # ------------------------------------------------------------------ #
+    def get_pattern_count(self, connection_id: str, database_name: str) -> int:
+        """获取当前 pattern 总条数"""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT COUNT(*) FROM memory_query_patterns WHERE connection_id=? AND database_name=?",
+                (connection_id, database_name),
+            )
+            row = c.fetchone()
+            return row[0] if row else 0
+
+    def get_all_patterns_for_compression(self, connection_id: str, database_name: str) -> list:
+        """获取所有 pattern，供压缩使用"""
+        import json
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT user_intent, generated_sql, used_tables, use_count "
+                "FROM memory_query_patterns "
+                "WHERE connection_id=? AND database_name=? "
+                "ORDER BY use_count DESC",
+                (connection_id, database_name),
+            )
+            rows = c.fetchall()
+            return [
+                {
+                    "user_intent": r[0],
+                    "generated_sql": r[1],
+                    "used_tables": json.loads(r[2] or "[]"),
+                    "use_count": r[3],
+                }
+                for r in rows
+            ]
+
+    def save_table_summary(self, connection_id: str, database_name: str,
+                           table_key: str, summary: str, pattern_count: int):
+        """保存或更新表级摘要（upsert）"""
+        now = datetime.now().isoformat()
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT id FROM memory_table_summaries "
+                "WHERE connection_id=? AND database_name=? AND table_key=?",
+                (connection_id, database_name, table_key),
+            )
+            row = c.fetchone()
+            if row:
+                c.execute(
+                    "UPDATE memory_table_summaries SET summary=?, pattern_count=?, updated_at=? WHERE id=?",
+                    (summary, pattern_count, now, row[0]),
+                )
+            else:
+                c.execute(
+                    "INSERT INTO memory_table_summaries(connection_id,database_name,table_key,summary,pattern_count,updated_at) "
+                    "VALUES(?,?,?,?,?,?)",
+                    (connection_id, database_name, table_key, summary, pattern_count, now),
+                )
+
+    def get_table_summaries(self, connection_id: str, database_name: str) -> list:
+        """获取所有表级摘要，按 pattern_count 降序"""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT table_key, summary, pattern_count FROM memory_table_summaries "
+                "WHERE connection_id=? AND database_name=? "
+                "ORDER BY pattern_count DESC",
+                (connection_id, database_name),
+            )
+            return [
+                {"table_key": r[0], "summary": r[1], "pattern_count": r[2]}
+                for r in c.fetchall()
+            ]
+
+    def get_last_compression_time(self, connection_id: str, database_name: str):
+        """返回上次压缩时间（datetime 对象），未压缩过则返回 None"""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT compressed_at FROM memory_compression_log "
+                "WHERE connection_id=? AND database_name=?",
+                (connection_id, database_name),
+            )
+            row = c.fetchone()
+            if not row:
+                return None
+            try:
+                return datetime.fromisoformat(row[0])
+            except Exception:
+                return None
+
+    def update_compression_log(self, connection_id: str, database_name: str, pattern_count: int):
+        """更新压缩日志"""
+        now = datetime.now().isoformat()
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT id FROM memory_compression_log WHERE connection_id=? AND database_name=?",
+                (connection_id, database_name),
+            )
+            row = c.fetchone()
+            if row:
+                c.execute(
+                    "UPDATE memory_compression_log SET compressed_at=?, pattern_count=? WHERE id=?",
+                    (now, pattern_count, row[0]),
+                )
+            else:
+                c.execute(
+                    "INSERT INTO memory_compression_log(connection_id,database_name,compressed_at,pattern_count) VALUES(?,?,?,?)",
+                    (connection_id, database_name, now, pattern_count),
+                )
 
 
 # 全局实例

@@ -14,13 +14,19 @@ sys.path.insert(0, str(project_root))
 
 # 配置日志系统
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - [%(lineno)d] - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[
         logging.StreamHandler(sys.stdout)  # 输出到控制台
     ]
 )
+# 屏蔽第三方库的 DEBUG 噪音，只保留项目自身的 DEBUG 日志
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("PyQt6").setLevel(logging.WARNING)
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
@@ -148,12 +154,10 @@ def init_config_database():
         
         # 检查是否需要迁移
         connections_file = os.path.join(config_dir, "connections.json")
-        tree_cache_file = os.path.join(config_dir, "tree_cache.json")
         ai_models_file = os.path.join(config_dir, "ai_models.json")
         
         needs_migration = (
-            os.path.exists(connections_file) or 
-            os.path.exists(tree_cache_file) or
+            os.path.exists(connections_file) or
             os.path.exists(ai_models_file)
         )
         
@@ -161,7 +165,6 @@ def init_config_database():
             logger.info("检测到旧配置文件，开始迁移到 SQLite...")
             migrated_count = config_db.migrate_from_json(
                 connections_file=connections_file,
-                tree_cache_file=tree_cache_file,
                 ai_models_file=ai_models_file
             )
             

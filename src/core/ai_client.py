@@ -80,24 +80,27 @@ class AIClient:
         client = self._get_client()
 
         # ── 请求日志 ──────────────────────────────────────────
-        tag = f"[{caller}] " if caller else ""
+        tag = f"[{caller}]" if caller else "[ai]"
+        sep = "=" * 56
         self.logger.info(
-            f"{tag}AI请求 → 模型={model}, 消息数={len(messages)}"
+            f"{tag} AI请求 → 模型={model}, 消息数={len(messages)}"
             + (f", 工具数={len(tools)}" if tools else "")
         )
+        lines = [f"\n{sep} {tag} 请求消息 {sep}"]
         for i, msg in enumerate(messages):
             role = msg.get("role", "?")
             content = msg.get("content") or ""
-            # tool_calls 消息可能无 content
             if msg.get("tool_calls"):
                 calls = [tc.get("function", {}).get("name", "?")
                          if isinstance(tc, dict) else tc.function.name
                          for tc in msg["tool_calls"]]
-                self.logger.debug(f"{tag}  [{i}] {role}: [tool_calls] {calls}")
+                lines.append(f"  [{i}] {role}: [tool_calls] {calls}")
             elif role == "tool":
-                self.logger.debug(f"{tag}  [{i}] tool(id={msg.get('tool_call_id','')}): {str(content)[:300]}")
+                lines.append(f"  [{i}] tool(id={msg.get('tool_call_id','')}): {str(content)[:500]}")
             else:
-                self.logger.debug(f"{tag}  [{i}] {role}: {str(content)[:500]}")
+                lines.append(f"  [{i}] {role}: {str(content)[:3000]}")
+        lines.append(sep * 2)
+        self.logger.debug("\n".join(lines))
 
         # ── 发起请求 ──────────────────────────────────────────
         kwargs = dict(model=model, messages=messages, temperature=temperature, top_p=top_p)
@@ -116,15 +119,21 @@ class AIClient:
                      if usage else "tokens=N/A")
 
         if finish == "tool_calls" and choice.message.tool_calls:
-            calls_info = [(tc.function.name, tc.function.arguments[:100])
+            calls_info = [(tc.function.name, tc.function.arguments)
                           for tc in choice.message.tool_calls]
-            self.logger.info(f"{tag}AI响应 ← finish={finish}, {usage_str}, tool_calls={[n for n,_ in calls_info]}")
+            self.logger.info(f"{tag} AI响应 ← finish={finish}, {usage_str}, tool_calls={[n for n,_ in calls_info]}")
+            resp_lines = [f"\n{sep} {tag} 响应 (finish={finish}) {sep}"]
             for name, args in calls_info:
-                self.logger.debug(f"{tag}  tool_call: {name}({args})")
+                resp_lines.append(f"  tool_call: {name}({args})")
+            resp_lines.append(sep * 2)
+            self.logger.debug("\n".join(resp_lines))
         else:
             content = (choice.message.content or "").strip()
-            self.logger.info(f"{tag}AI响应 ← finish={finish}, {usage_str}, 内容长度={len(content)}")
-            self.logger.debug(f"{tag}  内容: {content[:800]}")
+            self.logger.info(f"{tag} AI响应 ← finish={finish}, {usage_str}, 内容长度={len(content)}")
+            self.logger.debug(
+                f"\n{sep} {tag} 响应 (finish={finish}) {sep}\n"
+                f"  {content[:2000]}\n{sep * 2}"
+            )
 
         # ── 记录 Token 统计 ────────────────────────────────────
         self._record_token_usage(response)

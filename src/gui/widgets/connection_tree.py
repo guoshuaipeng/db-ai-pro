@@ -121,6 +121,8 @@ class ConnectionTree(QTreeWidget):
                 if item.childCount() > 0 or is_connection_or_db:
                     item.setExpanded(not item.isExpanded())
                     logger.debug(f"双击{'展开' if item.isExpanded() else '折叠'}: {item.text(0)}")
+                    # 展开/折叠后补发 itemDoubleClicked 信号，让业务逻辑（切换连接/数据库）也能收到
+                    self.itemDoubleClicked.emit(item, 0)
                     event.accept()
                     return
         
