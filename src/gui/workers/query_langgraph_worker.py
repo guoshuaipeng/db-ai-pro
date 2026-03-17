@@ -56,7 +56,8 @@ class QueryLangGraphWorker(QThread):
         if self.isInterruptionRequested() or self._should_stop:
             return
 
-        self.status_update.emit("AI Agent 正在分析查询意图...")
+        # 初始提示：用户刚点击「直接查询」后的状态
+        self.status_update.emit("正在分析查询意图并准备调用 AI ...")
 
         try:
             from src.core.langgraph.query_graph import get_query_graph
@@ -86,9 +87,9 @@ class QueryLangGraphWorker(QThread):
             final_state = initial_state.copy()
 
             step_msgs = {
-                "recall_memory": "正在召回历史记忆...",
-                "agent_sql": "AI Agent 正在推理，按需调用工具...",
-                "write_memory": "正在写入记忆...",
+                "recall_memory": "正在召回历史查询记忆，用于辅助本次生成...",
+                "agent_sql": "AI Agent 正在请求模型并生成 SQL ...",
+                "write_memory": "正在写入本次查询记忆...",
             }
 
             for chunk in graph.stream(initial_state, stream_mode="updates"):
@@ -99,12 +100,14 @@ class QueryLangGraphWorker(QThread):
                     # 显示更详细的状态
                     if node_name == "agent_sql":
                         iters = final_state.get("agent_iterations", 0)
-                        if iters > 0:
-                            self.status_update.emit(
-                                f"AI Agent 完成推理（调用了 {iters} 次工具），正在整理结果..."
-                            )
+                        if iters == 0:
+                            # 刚进入 agent_sql 节点：明确告诉用户正在请求 AI
+                            self.status_update.emit("AI Agent 已开始调用大模型并推理，请稍候...")
                         else:
-                            self.status_update.emit("AI Agent 正在推理中...")
+                            # 已有若干轮 tool-calling：给出更具体的进度感
+                            self.status_update.emit(
+                                f"AI Agent 已完成 {iters} 轮工具调用，正在综合结果生成最终 SQL ..."
+                            )
                     else:
                         self.status_update.emit(step_msgs.get(node_name, f"执行 {node_name}..."))
 
