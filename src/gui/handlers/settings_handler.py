@@ -10,6 +10,7 @@ import logging
 
 from src.gui.dialogs.settings_dialog import SettingsDialog
 from src.gui.dialogs.schema_sync_dialog import SchemaSyncDialog
+from src.gui.dialogs.memory_view_dialog import MemoryViewDialog
 
 if TYPE_CHECKING:
     from src.gui.main_window import MainWindow
@@ -95,5 +96,14 @@ class SettingsHandler:
         """显示关于对话框"""
         from src.gui.dialogs.about_dialog import AboutDialog
         dialog = AboutDialog(self.main_window)
+        dialog.exec()
+
+    def show_memory_view(self):
+        """显示 AI 记忆可视化对话框"""
+        dialog = MemoryViewDialog(
+            self.main_window,
+            connection_id=self.main_window.current_connection_id,
+            database=self.main_window.current_database,
+        )
         dialog.exec()
 

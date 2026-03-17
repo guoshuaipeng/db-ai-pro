@@ -144,6 +144,21 @@ class ConfigDB:
                     updated_at TEXT NOT NULL
                 )
             """)
+
+            # 8. 查询历史表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS query_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    connection_id TEXT NOT NULL,
+                    database_name TEXT NOT NULL DEFAULT '',
+                    sql TEXT NOT NULL,
+                    title TEXT DEFAULT '',
+                    is_favorite INTEGER DEFAULT 0,
+                    source TEXT NOT NULL DEFAULT 'MANUAL', -- MANUAL / AI / CLI
+                    executed_at TEXT NOT NULL,
+                    duration_ms INTEGER DEFAULT 0
+                )
+            """)
             
             # 检查是否需要迁移旧表结构或添加新字段
             cursor.execute("PRAGMA table_info(ai_models)")
@@ -796,6 +811,130 @@ class ConfigDB:
             else:
                 cursor.execute("DELETE FROM token_stats")
                 logger.debug("清除所有Token统计")
+
+    # ==================== 查询历史管理 ====================
+
+    def add_query_history(
+        self,
+        connection_id: str,
+        database_name: str,
+        sql: str,
+        source: str = "MANUAL",
+        duration_ms: int = 0,
+        title: Optional[str] = None,
+    ) -> int:
+        """
+        新增一条查询历史记录
+
+        :return: 新记录的自增ID
+        """
+        executed_at = datetime.now().isoformat()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO query_history
+                    (connection_id, database_name, sql, title, is_favorite, source, executed_at, duration_ms)
+                VALUES (?, ?, ?, ?, 0, ?, ?, ?)
+                """,
+                (
+                    connection_id,
+                    database_name or "",
+                    sql,
+                    title or "",
+                    source,
+                    executed_at,
+                    duration_ms,
+                ),
+            )
+            return cursor.lastrowid
+
+    def get_recent_query_history(
+        self,
+        limit: int = 50,
+        connection_id: Optional[str] = None,
+        database_name: Optional[str] = None,
+        only_favorites: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        获取最近的查询历史
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+
+            conditions = []
+            params: list[Any] = []
+
+            if connection_id:
+                conditions.append("connection_id = ?")
+                params.append(connection_id)
+
+            if database_name is not None:
+                conditions.append("database_name = ?")
+                params.append(database_name)
+
+            if only_favorites:
+                conditions.append("is_favorite = 1")
+
+            where_clause = ""
+            if conditions:
+                where_clause = "WHERE " + " AND ".join(conditions)
+
+            cursor.execute(
+                f"""
+                SELECT id, connection_id, database_name, sql, title,
+                       is_favorite, source, executed_at, duration_ms
+                FROM query_history
+                {where_clause}
+                ORDER BY executed_at DESC
+                LIMIT ?
+                """,
+                (*params, limit),
+            )
+
+            rows = cursor.fetchall()
+            results: List[Dict[str, Any]] = []
+            for row in rows:
+                results.append(
+                    {
+                        "id": row["id"],
+                        "connection_id": row["connection_id"],
+                        "database_name": row["database_name"],
+                        "sql": row["sql"],
+                        "title": row["title"],
+                        "is_favorite": bool(row["is_favorite"]),
+                        "source": row["source"],
+                        "executed_at": row["executed_at"],
+                        "duration_ms": row["duration_ms"],
+                    }
+                )
+            return results
+
+    def update_query_history_title(self, history_id: int, title: str) -> None:
+        """更新查询历史标题"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE query_history
+                SET title = ?
+                WHERE id = ?
+                """,
+                (title, history_id),
+            )
+
+    def set_query_history_favorite(self, history_id: int, is_favorite: bool) -> None:
+        """设置/取消收藏"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE query_history
+                SET is_favorite = ?
+                WHERE id = ?
+                """,
+                (1 if is_favorite else 0, history_id),
+            )
     
     # ==================== 数据迁移工具 ====================
     

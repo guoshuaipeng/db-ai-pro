@@ -268,6 +268,13 @@ class UIHandler:
         settings_menu.addAction(settings_action)
         
         settings_menu.addSeparator()
+
+        # AI 记忆可视化
+        memory_view_action = QAction(self._get_icon('ai'), self.main_window.tr("AI 记忆(&M)"), self.main_window)
+        memory_view_action.triggered.connect(self.main_window.show_memory_view)
+        settings_menu.addAction(memory_view_action)
+        
+        settings_menu.addSeparator()
         
         # AI模型配置
         ai_config_action = QAction(self._get_icon('ai'), self.main_window.tr("AI模型配置(&A)"), self.main_window)

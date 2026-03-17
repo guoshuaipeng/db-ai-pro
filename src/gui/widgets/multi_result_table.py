@@ -1336,14 +1336,73 @@ class SingleResultTable(QWidget):
                     add_separator_if_needed()
                     add_action('delete', f"删除选中行 ({len(selected_rows)} 行)", lambda: self.delete_selected_rows(selected_rows))
 
-        # 刷新放在最底部
+        # 收藏相关操作和刷新放在底部
         if self.original_sql and self.main_window:
             if menu.actions():
                 menu.addSeparator()
+
+            # 加入收藏（使用当前结果对应的 SQL）
+            add_action('star', "加入收藏（当前 SQL）", self.add_to_favorites)
+
+            # 从收藏插入 SQL 到编辑器
+            add_action('history', "从收藏插入 SQL", self.insert_from_favorites)
+
+            menu.addSeparator()
             add_action('refresh', "刷新", self.refresh_data)
 
         # 显示菜单
         menu.exec(self.table.mapToGlobal(position))
+
+    def add_to_favorites(self):
+        """将当前结果对应的 SQL 加入查询收藏"""
+        if not self.original_sql or not self.main_window or not self.connection_id:
+            return
+
+        try:
+            from src.core.config_db import get_config_db
+            from src.utils.toast_manager import show_success, show_error
+
+            config_db = get_config_db()
+            history_id = config_db.add_query_history(
+                connection_id=self.connection_id,
+                database_name=getattr(self.main_window, "current_database", "") or "",
+                sql=self.original_sql,
+                source="MANUAL",
+                duration_ms=0,
+                title="",
+            )
+            config_db.set_query_history_favorite(history_id, True)
+            show_success("已加入查询收藏")
+        except Exception as e:
+            try:
+                from src.utils.toast_manager import show_error
+                show_error(f"加入收藏失败: {e}")
+            except Exception:
+                pass
+
+    def insert_from_favorites(self):
+        """从收藏的查询中选择一条，插入到 SQL 编辑器"""
+        if not self.main_window or not hasattr(self.main_window, "sql_editor"):
+            return
+
+        try:
+            from src.gui.dialogs.query_history_dialog import QueryHistoryDialog
+        except Exception:
+            return
+
+        dlg = QueryHistoryDialog(
+            parent=self.main_window,
+            current_connection_id=self.connection_id,
+            current_database=getattr(self.main_window, "current_database", None),
+        )
+        # 仅显示收藏列表
+        dlg.fav_only_checkbox.setChecked(True)
+
+        if dlg.exec():
+            sql = dlg.get_selected_sql()
+            if sql:
+                self.main_window.sql_editor.set_sql(sql)
+                self._show_status_to_main_window("已从收藏插入 SQL", timeout=3000)
     
     def refresh_data(self):
         """刷新数据：重新执行原始SQL查询"""

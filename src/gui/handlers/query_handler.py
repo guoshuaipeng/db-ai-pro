@@ -104,6 +104,9 @@ class QueryHandler:
         
         # 显示加载动画
         self.main_window.result_table.show_loading()
+
+        from datetime import datetime
+        self._query_start_time = datetime.now()
         
         # 创建并启动工作线程（传递连接信息，在线程中创建引擎）
         self.main_window.query_worker = QueryWorker(
@@ -143,6 +146,15 @@ class QueryHandler:
             
             # 获取 auto_limit_added 标志
             auto_limit_added = getattr(self.main_window.query_worker, '_auto_limit_added', False) if self.main_window.query_worker else False
+
+            # 计算耗时
+            duration_ms = 0
+            try:
+                from datetime import datetime
+                if hasattr(self, "_query_start_time") and isinstance(self._query_start_time, datetime):
+                    duration_ms = int((datetime.now() - self._query_start_time).total_seconds() * 1000)
+            except Exception:
+                duration_ms = 0
             
             if success:
                 if data is not None:
@@ -168,6 +180,22 @@ class QueryHandler:
                     # 如果是 ALTER TABLE 语句，自动刷新编辑表tab的表结构
                     if sql and sql.strip().upper().startswith('ALTER TABLE'):
                         self.main_window.table_structure_handler._refresh_edit_table_tabs(sql)
+
+                # 记录到查询历史（成功时）
+                try:
+                    from src.core.config_db import get_config_db
+                    config_db = get_config_db()
+                    config_db.add_query_history(
+                        connection_id=self.main_window.current_connection_id,
+                        database_name=self.main_window.current_database or "",
+                        sql=sql,
+                        source="MANUAL",
+                        duration_ms=duration_ms,
+                        title="",
+                    )
+                except Exception:
+                    # 历史记录失败不影响主流程
+                    pass
             else:
                 # 错误
                 self.main_window.result_table.add_result(

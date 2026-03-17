@@ -154,6 +154,7 @@ def _run_ai_query(
 ) -> None:
     """使用 LangGraph 查询图进行自然语言查询并执行 SQL"""
     from src.core.ai_client import AIClient
+    from src.core.config_db import get_config_db
     from src.core.langgraph.query_graph import get_query_graph
 
     mgr, conn_id, db_conn = _build_db_manager_and_engine(conn_identifier, database=database)
@@ -186,6 +187,7 @@ def _run_ai_query(
         "current_step": "",
     }
 
+    start_ts = datetime.now()
     final_state = graph.invoke(initial_state)
 
     if final_state.get("error"):
@@ -204,6 +206,7 @@ def _run_ai_query(
     print("=====================")
 
     # 执行 SQL
+    duration_ms = 0
     is_select = sql_type.upper() == "SELECT"
     if is_select:
         success, rows, err = mgr.execute_query(conn_id, sql, limit=limit)
@@ -224,6 +227,20 @@ def _run_ai_query(
             print("执行 SQL 失败：", err or "")
             return
         print(f"执行成功，受影响行数：{affected!r}")
+    # 记录到查询历史
+    try:
+        duration_ms = int((datetime.now() - start_ts).total_seconds() * 1000)
+        config_db = get_config_db()
+        config_db.add_query_history(
+            connection_id=conn_id,
+            database_name=db_conn.database or "",
+            sql=sql,
+            source="CLI",
+            duration_ms=duration_ms,
+            title="",
+        )
+    except Exception as e:  # pragma: no cover - 历史记录失败不影响主流程
+        logger.debug(f"记录查询历史失败: {e}")
 
 
 def cmd_ai_query(args: argparse.Namespace) -> None:
@@ -234,6 +251,50 @@ def cmd_ai_query(args: argparse.Namespace) -> None:
         user_query=args.query,
         limit=args.limit,
     )
+
+
+def cmd_history(args: argparse.Namespace) -> None:
+    """查看最近的查询历史"""
+    from src.core.config_db import get_config_db
+
+    config_db = get_config_db()
+
+    connection_id = None
+    if args.conn:
+        # 允许用 id 或 name 过滤，复用 _load_connection
+        try:
+            conn_cfg = _load_connection(args.conn)
+            connection_id = conn_cfg["id"]
+        except SystemExit:
+            # 连接不存在时，仅按原样作为过滤条件尝试
+            connection_id = args.conn
+
+    histories = config_db.get_recent_query_history(
+        limit=args.limit,
+        connection_id=connection_id,
+        database_name=args.database,
+        only_favorites=args.only_favorites,
+    )
+
+    if not histories:
+        print("暂无查询历史记录。")
+        return
+
+    print("最近的查询历史：")
+    for idx, h in enumerate(histories, start=1):
+        star = "★" if h["is_favorite"] else " "
+        title = h["title"].strip() or h["sql"].strip().replace("\n", " ")
+        if len(title) > 80:
+            title = title[:77] + "..."
+        print(f"[{idx}] {star} {title}")
+        print(f"  连接   : {h['connection_id']}")
+        print(f"  数据库 : {h['database_name'] or '-'}")
+        print(f"  来源   : {h['source']}")
+        print(f"  时间   : {h['executed_at']}")
+        if h["duration_ms"]:
+            print(f"  耗时   : {h['duration_ms']} ms")
+        print(f"  SQL    : {h['sql'].strip()}")
+        print()
 
 
 def _run_ai_create_table(
@@ -434,6 +495,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_ai_q.add_argument("-q", "--query", required=True, help="自然语言查询，如：'查询今天下单金额最高的前10个用户'")
     p_ai_q.add_argument("--limit", type=int, default=100, help="查询结果限制行数（仅对 SELECT 生效）")
     p_ai_q.set_defaults(func=cmd_ai_query)
+
+    # history
+    p_hist = sub.add_parser("history", help="查看最近的查询历史")
+    p_hist.add_argument(
+        "-c", "--conn", help="按连接 ID 或名称过滤（可选）",
+    )
+    p_hist.add_argument(
+        "-d",
+        "--database",
+        help="按数据库名称过滤（可选）",
+    )
+    p_hist.add_argument(
+        "--only-favorites",
+        action="store_true",
+        help="仅显示已收藏的查询",
+    )
+    p_hist.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="最多显示的记录数（默认 20）",
+    )
+    p_hist.set_defaults(func=cmd_history)
 
     # ai-create-table
     p_ai_ct = sub.add_parser("ai-create-table", help="使用 AI 生成建表 SQL，可选直接执行")

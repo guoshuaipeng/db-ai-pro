@@ -238,10 +238,15 @@ class SQLEditor(QWidget):
         self.format_btn = QPushButton("美化")
         self.format_btn.setToolTip("格式化 SQL")
         self.format_btn.clicked.connect(self.format_sql)
+
+        self.history_btn = QPushButton("历史")
+        self.history_btn.setToolTip("查看最近的查询历史")
+        self.history_btn.clicked.connect(self.show_query_history)
         
         sql_btn_layout.addWidget(self.execute_btn)
         sql_btn_layout.addWidget(self.format_btn)
         sql_btn_layout.addWidget(self.clear_btn)
+        sql_btn_layout.addWidget(self.history_btn)
         sql_btn_layout.addStretch()
         sql_layout.addLayout(sql_btn_layout)
         
@@ -422,6 +427,26 @@ class SQLEditor(QWidget):
         self.sql_edit.clear()
         self.ai_input.clear()
         self.status_label.setText("已清空")
+
+    def show_query_history(self):
+        """显示查询历史对话框"""
+        try:
+            from src.gui.dialogs.query_history_dialog import QueryHistoryDialog
+        except Exception as e:
+            logger.error(f"导入查询历史对话框失败: {e}")
+            self.set_status("查询历史对话框加载失败", is_error=True)
+            return
+
+        parent = getattr(self, "_main_window", self)
+        dlg = QueryHistoryDialog(
+            parent=parent,
+            current_connection_id=self.current_connection_id,
+            current_database=self.current_database,
+        )
+        if dlg.exec():
+            sql = dlg.get_selected_sql()
+            if sql:
+                self.set_sql(sql)
 
     def format_sql(self):
         """SQL 美化（优先使用 sqlparse，不可用时回退到轻量级格式化）"""
@@ -893,6 +918,24 @@ class SQLEditor(QWidget):
     def on_sql_generated(self, sql: str, sql_type: str = "OTHER"):
         """AI生成SQL完成回调（sql_type 由 AI 直接返回，无需代码推断）"""
         self.sql_edit.setPlainText(sql)
+
+        # 将 AI 生成的 SQL 也纳入查询历史，标记来源为 AI
+        try:
+            if self.current_connection_id:
+                from src.core.config_db import get_config_db
+
+                config_db = get_config_db()
+                config_db.add_query_history(
+                    connection_id=self.current_connection_id,
+                    database_name=self.current_database or "",
+                    sql=sql,
+                    source="AI",
+                    duration_ms=0,
+                    title="",
+                )
+        except Exception:
+            # 历史记录失败不影响主流程
+            pass
 
         self.generate_btn.setEnabled(True)
         self.generate_btn.setText("直接查询")

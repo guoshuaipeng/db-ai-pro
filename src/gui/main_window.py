@@ -2318,6 +2318,11 @@ class MainWindow(QMainWindow):
     def show_settings(self):
         """显示设置对话框"""
         self.settings_handler.show_settings()
+
+    def show_memory_view(self):
+        """显示 AI 记忆可视化对话框"""
+        if hasattr(self, "settings_handler") and self.settings_handler:
+            self.settings_handler.show_memory_view()
     
     def on_language_changed(self, new_language: str):
         """语言改变时的回调"""
