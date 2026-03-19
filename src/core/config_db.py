@@ -1140,6 +1140,15 @@ class ConfigDB:
                     (connection_id, database_name, pattern, json.dumps(examples, ensure_ascii=False), now, now),
                 )
 
+    def clear_naming_conventions(self, connection_id: str, database_name: str):
+        """清理指定连接+库下的命名规范（用于重新生成覆盖旧规则）"""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "DELETE FROM memory_naming_conventions WHERE connection_id=? AND database_name=?",
+                (connection_id, database_name),
+            )
+
     def search_query_patterns(self, connection_id: str, database_name: str, user_intent: str, top_k: int = 3):
         # 提取关键字符：字符二元组（bigram），兼容中英文，无需分词库
         def bigrams(text: str):

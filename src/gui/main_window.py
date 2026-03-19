@@ -144,6 +144,7 @@ class MainWindow(QMainWindow):
         try:
             self.ui_handler.init_ui()
             self.setup_connections()
+            self.reload_db_display_filter_config()
             logger.info("UI初始化完成")
             
             # 先显示UI，然后异步加载连接（避免数据库连接失败时阻塞UI显示）
@@ -273,6 +274,30 @@ class MainWindow(QMainWindow):
         self.connection_tree.itemClicked.connect(self.tree_handler.on_item_clicked)
         self.connection_tree.itemExpanded.connect(self.tree_handler.on_item_expanded)
         self.connection_tree.itemCollapsed.connect(self.tree_handler.on_item_collapsed)
+
+    def reload_db_display_filter_config(self):
+        """从配置读取“连接->可显示数据库列表”，并应用到左侧树过滤。"""
+        try:
+            from src.core.config_db import get_config_db
+
+            config_db = get_config_db()
+            # mapping: { connection_id: ["db1", "db2", ...], ... }
+            mapping = config_db.get_setting("db_tree_display_whitelist_by_connection", {}) or {}
+            if not isinstance(mapping, dict):
+                mapping = {}
+
+            normalized = {}
+            for conn_id, db_list in mapping.items():
+                conn_id = str(conn_id)
+                if db_list is None:
+                    continue
+                if isinstance(db_list, list):
+                    normalized[conn_id] = db_list
+
+            if getattr(self, "connection_tree", None):
+                self.connection_tree.set_db_visibility_filter_config(normalized)
+        except Exception as e:
+            logger.warning(f"加载数据库显示过滤配置失败: {e}", exc_info=True)
     
     def load_saved_connections(self):
         """加载保存的连接（从 SQLite 配置数据库）"""
@@ -1268,6 +1293,12 @@ class MainWindow(QMainWindow):
             no_db_item.setText(0, "无数据库")
             TreeItemData.set_item_type_and_data(no_db_item, TreeItemType.EMPTY)
             no_db_item.setFlags(Qt.ItemFlag.NoItemFlags)  # 禁用交互
+            try:
+                # 更新树上方“显示的数据库”勾选面板
+                if getattr(self, "connection_tree", None):
+                    self.connection_tree.refresh_database_filter_ui()
+            except Exception:
+                pass
             return
         
         # 获取连接信息
@@ -1324,6 +1355,13 @@ class MainWindow(QMainWindow):
                 font = db_item.font(0)
                 font.setBold(True)
                 db_item.setFont(0, font)
+
+        try:
+            # 数据库节点创建完成后刷新过滤面板
+            if getattr(self, "connection_tree", None):
+                self.connection_tree.refresh_database_filter_ui()
+        except Exception:
+            pass
     
     def on_databases_load_error(self, connection_item: QTreeWidgetItem, loading_item: QTreeWidgetItem, error: str):
         """数据库列表加载错误回调"""

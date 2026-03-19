@@ -145,6 +145,13 @@ class PreloadHandler:
                     logger.debug(f"✅ 预加载 Redis 数据库，启动 key 数量查询")
                     tree_data_handler = self.main_window.tree_data_handler
                     tree_data_handler._query_redis_dbsizes(connection_item, connection_id, connection, databases)
+
+                # 预加载阶段也需要刷新“显示的数据库”勾选面板
+                try:
+                    if getattr(self.main_window, "connection_tree", None):
+                        self.main_window.connection_tree.refresh_database_filter_ui()
+                except Exception:
+                    pass
                 
             except RuntimeError:
                 # 树结构已改变，忽略

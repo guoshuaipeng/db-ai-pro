@@ -28,8 +28,9 @@ class ConnectionHandler:
         dialog = ConnectionDialog(self.main_window)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             connection = dialog.get_connection()
+            db_filter_config = dialog.get_db_visibility_filter_config()
             # 使用后台线程测试连接，避免阻塞UI
-            self._test_and_add_connection(connection, is_edit=False)
+            self._test_and_add_connection(connection, is_edit=False, db_filter_config=db_filter_config)
     
     def import_from_navicat(self):
         """从 Navicat 导入连接"""
@@ -77,12 +78,13 @@ class ConnectionHandler:
         dialog = ConnectionDialog(self.main_window, connection)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_connection = dialog.get_connection()
+            db_filter_config = dialog.get_db_visibility_filter_config()
             # 保存旧连接ID，用于移除
             self.main_window._editing_connection_id = connection_id
             # 使用后台线程测试连接，避免阻塞UI
-            self._test_and_add_connection(new_connection, is_edit=True)
+            self._test_and_add_connection(new_connection, is_edit=True, db_filter_config=db_filter_config)
     
-    def _test_and_add_connection(self, connection: DatabaseConnection, is_edit: bool = False):
+    def _test_and_add_connection(self, connection: DatabaseConnection, is_edit: bool = False, db_filter_config=None):
         """在后台线程中测试连接，然后添加连接"""
         # 如果已有测试线程在运行，先停止
         if self.main_window.connection_test_worker and self.main_window.connection_test_worker.isRunning():
@@ -96,6 +98,7 @@ class ConnectionHandler:
         # 保存连接信息，用于测试完成后的回调
         self.main_window._pending_connection = connection
         self.main_window._pending_is_edit = is_edit
+        self.main_window._pending_db_filter_config = db_filter_config
         if is_edit:
             self.main_window._editing_connection_id = getattr(self.main_window, '_editing_connection_id', None)
         
@@ -111,6 +114,7 @@ class ConnectionHandler:
         """连接测试完成后的回调"""
         connection = getattr(self.main_window, '_pending_connection', None)
         is_edit = getattr(self.main_window, '_pending_is_edit', False)
+        db_filter_config = getattr(self.main_window, '_pending_db_filter_config', None)
         editing_connection_id = getattr(self.main_window, '_editing_connection_id', None)
         
         # 清理临时变量
@@ -118,6 +122,8 @@ class ConnectionHandler:
             delattr(self.main_window, '_pending_connection')
         if hasattr(self.main_window, '_pending_is_edit'):
             delattr(self.main_window, '_pending_is_edit')
+        if hasattr(self.main_window, '_pending_db_filter_config'):
+            delattr(self.main_window, '_pending_db_filter_config')
         if hasattr(self.main_window, '_editing_connection_id'):
             delattr(self.main_window, '_editing_connection_id')
         
@@ -145,6 +151,7 @@ class ConnectionHandler:
             if self.main_window.db_manager.add_connection(connection, test_connection=False):
                 self.main_window.refresh_connections()
                 self.save_connections()
+                self._persist_db_visibility_filter(connection, db_filter_config)
                 self.main_window.statusBar().showMessage("连接测试成功", 3000)
                 # 显示 Toast 通知（非阻塞）
                 from src.utils.toast_manager import show_success
@@ -188,10 +195,55 @@ class ConnectionHandler:
                 if self.main_window.db_manager.add_connection(connection, test_connection=False):
                     self.main_window.refresh_connections()
                     self.save_connections()
+                    self._persist_db_visibility_filter(connection, db_filter_config)
                     from src.utils.toast_manager import show_warning
                     show_warning("⚠️ 连接配置已保存，但测试失败", 3000)
                 else:
                     QMessageBox.warning(self.main_window, "失败", "保存连接配置失败")
+
+    def _persist_db_visibility_filter(self, connection: DatabaseConnection, db_filter_config):
+        """
+        将“该连接下哪些数据库在树中显示”的选择持久化到配置。
+
+        db_filter_config 形如：
+        {
+          "loaded": bool,
+          "allowed_dbs": Optional[list[str]]  # None 表示显示全部（删除配置条目）
+        }
+        """
+        try:
+            if not connection or not getattr(connection, "id", None):
+                return
+            if not db_filter_config or not db_filter_config.get("loaded", False):
+                # 未加载过滤页/未做选择：不覆盖现有配置
+                return
+
+            from src.core.config_db import get_config_db
+
+            config_db = get_config_db()
+            key = "db_tree_display_whitelist_by_connection"
+            mapping = config_db.get_setting(key, {}) or {}
+            if not isinstance(mapping, dict):
+                mapping = {}
+
+            allowed_dbs = db_filter_config.get("allowed_dbs", None)
+            conn_id = connection.id
+
+            if allowed_dbs is None:
+                # 显示全部：删除该连接的配置条目（如果存在）
+                mapping.pop(conn_id, None)
+            else:
+                # allowed_dbs 为 list（可能为空 [] 表示隐藏全部）
+                if not isinstance(allowed_dbs, list):
+                    allowed_dbs = []
+                mapping[conn_id] = allowed_dbs
+
+            config_db.save_setting(key, mapping)
+            # 立即刷新树过滤
+            if getattr(self.main_window, "reload_db_display_filter_config", None):
+                self.main_window.reload_db_display_filter_config()
+        except Exception as e:
+            logger.warning(f"持久化数据库显示过滤配置失败: {e}", exc_info=True)
     
     def remove_connection(self, connection_id: str):
         """移除数据库连接"""
@@ -213,9 +265,22 @@ class ConnectionHandler:
                 config_db = get_config_db()
                 config_db.delete_connection(connection_id)
                 logger.info(f"已从 SQLite 删除连接: {connection_id}")
+
+                # 同步删除该连接的树过滤配置
+                try:
+                    key = "db_tree_display_whitelist_by_connection"
+                    mapping = config_db.get_setting(key, {}) or {}
+                    if isinstance(mapping, dict) and connection_id in mapping:
+                        mapping.pop(connection_id, None)
+                        config_db.save_setting(key, mapping)
+                except Exception:
+                    pass
                 
                 # 刷新连接树
                 self.main_window.refresh_connections()
+                # 刷新过滤配置（如果该连接已预加载出数据库节点，直接应用到现有树）
+                if getattr(self.main_window, "reload_db_display_filter_config", None):
+                    self.main_window.reload_db_display_filter_config()
                 
                 # 如果删除的是当前连接，清空当前连接状态
                 if self.main_window.current_connection_id == connection_id:

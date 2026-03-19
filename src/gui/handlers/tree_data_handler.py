@@ -357,6 +357,13 @@ class TreeDataHandler:
         if connection and connection.db_type == DatabaseType.REDIS:
             logger.info(f"✅ Redis 连接，启动 key 数量查询")
             self._query_redis_dbsizes(connection_item, connection_id, connection, databases)
+        
+        # 数据库节点创建完成后刷新过滤面板
+        try:
+            if getattr(self.main_window, "connection_tree", None):
+                self.main_window.connection_tree.refresh_database_filter_ui()
+        except Exception:
+            pass
     
     def _query_redis_dbsizes(self, connection_item: QTreeWidgetItem, connection_id: str, connection, databases: List[str]):
         """查询 Redis 数据库的 key 数量并更新显示（异步，不阻塞界面）"""

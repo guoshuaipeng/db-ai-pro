@@ -100,10 +100,31 @@ class SettingsHandler:
 
     def show_memory_view(self):
         """显示 AI 记忆可视化对话框"""
+        ai_client = None
+        connection_string = ""
+        connect_args = {}
+        try:
+            # 尽量复用当前主窗口已初始化的 AI 客户端，保证“生成表级记忆”能走 AI 模式
+            if hasattr(self.main_window, "sql_editor") and self.main_window.sql_editor:
+                ai_client = getattr(self.main_window.sql_editor, "ai_client", None)
+
+            # 同步传入当前连接的 schema 拉取所需参数
+            if getattr(self.main_window, "db_manager", None) and self.main_window.current_connection_id:
+                conn = self.main_window.db_manager.get_connection(self.main_window.current_connection_id)
+                if conn:
+                    connection_string = conn.get_connection_string() or ""
+                    connect_args = conn.get_connect_args() or {}
+        except Exception:
+            # 兜底：缺少 ai_client 或连接参数时，MemoryStore 内部会降级为统计摘要
+            pass
+
         dialog = MemoryViewDialog(
             self.main_window,
             connection_id=self.main_window.current_connection_id,
             database=self.main_window.current_database,
+            ai_client=ai_client,
+            connection_string=connection_string,
+            connect_args=connect_args,
         )
         dialog.exec()
 

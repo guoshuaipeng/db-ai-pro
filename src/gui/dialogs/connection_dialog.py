@@ -3,6 +3,7 @@
 """
 from PyQt6.QtWidgets import (
     QDialog,
+    QWidget,
     QVBoxLayout,
     QHBoxLayout,
     QFormLayout,
@@ -15,12 +16,15 @@ from PyQt6.QtWidgets import (
     QTextEdit,
     QLabel,
     QGroupBox,
+    QTabWidget,
+    QScrollArea,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QIntValidator
 from src.core.database_connection import DatabaseConnection, DatabaseType
 from src.utils.thread_manager import safe_delete_thread
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +38,18 @@ class ConnectionDialog(QDialog):
         self.setWindowTitle("添加数据库连接" if not connection else "编辑数据库连接")
         self.setModal(True)
         self.parse_worker = None  # 保存工作线程引用
+        # 左侧树“显示过滤”Tab 状态
+        self._db_filter_worker = None
+        self._db_filter_loaded = False  # 是否成功加载过数据库列表并构建了勾选项
+        self._db_filter_all_dbs: list[str] = []
+        self._db_filter_checkboxes: dict[str, QCheckBox] = {}
+        self._db_filter_config_loaded_dbs: list[str] = []
         self.init_ui()
         
         if connection:
             self.load_connection()
+            # 编辑模式：尽早加载“显示过滤”Tab 的数据库列表
+            QTimer.singleShot(250, self.load_db_list_for_filter_tab)
     
     def init_ui(self):
         """初始化UI"""
@@ -321,12 +333,18 @@ class ConnectionDialog(QDialog):
         connection_group.setLayout(connection_layout)
         
         # 根据是否有AI识别区域决定布局方式
-        if not self.connection:
-            content_layout.addWidget(connection_group)
-            main_layout.addLayout(content_layout)
-        else:
-            content_layout.addWidget(connection_group)
-            main_layout.addLayout(content_layout)
+        content_layout.addWidget(connection_group)
+
+        # 使用 Tab 将“连接信息”和“显示过滤”分区，避免树上方 UI 难看
+        content_widget = QWidget()
+        content_widget.setLayout(content_layout)
+        
+        tab_widget = QTabWidget()
+        tab_widget.setTabPosition(QTabWidget.TabPosition.North)
+        tab_widget.addTab(content_widget, "连接信息")
+        filter_widget = self._build_db_visibility_filter_tab()
+        tab_widget.addTab(filter_widget, "显示过滤")
+        main_layout.addWidget(tab_widget)
         
         # 应用现代化样式到输入控件
         input_style = """
@@ -444,14 +462,243 @@ class ConnectionDialog(QDialog):
         
         main_layout.addLayout(button_layout)
         
-        # 设置对话框大小
-        if not self.connection:
-            self.resize(850, 550)  # 新建连接：左右布局，更宽
-        else:
-            self.resize(550, 0)    # 编辑连接：垂直布局
+        # 设置对话框大小：兼顾“显示过滤”Tab
+        self.resize(1050, 720)
+        self.setMinimumSize(900, 650)
         
         # 设置默认端口
         self.on_db_type_changed()
+
+    def _build_db_visibility_filter_tab(self) -> QWidget:
+        """构建“显示过滤”Tab：勾选哪些数据库在左侧树中显示。"""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(10)
+        tab.setLayout(layout)
+
+        info_label = QLabel("选择要显示在左侧数据库树中的数据库（按连接生效）。")
+        info_label.setStyleSheet("color: #2c3e50; font-size: 13px;")
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
+        self._db_filter_load_btn = QPushButton("加载数据库列表")
+        self._db_filter_load_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._db_filter_load_btn.clicked.connect(self.load_db_list_for_filter_tab)
+        btn_row.addWidget(self._db_filter_load_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        self._db_filter_status_label = QLabel("尚未加载数据库列表。")
+        self._db_filter_status_label.setStyleSheet("color: #546e7a; font-size: 12px;")
+        layout.addWidget(self._db_filter_status_label)
+
+        # 勾选列表容器（可滚动）
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+
+        container = QWidget()
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(8, 0, 8, 0)
+        container_layout.setSpacing(6)
+        container_layout.addStretch(1)
+        container.setLayout(container_layout)
+
+        self._db_filter_checkbox_container = container
+        self._db_filter_checkbox_container_layout = container_layout
+        scroll.setWidget(container)
+        layout.addWidget(scroll, 1)
+
+        # 快捷操作
+        action_row = QHBoxLayout()
+        action_row.setSpacing(10)
+        self._db_filter_select_all_btn = QPushButton("全选")
+        self._db_filter_select_none_btn = QPushButton("不显示")
+        self._db_filter_select_all_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._db_filter_select_none_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._db_filter_select_all_btn.clicked.connect(self._on_db_filter_select_all)
+        self._db_filter_select_none_btn.clicked.connect(self._on_db_filter_select_none)
+        action_row.addWidget(self._db_filter_select_all_btn)
+        action_row.addWidget(self._db_filter_select_none_btn)
+        action_row.addStretch()
+        layout.addLayout(action_row)
+
+        return tab
+
+    def _clear_db_filter_checkboxes(self):
+        """清空“显示过滤”Tab 的勾选项。"""
+        # 保留最后的 stretch
+        layout = self._db_filter_checkbox_container_layout
+        for i in range(layout.count() - 1, -1, -1):
+            item = layout.itemAt(i)
+            widget = item.widget() if item else None
+            if widget:
+                widget.setParent(None)
+                widget.deleteLater()
+                layout.removeWidget(widget)
+        self._db_filter_checkboxes.clear()
+        self._db_filter_all_dbs = []
+
+    def _load_existing_db_visibility(self) -> Optional[set[str]]:
+        """读取该连接的已保存勾选（用于编辑模式预勾选）。"""
+        if not self.connection or not getattr(self.connection, "id", None):
+            return None
+        try:
+            from src.core.config_db import get_config_db
+
+            key = "db_tree_display_whitelist_by_connection"
+            config_db = get_config_db()
+            mapping = config_db.get_setting(key, {}) or {}
+            if not isinstance(mapping, dict):
+                return None
+            conn_id = self.connection.id
+            if conn_id not in mapping:
+                return None  # 未配置 => 显示全部
+            allowed = mapping.get(conn_id)
+            if allowed is None:
+                return None
+            if isinstance(allowed, list):
+                return set(allowed)
+        except Exception:
+            pass
+        return None
+
+    def load_db_list_for_filter_tab(self):
+        """加载当前连接配置下的“数据库列表”，用于生成勾选项。"""
+        # 停止旧worker（如果存在）
+        if self._db_filter_worker and self._db_filter_worker.isRunning():
+            try:
+                self._db_filter_worker.stop()
+            except Exception:
+                pass
+            try:
+                self._db_filter_worker.wait(300)
+            except Exception:
+                pass
+            try:
+                safe_delete_thread(self._db_filter_worker)
+            except Exception:
+                pass
+            self._db_filter_worker = None
+
+        # 基于当前表单生成连接配置（未保存也可以）
+        temp_connection = self.get_connection()
+        db_type = temp_connection.db_type
+
+        # SQLite：数据库列表固定为 main
+        if db_type == DatabaseType.SQLITE:
+            self._db_filter_loaded = True
+            databases = ["main"]
+            self._on_db_filter_dbs_ready(databases)
+            return
+
+        self._db_filter_loaded = False
+        self._clear_db_filter_checkboxes()
+
+        self._db_filter_load_btn.setEnabled(False)
+        self._db_filter_status_label.setText("正在加载数据库列表...")
+
+        from src.gui.workers.database_list_worker import DatabaseListWorker
+
+        worker = DatabaseListWorker(
+            temp_connection.get_connection_string(),
+            temp_connection.get_connect_args(),
+            temp_connection.db_type,
+            temp_connection  # Redis 查询数据库数量用
+        )
+        self._db_filter_worker = worker
+
+        worker.databases_ready.connect(self._on_db_filter_dbs_ready)
+        worker.error_occurred.connect(self._on_db_filter_error)
+        worker.finished.connect(lambda: self._cleanup_db_filter_worker(worker))
+        worker.start()
+
+    def _cleanup_db_filter_worker(self, worker):
+        try:
+            if worker == self._db_filter_worker:
+                self._db_filter_worker = None
+        except Exception:
+            pass
+        try:
+            safe_delete_thread(worker)
+        except Exception:
+            pass
+
+    def _on_db_filter_dbs_ready(self, databases: list):
+        """数据库列表加载完成：构建勾选项。"""
+        try:
+            # UI线程安全：直接操作控件
+            databases = list(databases or [])
+        except Exception:
+            databases = []
+
+        self._clear_db_filter_checkboxes()
+        self._db_filter_all_dbs = databases
+
+        # 编辑模式：读取已保存白名单并预勾选
+        allowed_set = self._load_existing_db_visibility()
+
+        # 默认：显示全部（全部勾选）
+        default_show_all = allowed_set is None
+
+        for db_name in databases:
+            cb = QCheckBox(str(db_name))
+            if default_show_all:
+                cb.setChecked(True)
+            else:
+                cb.setChecked(db_name in allowed_set)
+            self._db_filter_checkbox_container_layout.insertWidget(
+                self._db_filter_checkbox_container_layout.count() - 1,
+                cb
+            )
+            self._db_filter_checkboxes[str(db_name)] = cb
+
+        self._db_filter_loaded = True
+        self._db_filter_status_label.setText(f"已加载 {len(databases)} 个数据库。")
+        self._db_filter_load_btn.setEnabled(True)
+
+    def _on_db_filter_error(self, error: str):
+        """加载失败：提示并保持未加载状态。"""
+        self._db_filter_status_label.setText(f"加载失败：{error}")
+        self._db_filter_loaded = False
+        self._db_filter_load_btn.setEnabled(True)
+
+    def _on_db_filter_select_all(self):
+        """全选：显示全部数据库。"""
+        for cb in self._db_filter_checkboxes.values():
+            cb.setChecked(True)
+
+    def _on_db_filter_select_none(self):
+        """不显示：隐藏该连接下所有数据库。"""
+        for cb in self._db_filter_checkboxes.values():
+            cb.setChecked(False)
+
+    def get_db_visibility_filter_config(self):
+        """
+        获取“显示过滤”的保存配置。
+        返回：
+          {"loaded": bool, "allowed_dbs": Optional[list[str]]}
+        allowed_dbs 为 None 表示“显示全部”（删除配置条目）。
+        """
+        if not self._db_filter_loaded:
+            return {"loaded": False, "allowed_dbs": None}
+
+        # 由当前勾选项计算白名单
+        selected = []
+        for db_name in self._db_filter_all_dbs:
+            cb = self._db_filter_checkboxes.get(str(db_name))
+            if cb and cb.isChecked():
+                selected.append(str(db_name))
+
+        # 如果全部勾选 => 表示“显示全部”，用于删除配置条目
+        if self._db_filter_all_dbs and len(selected) == len(self._db_filter_all_dbs):
+            return {"loaded": True, "allowed_dbs": None}
+
+        # 全部取消 or 只勾选部分
+        return {"loaded": True, "allowed_dbs": selected}
     
     def on_db_type_changed(self):
         """数据库类型改变时的处理"""
@@ -640,12 +887,9 @@ class ConnectionDialog(QDialog):
     
     def _stop_worker(self):
         """停止工作线程"""
-        if not self.parse_worker:
-            return
-        
+        # 1) 停止 AI 解析 worker
         try:
-            # 检查对象是否仍然有效
-            if self.parse_worker.isRunning():
+            if self.parse_worker and self.parse_worker.isRunning():
                 # 先尝试取消任务
                 self.parse_worker.cancel()
                 # 等待线程完成（最多1秒）
@@ -655,26 +899,39 @@ class ConnectionDialog(QDialog):
                         self.parse_worker.terminate()
                         self.parse_worker.wait(1000)
                     except RuntimeError:
-                        # 对象已被删除，忽略
                         pass
         except RuntimeError:
-            # 对象已被删除，直接清理引用
             self.parse_worker = None
-            return
-        
-        # 断开信号连接，避免回调时出错
+
+        # 断开信号连接，避免回调时出错（parse_worker）
         try:
-            self.parse_worker.finished.disconnect()
-        except (RuntimeError, AttributeError):
+            if self.parse_worker:
+                try:
+                    self.parse_worker.finished.disconnect()
+                except Exception:
+                    pass
+                safe_delete_thread(self.parse_worker)
+        except Exception:
             pass
-        
-        # 清理线程对象
-        try:
-            safe_delete_thread(self.parse_worker)
-        except RuntimeError:
-            pass
-        
         self.parse_worker = None
+
+        # 2) 停止“显示过滤”数据库列表加载 worker
+        try:
+            if self._db_filter_worker and self._db_filter_worker.isRunning():
+                try:
+                    self._db_filter_worker.stop()
+                except Exception:
+                    pass
+                try:
+                    self._db_filter_worker.wait(500)
+                except Exception:
+                    pass
+
+            if self._db_filter_worker:
+                safe_delete_thread(self._db_filter_worker)
+        except Exception:
+            pass
+        self._db_filter_worker = None
     
     def accept(self):
         """确认"""

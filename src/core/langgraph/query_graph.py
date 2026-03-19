@@ -456,7 +456,11 @@ def node_write_memory(state: QueryGraphState) -> dict:
             used_tables=state.get("selected_tables", []),
         )
         # 写入后检查是否需要压缩（传入 ai_client 供 AI 生成摘要，无则降级统计摘要）
-        store.compress_if_needed(ai_client=state.get("ai_client"))
+        store.compress_if_needed(
+            ai_client=state.get("ai_client"),
+            connection_string=state.get("connection_string", ""),
+            connect_args=state.get("connect_args", {}),
+        )
     except Exception as e:
         logger.warning(f"write_memory 失败（跳过）: {e}")
     return {"current_step": "write_memory"}

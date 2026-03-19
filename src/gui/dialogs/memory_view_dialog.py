@@ -9,9 +9,10 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QTextEdit,
+    QApplication,
 )
 from PyQt6.QtCore import Qt
-from typing import Optional
+from typing import Optional, Any, Dict
 
 from src.core.memory_store import MemoryStore
 from src.core.config_db import get_config_db
@@ -20,13 +21,30 @@ from src.core.config_db import get_config_db
 class MemoryViewDialog(QDialog):
     """AI 记忆可视化对话框：命名规范 / 相似历史查询 / 表级摘要 / 纠错记录"""
 
-    def __init__(self, parent=None, connection_id: Optional[str] = None, database: Optional[str] = None):
+    def __init__(
+        self,
+        parent=None,
+        connection_id: Optional[str] = None,
+        database: Optional[str] = None,
+        ai_client: Any = None,
+        connection_string: str = "",
+        connect_args: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("AI 记忆")
         self.resize(1000, 600)
 
+        self._main_window = parent
+
+        # 用于避免“初始化时 setCurrentIndex 触发 currentIndexChanged”
+        # 导致默认数据库筛选被意外重置。
+        self._is_loading = True
+
         self._current_connection_id = connection_id or ""
         self._current_database = database or ""
+        self.ai_client = ai_client
+        self.connection_string = connection_string or ""
+        self.connect_args = connect_args or {}
 
         self._config_db = get_config_db()
         self._memory_store: Optional[MemoryStore] = None
@@ -34,6 +52,7 @@ class MemoryViewDialog(QDialog):
         self._init_ui()
         self._load_connections()
         self._reload_memory()
+        self._is_loading = False
 
     # UI -----------------------------------------------------------------
     def _init_ui(self):
@@ -63,6 +82,11 @@ class MemoryViewDialog(QDialog):
         self.generate_btn.setToolTip("根据当前历史查询，为各表生成使用规律摘要")
         self.generate_btn.clicked.connect(self._generate_memory)
         top.addWidget(self.generate_btn)
+
+        self.naming_generate_btn = QPushButton("生成命名规范")
+        self.naming_generate_btn.setToolTip("扫描当前连接/库的表结构，交给 AI 总结命名规范并写入长期记忆")
+        self.naming_generate_btn.clicked.connect(self._generate_naming_conventions)
+        top.addWidget(self.naming_generate_btn)
 
         layout.addLayout(top)
 
@@ -124,6 +148,12 @@ class MemoryViewDialog(QDialog):
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #666;")
         layout.addWidget(hint)
+
+        # 生成中状态展示（避免 UI 卡住时无反馈）
+        self._status_label = QLabel("")
+        self._status_label.setStyleSheet("color: #444;")
+        self._status_label.setWordWrap(True)
+        layout.addWidget(self._status_label)
 
     # 数据加载 -----------------------------------------------------------
     def _load_connections(self):
@@ -223,6 +253,23 @@ class MemoryViewDialog(QDialog):
     # 事件处理 -----------------------------------------------------------
     def _on_connection_changed(self, index: int):
         self._current_connection_id = self._current_conn_id()
+        # 同步当前连接对应的 schema 拉取参数，保证“生成命名规范/表级摘要”能用到正确连接。
+        try:
+            if self._main_window and getattr(self._main_window, "db_manager", None):
+                conn = self._main_window.db_manager.get_connection(self._current_connection_id)
+                if conn:
+                    self.connection_string = conn.get_connection_string() or ""
+                    self.connect_args = conn.get_connect_args() or {}
+                else:
+                    self.connection_string = ""
+                    self.connect_args = {}
+        except Exception:
+            pass
+
+        # 仅在用户手动切换连接时，才重置“数据库筛选”，否则初始化阶段会打断默认选中值。
+        if not self._is_loading:
+            self._current_database = ""
+            self.db_combo.setCurrentIndex(0)  # 0: 全部数据库
         self._load_databases()
         self._reload_memory()
 
@@ -315,7 +362,12 @@ class MemoryViewDialog(QDialog):
 
         store = MemoryStore(connection_id=conn_id, database=db_name)
         try:
-            triggered = store.compress_if_needed(ai_client=None)
+            triggered = store.compress_if_needed(
+                ai_client=self.ai_client,
+                connection_string=self.connection_string,
+                connect_args=self.connect_args,
+                force=True,
+            )
         except Exception as e:
             QMessageBox.warning(self, "生成失败", f"生成记忆时出错: {e}")
             return
@@ -326,7 +378,128 @@ class MemoryViewDialog(QDialog):
             QMessageBox.information(
                 self,
                 "无需生成",
-                "当前历史查询数量不足或刚刚生成过表级摘要，暂不需要再次生成。",
+                "本次未生成新的表级摘要（通常是：相关表的历史样例不足，或当前没有可压缩的历史 pattern）。",
             )
         self._reload_memory()
+
+    def _generate_naming_conventions(self):
+        """手动生成命名规范（从 schema 出发交给 AI，总结后写回长期记忆）"""
+        conn_id = self._current_conn_id()
+        db_name = self._current_db_name()
+        if not conn_id:
+            return
+
+        # 如果之前打开弹窗时 ai_client 尚未初始化，这里做懒加载，避免用户必须先跑一次查询
+        if not self.ai_client:
+            try:
+                from src.core.ai_client import AIClient
+                from src.core.ai_model_storage import AIModelStorage
+
+                model_id = None
+                if self._main_window:
+                    model_id = getattr(self._main_window, "current_ai_model_id", None)
+
+                if model_id:
+                    storage = AIModelStorage()
+                    model_config = next(
+                        (m for m in storage.load_models() if m.id == model_id),
+                        None,
+                    )
+                    if model_config:
+                        self.ai_client = AIClient(
+                            api_key=model_config.api_key.get_secret_value(),
+                            base_url=model_config.get_base_url(),
+                            default_model=model_config.default_model,
+                            turbo_model=model_config.turbo_model,
+                        )
+                        # 用于内部 token 统计/日志区分
+                        self.ai_client._current_model_id = model_config.id
+                    else:
+                        # 找不到指定模型：退回默认模型配置
+                        self.ai_client = AIClient()
+                else:
+                    self.ai_client = AIClient()  # 自动加载默认模型
+            except Exception:
+                from PyQt6.QtWidgets import QMessageBox
+
+                QMessageBox.warning(
+                    self,
+                    "无法生成",
+                    "当前未配置 AI 模型/客户端，无法调用 AI 生成命名规范。请先在应用中配置 AI 模型。",
+                )
+                return
+
+        # 确保连接参数是当前连接的（用户可能仅点按钮未触发连接切换回调）
+        if (not self.connection_string or not self.connect_args) and self._main_window and getattr(self._main_window, "db_manager", None):
+            try:
+                conn = self._main_window.db_manager.get_connection(conn_id)
+                if conn:
+                    self.connection_string = conn.get_connection_string() or ""
+                    self.connect_args = conn.get_connect_args() or {}
+            except Exception:
+                pass
+
+        if not self.connection_string:
+            from PyQt6.QtWidgets import QMessageBox
+
+            QMessageBox.warning(self, "无法生成", "当前连接参数缺失，无法拉取表结构。")
+            return
+
+        # 改为后台线程跑，避免 UI 卡住
+        from PyQt6.QtWidgets import QMessageBox
+
+        self.naming_generate_btn.setEnabled(False)
+        if self.generate_btn:
+            self.generate_btn.setEnabled(False)
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self._status_label.setText("正在后台生成命名规范，请稍候...")
+
+        from src.gui.workers.generate_naming_conventions_worker import GenerateNamingConventionsWorker
+
+        self._naming_worker = GenerateNamingConventionsWorker(
+            ai_client=self.ai_client,
+            connection_id=conn_id,
+            database=db_name,
+            connection_string=self.connection_string,
+            connect_args=self.connect_args,
+        )
+        self._naming_worker.status_update.connect(self._on_naming_status_update)
+        self._naming_worker.finished.connect(self._on_naming_finished)
+        self._naming_worker.error_occurred.connect(self._on_naming_error)
+        self._naming_worker.finished.connect(self._naming_worker.deleteLater)
+        self._naming_worker.start()
+
+    def _on_naming_status_update(self, msg: str):
+        if hasattr(self, "_status_label") and self._status_label:
+            self._status_label.setText(msg)
+
+    def _on_naming_finished(self, ok: bool, message: str):
+        from PyQt6.QtWidgets import QMessageBox
+
+        QApplication.restoreOverrideCursor()
+        self._status_label.setText("")
+
+        self.naming_generate_btn.setEnabled(True)
+        if self.generate_btn:
+            self.generate_btn.setEnabled(True)
+
+        if ok:
+            QMessageBox.information(self, "生成完成", message)
+        else:
+            QMessageBox.information(self, "无需/生成失败", message)
+
+        self._reload_memory()
+
+    def _on_naming_error(self, error_msg: str):
+        from PyQt6.QtWidgets import QMessageBox
+
+        QApplication.restoreOverrideCursor()
+        self._status_label.setText("")
+
+        self.naming_generate_btn.setEnabled(True)
+        if self.generate_btn:
+            self.generate_btn.setEnabled(True)
+
+        QMessageBox.warning(self, "生成失败", f"生成命名规范时出错: {error_msg}")
 

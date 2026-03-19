@@ -79,6 +79,114 @@ class MemoryStore:
         except Exception as e:
             logger.warning(f"save_naming_convention 失败: {e}")
 
+    def generate_naming_conventions(
+        self,
+        ai_client,
+        connection_string: str,
+        connect_args: Optional[dict] = None,
+        max_tables: int = 300,
+        max_schema_chars: int = 12000,
+    ) -> bool:
+        """
+        从数据库表结构中，让 AI 归纳“命名规范”，并写回 memory_naming_conventions。
+
+        注意：schema_service.fetch_schema_sync 内部目前对全量表名有默认上限（约 300），
+        因此这里的 max_tables 主要用于提示/未来扩展，实际以 schema_service 行为为准。
+        """
+        if not ai_client or not connection_string or not self.connection_id:
+            return False
+
+        try:
+            from src.core.langgraph.schema_service import fetch_schema_sync
+
+            # 传空列表表示“不指定表”，schema_service 会取前若干表结构（默认上限 300）
+            schema_text, table_names = fetch_schema_sync(
+                connection_string=connection_string,
+                connect_args=connect_args or {},
+                selected_tables=[],
+                connection_id=self.connection_id,
+                database=self.database,
+                force_refresh=False,
+            )
+
+            schema_text = (schema_text or "").strip()
+            if not schema_text:
+                return False
+            if len(schema_text) > max_schema_chars:
+                schema_text = schema_text[:max_schema_chars] + "\n...(schema已截断)"
+
+            prompt = (
+                "你是数据库设计助手。请根据下面给出的数据库表结构（包含表名、列名、列类型、是否可空、主键、以及可能的注释），"
+                "归纳该数据库/数据域的表命名与字段命名规范。\n\n"
+                "要求：\n"
+                "1. 输出尽量多但要精炼的命名规则（通常 6~12 条）。\n"
+                "2. 每条规则的 `pattern` 用一句中文概括（尽量包含关键约束，如 snake_case / 前缀 / 后缀 / 大小写 / 是否带下划线等）。\n"
+                "3. 每条规则的 `examples` 给出 2~8 个从结构里出现过的真实表名/字段名示例（或命名模板），用数组返回。\n"
+                "4. 如果无法从数据中可靠提炼某条规则，则不要编造，宁可减少条数。\n\n"
+                "输出格式：仅返回 JSON，不要有任何多余文字。JSON 必须是：\n"
+                '{\n'
+                '  "naming_conventions": [\n'
+                '    {"pattern": "...", "examples": ["...", "..."]}\n'
+                "  ]\n"
+                "}\n\n"
+                f"（结构信息：table_count={len(table_names)}；max_tables_hint={max_tables}）\n"
+                f"{schema_text}\n"
+            )
+
+            resp = ai_client.chat_complete(
+                messages=[{"role": "user", "content": prompt}],
+                caller="memory_naming_conventions",
+            )
+            raw = (resp.choices[0].message.content or "").strip()
+            if not raw:
+                return False
+
+            cleaned = raw
+            # 兼容 ```json ... ``` 包裹
+            if cleaned.startswith("```"):
+                import re
+
+                cleaned = re.sub(r"^```(?:json)?\\s*", "", cleaned, flags=re.IGNORECASE).strip()
+                cleaned = re.sub(r"```$", "", cleaned).strip()
+
+            import json as _json
+
+            data = _json.loads(cleaned)
+            conventions = data.get("naming_conventions", [])
+            if not isinstance(conventions, list) or not conventions:
+                return False
+
+            # 写前覆盖旧规则，避免重复/脏数据
+            try:
+                self._db.clear_naming_conventions(self.connection_id, self.database)
+            except Exception:
+                # 清理失败不影响写入（但可能导致重复）
+                pass
+
+            saved = 0
+            for c in conventions:
+                if not isinstance(c, dict):
+                    continue
+                pattern = str(c.get("pattern", "")).strip()
+                examples = c.get("examples", []) or []
+                if not pattern:
+                    continue
+                if not isinstance(examples, list):
+                    examples = [str(examples)]
+                self._db.save_naming_convention(
+                    self.connection_id,
+                    self.database,
+                    pattern,
+                    [str(x) for x in examples],
+                )
+                saved += 1
+
+            return saved > 0
+
+        except Exception as e:
+            logger.warning(f"generate_naming_conventions 失败: {e}")
+            return False
+
     # ------------------------------------------------------------------ #
     # 查询模式                                                              #
     # ------------------------------------------------------------------ #
@@ -188,32 +296,50 @@ class MemoryStore:
     # ------------------------------------------------------------------ #
     # 记忆压缩                                                              #
     # ------------------------------------------------------------------ #
-    def compress_if_needed(self, ai_client=None) -> bool:
+    def compress_if_needed(
+        self,
+        ai_client=None,
+        connection_string: str = "",
+        connect_args: Optional[dict] = None,
+        force: bool = False,
+    ) -> bool:
         """
         检查是否需要压缩，满足条件时执行压缩。
         返回 True 表示本次触发了压缩，False 表示跳过。
         """
         try:
             count = self._db.get_pattern_count(self.connection_id, self.database)
-            if count < COMPRESS_THRESHOLD:
-                return False
+            if not force:
+                if count < COMPRESS_THRESHOLD:
+                    return False
 
-            last_time = self._db.get_last_compression_time(self.connection_id, self.database)
-            if last_time and (datetime.now() - last_time) < timedelta(days=COMPRESS_INTERVAL_DAYS):
-                return False
+                last_time = self._db.get_last_compression_time(self.connection_id, self.database)
+                if last_time and (datetime.now() - last_time) < timedelta(days=COMPRESS_INTERVAL_DAYS):
+                    return False
 
             logger.info(f"触发记忆压缩：connection={self.connection_id} db={self.database} patterns={count}")
-            self._do_compress(ai_client, total_count=count)
-            return True
+            compressed_count = self._do_compress(
+                ai_client=ai_client,
+                total_count=count,
+                connection_string=connection_string,
+                connect_args=connect_args or {},
+            )
+            return compressed_count > 0
         except Exception as e:
             logger.warning(f"compress_if_needed 失败（跳过）: {e}")
             return False
 
-    def _do_compress(self, ai_client=None, total_count: int = 0):
+    def _do_compress(
+        self,
+        ai_client=None,
+        total_count: int = 0,
+        connection_string: str = "",
+        connect_args: Optional[dict] = None,
+    ):
         """执行压缩：按涉及的表分组，生成摘要并保存"""
         all_patterns = self._db.get_all_patterns_for_compression(self.connection_id, self.database)
         if not all_patterns:
-            return
+            return 0
 
         # 按 used_tables 分组
         groups: dict = {}
@@ -227,8 +353,20 @@ class MemoryStore:
             if len(patterns) < 2:
                 # 只有1条的组，直接跳过，留给相似查询召回
                 continue
+
+            # 组内去重得到参与表名；用于拉取 schema 给 AI
+            table_names = sorted(
+                {t for p in patterns for t in (p.get("used_tables") or []) if t}
+            )
             if ai_client:
-                summary = self._summarize_with_ai(table_key, patterns, ai_client)
+                summary = self._summarize_with_ai(
+                    table_key=table_key,
+                    patterns=patterns,
+                    ai_client=ai_client,
+                    table_names=table_names,
+                    connection_string=connection_string,
+                    connect_args=connect_args or {},
+                )
             else:
                 summary = self._summarize_statistically(table_key, patterns)
 
@@ -241,18 +379,49 @@ class MemoryStore:
 
         self._db.update_compression_log(self.connection_id, self.database, total_count)
         logger.info(f"记忆压缩完成：生成 {compressed_count} 条表级摘要，原始 pattern={total_count}")
+        return compressed_count
 
-    def _summarize_with_ai(self, table_key: str, patterns: list, ai_client) -> str:
+    def _summarize_with_ai(
+        self,
+        table_key: str,
+        patterns: list,
+        ai_client,
+        table_names: List[str],
+        connection_string: str = "",
+        connect_args: Optional[dict] = None,
+    ) -> str:
         """调用 AI 生成表使用规律摘要（最多展示10条样例给AI）"""
         examples = "\n".join(
             f"- 意图：{p['user_intent']}\n  SQL：{p['generated_sql']}"
             for p in patterns[:10]
         )
+
+        schema_text = ""
+        if connection_string and table_names:
+            try:
+                # 生成摘要时，把真实表结构给 AI，提升摘要的可解释性与可执行性
+                from src.core.langgraph.schema_service import fetch_schema_sync
+
+                schema_text, _ = fetch_schema_sync(
+                    connection_string=connection_string,
+                    connect_args=connect_args or {},
+                    selected_tables=table_names,
+                    connection_id=self.connection_id,
+                    database=self.database,
+                    force_refresh=False,
+                )
+                # 防止 schema 过长导致模型输入超限
+                schema_text = (schema_text or "").strip()
+                if len(schema_text) > 8000:
+                    schema_text = schema_text[:8000] + "\n...(schema已截断)"
+            except Exception as e:
+                logger.warning(f"获取 schema 给 AI 失败（降级为仅历史查询摘要）: {e}")
+
         prompt = (
             f"以下是用户对【{table_key}】相关表的历史查询记录"
             f"（共{len(patterns)}条，展示前10条）：\n\n{examples}\n\n"
-            "请用1~2句话归纳这些查询的规律，包括：常用字段、常见操作（统计/筛选/关联等）、"
-            "典型 WHERE 条件。直接输出归纳文字，不要额外解释和标题。"
+            + (f"表结构如下（用于理解列名/主键/注释，可能已截断）：\n{schema_text}\n\n" if schema_text else "")
+            + "请用2~3句话归纳这些查询的规律，包括：常用字段（按列名）、常见操作（统计/筛选/关联等）、典型 WHERE 条件。直接输出归纳文字，不要额外解释和标题。"
         )
         try:
             resp = ai_client.chat_complete(
