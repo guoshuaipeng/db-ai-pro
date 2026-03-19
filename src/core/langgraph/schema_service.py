@@ -20,6 +20,8 @@ def fetch_schema_sync(
     connection_id: Optional[str] = None,
     database: Optional[str] = None,
     force_refresh: bool = False,
+    max_tables: int = 300,
+    include_comments: bool = True,
 ) -> Tuple[str, List[str]]:
     """
     同步获取表结构，返回 (schema_text, table_names)。
@@ -44,6 +46,7 @@ def fetch_schema_sync(
             poolclass=None,
         )
         inspector = inspect(engine)
+        import time
 
         if database:
             if "mysql" in connection_string.lower() or "mariadb" in connection_string.lower():
@@ -62,10 +65,10 @@ def fetch_schema_sync(
                     if matched:
                         tables_to_process.append(matched)
         else:
-            tables_to_process = all_tables[:300]
+            tables_to_process = all_tables[:max_tables]
 
         schema_parts: List[str] = []
-        for table_name in tables_to_process:
+        for idx, table_name in enumerate(tables_to_process):
             try:
                 actual_table = table_name
                 schema_name: Optional[str] = None
@@ -91,11 +94,13 @@ def fetch_schema_sync(
                 except Exception:
                     pk_info = ""
 
-                try:
-                    table_comment = _get_table_comment(engine, table_name)
-                    comment_info = f" - {table_comment}" if table_comment else ""
-                except Exception:
-                    comment_info = ""
+                comment_info = ""
+                if include_comments:
+                    try:
+                        table_comment = _get_table_comment(engine, table_name)
+                        comment_info = f" - {table_comment}" if table_comment else ""
+                    except Exception:
+                        comment_info = ""
 
                 schema_parts.append(f"表: {table_name}{pk_info}{comment_info}")
 
@@ -104,11 +109,13 @@ def fetch_schema_sync(
                     col_type = str(col["type"])
                     nullable = "可空" if col.get("nullable", True) else "非空"
 
-                    try:
-                        col_comment = _get_column_comment(engine, table_name, col_name)
-                        comment_str = f" ({col_comment})" if col_comment else ""
-                    except Exception:
-                        comment_str = ""
+                    comment_str = ""
+                    if include_comments:
+                        try:
+                            col_comment = _get_column_comment(engine, table_name, col_name)
+                            comment_str = f" ({col_comment})" if col_comment else ""
+                        except Exception:
+                            comment_str = ""
 
                     col_info = f"  • {col_name}: {col_type} ({nullable}){comment_str}"
                     if col.get("default") is not None:
@@ -118,6 +125,11 @@ def fetch_schema_sync(
                     schema_parts.append(col_info)
 
                 schema_parts.append("")
+
+                # 为避免在后台线程执行长循环时持有 GIL 导致 UI 无法响应，
+                # 每处理一小段表结构就主动让出执行权。
+                # 注意：time.sleep(0) 会释放 GIL，让 UI 线程有机会抢占。
+                time.sleep(0)
             except Exception as e:
                 logger.error(f"schema_service: 获取表 {table_name} 结构失败: {e}")
                 continue

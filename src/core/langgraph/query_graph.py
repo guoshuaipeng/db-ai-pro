@@ -238,7 +238,11 @@ def node_recall_memory(state: QueryGraphState) -> dict:
             connection_id=state.get("connection_id", ""),
             database=state.get("database", ""),
         )
-        context = store.build_memory_context(user_intent=state.get("user_query", ""))
+        # 查询生成阶段不需要“命名规范样例”，避免干扰 SQL 生成
+        context = store.build_memory_context(
+            user_intent=state.get("user_query", ""),
+            include_naming_conventions=False,
+        )
         return {"memory_context": context, "current_step": "recall_memory"}
     except Exception as e:
         logger.warning(f"recall_memory 失败（跳过）: {e}")

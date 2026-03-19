@@ -107,6 +107,8 @@ class MemoryStore:
                 connection_id=self.connection_id,
                 database=self.database,
                 force_refresh=False,
+                max_tables=max_tables,
+                include_comments=False,
             )
 
             schema_text = (schema_text or "").strip()
@@ -246,13 +248,19 @@ class MemoryStore:
     # ------------------------------------------------------------------ #
     # 召回上下文（供 recall_memory 节点使用）                                #
     # ------------------------------------------------------------------ #
-    def build_memory_context(self, user_intent: str = "", max_tokens: int = 500) -> str:
+    def build_memory_context(
+        self,
+        user_intent: str = "",
+        max_tokens: int = 500,
+        include_naming_conventions: bool = True,
+    ) -> str:
         """组装记忆上下文字符串，注入到 AI 提示词末尾"""
         parts: List[str] = []
 
-        conventions = self.get_naming_conventions(limit=8)
-        if conventions:
-            parts.append("【该库历史命名规范】\n" + "\n".join(f"- {c}" for c in conventions))
+        if include_naming_conventions:
+            conventions = self.get_naming_conventions(limit=8)
+            if conventions:
+                parts.append("【该库历史命名规范】\n" + "\n".join(f"- {c}" for c in conventions))
 
         # 优先使用表级摘要（压缩后的高密度知识）
         summaries = self.get_table_summaries()

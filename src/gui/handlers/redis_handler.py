@@ -224,7 +224,12 @@ class RedisHandler:
         # 使用 QTimer 异步执行耗时操作，确保 UI 立即响应
         def execute_query_async():
             # 切换到该连接和数据库（但不切换 tab）
-            self.main_window.set_current_connection(connection_id, database=db_name, from_combo=True)
+            self.main_window.set_current_connection(
+                connection_id,
+                database=db_name,
+                from_combo=True,
+                show_status=False,  # 查询场景避免与进度状态叠加
+            )
             
             # 停止之前的 Redis 数据 worker（如果存在）
             if hasattr(self.main_window, 'redis_data_worker') and self.main_window.redis_data_worker:

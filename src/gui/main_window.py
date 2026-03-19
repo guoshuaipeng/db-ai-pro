@@ -1006,7 +1006,14 @@ class MainWindow(QMainWindow):
         # 启动worker（在后台线程中执行）
         worker.start()
     
-    def set_current_connection(self, connection_id: str, update_completion: bool = True, database: Optional[str] = None, from_combo: bool = False):
+    def set_current_connection(
+        self,
+        connection_id: str,
+        update_completion: bool = True,
+        database: Optional[str] = None,
+        from_combo: bool = False,
+        show_status: bool = True,
+    ):
         """设置当前连接（确保所有操作都是非阻塞的）
         
         Args:
@@ -1042,11 +1049,11 @@ class MainWindow(QMainWindow):
             except:
                 pass
             
-            # 更新状态栏
+            # 更新状态栏（可被查询场景屏蔽，避免与查询进度出现多个状态）
             if need_switch:
-                # 如果需要切换数据库，先显示"正在连接"
-                self.statusBar().showMessage(f"正在连接: {connection.name}...")
-                self.sql_editor.set_status(f"正在连接: {connection.name}...")
+                if show_status:
+                    self.statusBar().showMessage(f"正在连接: {connection.name}...")
+                    self.sql_editor.set_status(f"正在连接: {connection.name}...")
                 
                 # 切换数据库
                 try:
@@ -1055,18 +1062,20 @@ class MainWindow(QMainWindow):
                     connection = self.db_manager.get_connection(connection_id)
                     self.current_database = database
                     # 更新状态为"切换完成"
-                    self.statusBar().showMessage(f"切换完成: {connection.name} - {database}")
-                    self.sql_editor.set_status(f"切换完成: {connection.name} - {database}")
+                    if show_status:
+                        self.statusBar().showMessage(f"切换完成: {connection.name} - {database}")
+                        self.sql_editor.set_status(f"切换完成: {connection.name} - {database}")
                 except Exception as e:
                     logger.error(f"切换数据库失败: {e}")
-                    self.statusBar().showMessage(f"切换数据库失败: {e}", 3000)
-                    self.sql_editor.set_status(f"切换数据库失败: {e}", is_error=True)
+                    if show_status:
+                        self.statusBar().showMessage(f"切换数据库失败: {e}", 3000)
+                        self.sql_editor.set_status(f"切换数据库失败: {e}", is_error=True)
                     return
             else:
                 # 不需要切换数据库，直接设置当前数据库
                 self.current_database = database
                 # 更新状态栏（使用简单的消息，避免调用可能耗时的 get_display_name()）
-                if database:
+                if database and show_status:
                     self.statusBar().showMessage(f"切换完成: {connection.name} - {database}")
                     self.sql_editor.set_status(f"切换完成: {connection.name} - {database}")
             

@@ -41,6 +41,10 @@ class GenerateNamingConventionsWorker(QThread):
                 ai_client=self.ai_client,
                 connection_string=self.connection_string,
                 connect_args=self.connect_args,
+                # 命名规范通常不需要扫描全量表；限制表数量能显著降低耗时，
+                # 也避免 UI 看起来“卡住”（即使在后台线程中仍可能长时间占用 GIL）。
+                max_tables=80,
+                max_schema_chars=8000,
             )
             if ok:
                 self.finished.emit(True, "命名规范已生成并写入长期记忆。")

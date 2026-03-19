@@ -99,7 +99,8 @@ class QueryHandler:
                 return
         
         # 显示加载状态
-        self.main_window.sql_editor.set_status("执行中...")
+        # 查询进行中：使用 timeout=0，避免进度消息反复“显示一段时间后又变回去”
+        self.main_window.sql_editor.set_status("执行中...", timeout=0)
         # 注意：不清空结果，因为可能有多条SQL，每条SQL会创建一个新的Tab
         
         # 显示加载动画
@@ -130,7 +131,8 @@ class QueryHandler:
     
     def on_query_progress(self, message: str):
         """查询进度更新"""
-        self.main_window.sql_editor.set_status(message)
+        # 查询进度：保持只显示“当前一步”，不让旧状态滞留造成多状态错觉
+        self.main_window.sql_editor.set_status(message, timeout=0)
     
     def on_query_finished(self, success: bool, data, error, affected_rows, columns=None):
         """查询完成回调（单条SQL）"""
@@ -342,7 +344,12 @@ class QueryHandler:
                         return
                 
                 # 设置当前连接（不立即更新完成，避免阻塞），并传递当前数据库
-                self.main_window.set_current_connection(connection_id, update_completion=False, database=database)
+                self.main_window.set_current_connection(
+                    connection_id,
+                    update_completion=False,
+                    database=database,
+                    show_status=False,  # 查询场景避免与“执行中/进度”叠加多个状态
+                )
                 
                 # 根据数据库类型生成查询SQL（不添加LIMIT，由分页系统自动处理）
                 connection = self.main_window.db_manager.get_connection(connection_id)
@@ -375,7 +382,8 @@ class QueryHandler:
                 self.execute_query(sql)
                 
                 # 更新状态
-                self.main_window.statusBar().showMessage(f"查询表: {table_name}")
+                # 统一使用 sql_editor 的 set_status，避免 statusBar() 的默认超时行为造成“多个状态”
+                self.main_window.sql_editor.set_status(f"查询表: {table_name}", timeout=0)
             except Exception as e:
                 logger.error(f"查询表数据失败: {e}")
                 QMessageBox.warning(self.main_window, "错误", f"查询表数据失败: {str(e)}")
