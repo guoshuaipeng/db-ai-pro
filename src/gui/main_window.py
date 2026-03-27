@@ -77,6 +77,29 @@ class MainWindow(QMainWindow):
                 pass  # 如果获取失败，使用原文本
         
         return translated
+
+    def _build_query_tab_title(self, table_name: Optional[str]) -> str:
+        """构建工作区查询 Tab 标题（显示完整表名）。"""
+        value = (table_name or "").strip()
+        return value if value else "查询"
+
+    def _build_query_tab_tooltip(
+        self,
+        connection_name: Optional[str],
+        database: Optional[str],
+        table_name: Optional[str],
+        sql: Optional[str] = None,
+    ) -> str:
+        """构建工作区查询 Tab 的完整提示信息。"""
+        lines = [
+            f"连接: {connection_name or '-'}",
+            f"数据库: {database or '-'}",
+            f"表: {table_name or '-'}",
+        ]
+        if sql and sql.strip():
+            lines.append("")
+            lines.append(f"SQL: {sql.strip()}")
+        return "\n".join(lines)
     
     def __init__(self, settings: Settings, translation_manager: TranslationManager = None):
         super().__init__()
@@ -1626,46 +1649,33 @@ class MainWindow(QMainWindow):
                         return
         
         # 不存在相同的tab，创建新的查询tab
-        from PyQt6.QtWidgets import QWidget, QVBoxLayout, QSplitter, QHBoxLayout, QGroupBox
+        from PyQt6.QtWidgets import QWidget, QVBoxLayout, QSplitter, QHBoxLayout
         from src.gui.widgets.sql_editor import SQLEditor
         from src.gui.widgets.multi_result_table import MultiResultTable
         
         query_tab = QWidget()
         query_layout = QVBoxLayout()
-        query_layout.setContentsMargins(5, 5, 5, 5)
-        query_layout.setSpacing(5)
+        query_layout.setContentsMargins(8, 8, 8, 8)
+        query_layout.setSpacing(8)
         query_tab.setLayout(query_layout)
         
-        # 在查询tab顶部添加连接选择（用GroupBox包裹，与第一个查询tab相同样式）
-        connection_group = QGroupBox(self.tr("查询范围"))
-        connection_group.setStyleSheet("QGroupBox { font-weight: bold; padding-top: 10px; }")
-        connection_group_layout = QHBoxLayout()
-        connection_group_layout.setSpacing(10)
-        connection_group_layout.setContentsMargins(10, 15, 10, 10)
-        connection_group.setLayout(connection_group_layout)
+        # 表查询 tab：连接/库与标签、侧边栏一致，下拉框仅内部同步，不展示
+        _hidden_conn = QWidget()
+        _hidden_conn.setVisible(False)
+        _hcl = QHBoxLayout()
+        _hcl.setContentsMargins(0, 0, 0, 0)
+        _hidden_conn.setLayout(_hcl)
         
-        # 当前连接
-        connection_label = QLabel(self.tr("当前连接:"))
-        connection_group_layout.addWidget(connection_label)
-        
-        # 为这个tab创建独立的连接组合框
         tab_connection_combo = QComboBox()
         tab_connection_combo.setMinimumWidth(250)
-        # 加载所有连接
         for conn in self.db_manager.get_all_connections():
             tab_connection_combo.addItem(conn.name, conn.id)
-        # 设置当前选中的连接
         for i in range(tab_connection_combo.count()):
             if tab_connection_combo.itemData(i) == connection_id:
                 tab_connection_combo.setCurrentIndex(i)
                 break
-        connection_group_layout.addWidget(tab_connection_combo)
+        _hcl.addWidget(tab_connection_combo)
         
-        # 当前数据库
-        database_label = QLabel(self.tr("当前数据库:"))
-        connection_group_layout.addWidget(database_label)
-        
-        # 为这个tab创建独立的数据库组合框
         tab_database_combo = QComboBox()
         tab_database_combo.setMinimumWidth(200)
         # 异步加载数据库列表（避免阻塞UI）
@@ -1737,11 +1747,8 @@ class MainWindow(QMainWindow):
         # 延迟执行，避免阻塞UI初始化
         QTimer.singleShot(0, load_databases_for_tab)
         
-        connection_group_layout.addWidget(tab_database_combo)
-        
-        connection_group_layout.addStretch()  # 添加弹性空间
-        
-        query_layout.addWidget(connection_group)
+        _hcl.addWidget(tab_database_combo)
+        query_layout.addWidget(_hidden_conn)
         
         query_splitter = QSplitter(Qt.Orientation.Vertical)
         query_splitter.setChildrenCollapsible(False)
@@ -1849,14 +1856,18 @@ class MainWindow(QMainWindow):
                 # 更新tab标题以反映新的连接
                 new_connection = self.db_manager.get_connection(new_connection_id)
                 connection_name = new_connection.name if new_connection else new_connection_id
-                if query_tab._table_query_database:
-                    new_tab_title = f"{connection_name} › {query_tab._table_query_database} › {query_tab._table_query_table_name}"
-                else:
-                    new_tab_title = f"{connection_name} › {query_tab._table_query_table_name}"
+                new_tab_title = self._build_query_tab_title(query_tab._table_query_table_name)
+                new_tab_tooltip = self._build_query_tab_tooltip(
+                    connection_name=connection_name,
+                    database=query_tab._table_query_database,
+                    table_name=query_tab._table_query_table_name,
+                    sql=sql_editor.get_sql() if hasattr(sql_editor, "get_sql") else None,
+                )
                 # 找到当前tab的索引并更新标题
                 for i in range(self.right_tab_widget.count()):
                     if self.right_tab_widget.widget(i) == query_tab:
                         self.right_tab_widget.setTabText(i, new_tab_title)
+                        self.right_tab_widget.setTabToolTip(i, new_tab_tooltip)
                         break
         
         def on_tab_database_changed(text: str):
@@ -1875,14 +1886,18 @@ class MainWindow(QMainWindow):
                 # 更新tab标题以反映新的数据库
                 connection = self.db_manager.get_connection(query_tab._connection_id)
                 connection_name = connection.name if connection else query_tab._connection_id
-                if new_database:
-                    new_tab_title = f"{connection_name} › {new_database} › {query_tab._table_query_table_name}"
-                else:
-                    new_tab_title = f"{connection_name} › {query_tab._table_query_table_name}"
+                new_tab_title = self._build_query_tab_title(query_tab._table_query_table_name)
+                new_tab_tooltip = self._build_query_tab_tooltip(
+                    connection_name=connection_name,
+                    database=new_database,
+                    table_name=query_tab._table_query_table_name,
+                    sql=sql_editor.get_sql() if hasattr(sql_editor, "get_sql") else None,
+                )
                 # 找到当前tab的索引并更新标题
                 for i in range(self.right_tab_widget.count()):
                     if self.right_tab_widget.widget(i) == query_tab:
                         self.right_tab_widget.setTabText(i, new_tab_title)
+                        self.right_tab_widget.setTabToolTip(i, new_tab_tooltip)
                         break
         
         tab_connection_combo.currentTextChanged.connect(on_tab_connection_changed)
@@ -2067,13 +2082,19 @@ class MainWindow(QMainWindow):
             ai_hint_text = f"目标表 : {table_name}\n"
             sql_editor.ai_input.setPlainText(ai_hint_text)
         
-        # 添加新tab（使用"连接 › 库 › 表"面包屑格式）
+        # 添加新tab（简化标题，完整信息放到 tooltip）
         connection_name = connection.name if connection else connection_id
-        if database:
-            tab_title = f"{connection_name} › {database} › {table_name}"
-        else:
-            tab_title = f"{connection_name} › {table_name}"
+        tab_title = self._build_query_tab_title(table_name)
         tab_index = self.right_tab_widget.addTab(query_tab, tab_title)
+        self.right_tab_widget.setTabToolTip(
+            tab_index,
+            self._build_query_tab_tooltip(
+                connection_name=connection_name,
+                database=database,
+                table_name=table_name,
+                sql=sql,
+            ),
+        )
         
         # 切换到新tab
         self.right_tab_widget.setCurrentIndex(tab_index)

@@ -405,16 +405,31 @@ class ResultTable(QWidget):
         self._resize_columns_with_max_width()
     
     def _resize_columns_with_max_width(self):
-        """调整列宽，但限制最大宽度"""
-        # 先根据内容调整列宽
-        self.table.resizeColumnsToContents()
-        
-        # 然后限制每列的最大宽度
+        """按采样估算列宽，避免大字段内容导致卡顿。"""
+        min_column_width = 72
+        max_column_width = self.max_column_width
+        sample_rows = min(50, self.table.rowCount())
+        sample_text_limit = 120
+        padding_px = 24
+
         header = self.table.horizontalHeader()
+        metrics = self.table.fontMetrics()
+
         for col_idx in range(self.table.columnCount()):
-            current_width = header.sectionSize(col_idx)
-            if current_width > self.max_column_width:
-                header.resizeSection(col_idx, self.max_column_width)
+            header_item = self.table.horizontalHeaderItem(col_idx)
+            header_text = (header_item.text() if header_item else "")[:sample_text_limit]
+            estimate_px = metrics.horizontalAdvance(header_text) + padding_px
+
+            for row_idx in range(sample_rows):
+                item = self.table.item(row_idx, col_idx)
+                if item is None:
+                    continue
+                sample_text = (item.text() or "")[:sample_text_limit]
+                if sample_text:
+                    estimate_px = max(estimate_px, metrics.horizontalAdvance(sample_text) + padding_px)
+
+            estimate_px = max(min_column_width, min(estimate_px, max_column_width))
+            header.resizeSection(col_idx, estimate_px)
     
     def eventFilter(self, obj, event):
         """事件过滤器，处理Ctrl+C复制"""

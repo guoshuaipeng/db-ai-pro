@@ -82,6 +82,10 @@ class AIClient:
         # ── 请求日志 ──────────────────────────────────────────
         tag = f"[{caller}]" if caller else "[ai]"
         sep = "=" * 56
+        # 明确标记：这里已经进入真实 API 调用阶段（非仅本地流程）
+        self.logger.info(
+            f"{tag} 真实调用AI接口: 模型={model}, base_url={self.base_url}"
+        )
         self.logger.info(
             f"{tag} AI请求 → 模型={model}, 消息数={len(messages)}"
             + (f", 工具数={len(tools)}" if tools else "")

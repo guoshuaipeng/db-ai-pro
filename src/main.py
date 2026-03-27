@@ -196,6 +196,9 @@ def main():
     app.setApplicationName("DataAI")
     app.setOrganizationName("DataAI")
     
+    from src.gui.styles.app_theme import apply_app_theme
+    apply_app_theme(app)
+    
     # 设置Windows任务栏图标
     setup_windows_taskbar_icon(app)
     

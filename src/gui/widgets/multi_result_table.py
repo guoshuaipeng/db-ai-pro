@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QTreeWidgetItem,
     QPlainTextEdit,
     QSizePolicy,
+    QStyle,
 )
 from PyQt6.QtGui import QIcon
 from src.utils.toast import show_toast
@@ -432,67 +433,6 @@ class SingleResultTable(QWidget):
         layout = QVBoxLayout()
         self.setLayout(layout)
         
-        # 工具栏（导出按钮和保存/取消按钮）- 放在显示区域上面的右边
-        toolbar_layout = QHBoxLayout()
-        
-        # 保存和取消按钮（放在左边）
-        self.save_btn = QPushButton("保存")
-        self.save_btn.setEnabled(False)
-        self.save_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                font-weight: bold;
-                padding: 5px 15px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-                color: #666666;
-            }
-        """)
-        self.save_btn.clicked.connect(self.save_changes)
-        toolbar_layout.addWidget(self.save_btn)
-        
-        self.cancel_btn = QPushButton("取消")
-        self.cancel_btn.setEnabled(False)
-        self.cancel_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f44336;
-                color: white;
-                font-weight: bold;
-                padding: 5px 15px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #da190b;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-                color: #666666;
-            }
-        """)
-        self.cancel_btn.clicked.connect(self.cancel_changes)
-        toolbar_layout.addWidget(self.cancel_btn)
-        
-        # 修改数量标签
-        self.modified_count_label = QLabel("")
-        self.modified_count_label.setStyleSheet("color: #f44336; font-weight: bold; padding: 0 10px;")
-        toolbar_layout.addWidget(self.modified_count_label)
-        
-        toolbar_layout.addStretch()
-        
-        # 导出按钮（放在右边）
-        self.export_btn = QPushButton("导出")
-        self.export_btn.setEnabled(False)
-        self.export_btn.clicked.connect(self.show_export_menu)
-        toolbar_layout.addWidget(self.export_btn)
-        
-        layout.addLayout(toolbar_layout)
-        
         # 结果表格
         self.table = QTableWidget()
         self.table.setAlternatingRowColors(True)
@@ -507,35 +447,50 @@ class SingleResultTable(QWidget):
             QTableWidget.EditTrigger.EditKeyPressed
         )
         
-        # 设置选中样式：当前行浅色，当前单元格深色
+        # 选中与斑马纹；表头单独样式，避免末列被拉伸占满空白
         self.table.setStyleSheet("""
             QTableWidget {
-                background-color: #FFFFFF;  /* 白色背景 */
-                selection-background-color: #E3F2FD;  /* 选中行浅蓝色背景 */
-                selection-color: #000000;  /* 选中文本颜色 */
-                alternate-background-color: #F5F5F5;  /* 交替行背景色 */
+                background-color: #ffffff;
+                selection-background-color: #e0f2fe;
+                selection-color: #111827;
+                alternate-background-color: #f9fafb;
+                gridline-color: #e5e7eb;
             }
             QTableWidget::item {
-                background-color: transparent;  /* 默认透明背景 */
+                background-color: transparent;
             }
             QTableWidget::item:selected {
-                background-color: #BBDEFB;  /* 选中单元格深蓝色背景 */
+                background-color: #bae6fd;
             }
             QTableWidget::item:focus {
-                background-color: #90CAF9;  /* 当前焦点单元格更深的蓝色 */
-                border: 1px solid #2196F3;  /* 蓝色边框 */
+                background-color: #7dd3fc;
+                border: 1px solid #0284c7;
+            }
+            QHeaderView::section {
+                background-color: #f3f4f6;
+                color: #374151;
+                padding: 6px 8px;
+                border: none;
+                border-bottom: 1px solid #d1d5db;
+                border-right: 1px solid #e5e7eb;
+                font-weight: 600;
             }
         """)
         
         # 设置表头
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        header.setStretchLastSection(True)
+        header.setStretchLastSection(False)
+        header.setDefaultSectionSize(120)
         # 连接表头点击事件，点击列名时复制列名
         header.sectionClicked.connect(self.on_header_clicked)
         
         # 列的最大宽度（像素）
-        self.max_column_width = 400
+        self.max_column_width = 360
+        # 大字段展示策略：表格仅渲染摘要，避免超长文本导致 UI 卡顿
+        self.large_field_threshold = 2048
+        self.large_field_preview_limit = 256
+        self._truncated_item_role = int(Qt.ItemDataRole.UserRole) + 1
         
         # 连接双击事件（用于编辑）
         self.table.itemDoubleClicked.connect(self.on_row_double_clicked)
@@ -554,10 +509,10 @@ class SingleResultTable(QWidget):
         
         layout.addWidget(self.table)
         
-        # 分页控件
-        self.pagination_widget = self._create_pagination_widget()
-        self.pagination_widget.setVisible(False)  # 默认隐藏
-        layout.addWidget(self.pagination_widget)
+        # 底部栏：保存/取消（图标）、分页信息、翻页控件、导出
+        self.result_footer = self._create_result_footer_widget()
+        self.result_footer.setVisible(False)
+        layout.addWidget(self.result_footer)
         
         # 状态标签（已隐藏，状态信息显示到主窗口状态栏）
         self.status_label = QLabel("等待查询结果...")
@@ -592,77 +547,170 @@ class SingleResultTable(QWidget):
         
         # 保存操作的开始时间（用于耗时统计）
         self._save_start_time = None
+
+    def _build_cell_display_text(self, value) -> tuple[str, bool]:
+        """生成表格展示文本。
+        返回: (display_text, is_truncated)
+        """
+        if value is None:
+            return "NULL", False
+
+        # 最常见、也是最容易导致卡顿的大字段类型：长字符串
+        if isinstance(value, str):
+            if len(value) > self.large_field_threshold:
+                preview = value[: self.large_field_preview_limit]
+                suffix = f"... [长文本 {len(value)} 字符]"
+                return preview + suffix, True
+            return value, False
+
+        # 二进制字段避免展开整段 repr
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            b = bytes(value)
+            if len(b) > self.large_field_threshold:
+                preview = b[:64].hex()
+                return f"<BLOB {len(b)} bytes> 0x{preview}...", True
+            return f"<BLOB {len(b)} bytes>", False
+
+        text = str(value)
+        if len(text) > self.large_field_threshold:
+            preview = text[: self.large_field_preview_limit]
+            suffix = f"... [长值 {len(text)} 字符]"
+            return preview + suffix, True
+        return text, False
     
     def _restore_table_opacity(self):
         """恢复表格透明度"""
         # 移除透明效果，恢复到完全不透明
         self.table.setGraphicsEffect(None)
     
-    def _create_pagination_widget(self):
-        """创建分页控件"""
+    def _create_result_footer_widget(self):
+        """底部栏：√/× 保存取消、分页信息、翻页控件、导出"""
         widget = QWidget()
+        widget.setObjectName("resultFooter")
+        widget.setStyleSheet("#resultFooter { border-top: 1px solid #e5e7eb; background: #fafafa; }")
         layout = QHBoxLayout()
-        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(8)
         widget.setLayout(layout)
-        
-        # 信息标签（显示当前页/总页数，以及行数范围）
+
+        st = self.style()
+        _icon_btn_base = """
+            QPushButton {
+                border: 1px solid #d1d5db;
+                border-radius: 6px;
+                background: #ffffff;
+                padding: 2px;
+            }
+            QPushButton:hover:enabled {
+                background: #f9fafb;
+                border-color: #9ca3af;
+            }
+            QPushButton:disabled {
+                background: #f3f4f6;
+                border-color: #e5e7eb;
+            }
+        """
+
+        self.save_btn = QPushButton()
+        self.save_btn.setIcon(st.standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton))
+        self.save_btn.setFixedSize(32, 32)
+        self.save_btn.setToolTip("保存修改")
+        self.save_btn.setEnabled(False)
+        self.save_btn.setStyleSheet(_icon_btn_base + "QPushButton:hover:enabled { background: #ecfdf5; border-color: #16a34a; }")
+        self.save_btn.clicked.connect(self.save_changes)
+        layout.addWidget(self.save_btn)
+
+        self.cancel_btn = QPushButton()
+        self.cancel_btn.setIcon(st.standardIcon(QStyle.StandardPixmap.SP_DialogCancelButton))
+        self.cancel_btn.setFixedSize(32, 32)
+        self.cancel_btn.setToolTip("取消修改")
+        self.cancel_btn.setEnabled(False)
+        self.cancel_btn.setStyleSheet(_icon_btn_base + "QPushButton:hover:enabled { background: #fef2f2; border-color: #dc2626; }")
+        self.cancel_btn.clicked.connect(self.cancel_changes)
+        layout.addWidget(self.cancel_btn)
+
+        self.modified_count_label = QLabel("")
+        self.modified_count_label.setStyleSheet("color: #dc2626; font-weight: 600; font-size: 12px;")
+        layout.addWidget(self.modified_count_label)
+
+        layout.addStretch(1)
+
         self.page_info_label = QLabel("第 1/1 页 (显示 0-0 行，共 0 行)")
-        self.page_info_label.setStyleSheet("color: #666; font-size: 12px;")
+        self.page_info_label.setStyleSheet("color: #4b5563; font-size: 12px;")
         layout.addWidget(self.page_info_label)
-        
-        layout.addStretch()
-        
-        # 每页显示行数
-        layout.addWidget(QLabel("每页显示:"))
+
+        # 翻页控件（数据量较大时再显示，逻辑见 _sync_pagination_extras_visibility）
+        self._pagination_extras = QWidget()
+        pex = QHBoxLayout()
+        pex.setContentsMargins(0, 0, 0, 0)
+        pex.setSpacing(6)
+        self._pagination_extras.setLayout(pex)
+
+        pex.addWidget(QLabel("每页显示:"))
         self.page_size_spin = QSpinBox()
         self.page_size_spin.setRange(10, 1000)
         self.page_size_spin.setSingleStep(10)
         self.page_size_spin.setValue(self.page_size)
-        self.page_size_spin.setFixedWidth(80)
+        self.page_size_spin.setFixedWidth(72)
         self.page_size_spin.setToolTip("设置每页显示的行数")
         self.page_size_spin.valueChanged.connect(self._on_page_size_changed)
-        layout.addWidget(self.page_size_spin)
-        
-        layout.addWidget(QLabel(" 行  "))
-        
-        # 首页按钮
+        pex.addWidget(self.page_size_spin)
+        pex.addWidget(QLabel("行"))
+
         self.first_page_btn = QPushButton("首页")
-        self.first_page_btn.setFixedWidth(60)
+        self.first_page_btn.setFixedWidth(52)
         self.first_page_btn.clicked.connect(self._go_first_page)
-        layout.addWidget(self.first_page_btn)
-        
-        # 上一页按钮
+        pex.addWidget(self.first_page_btn)
+
         self.prev_page_btn = QPushButton("上一页")
-        self.prev_page_btn.setFixedWidth(70)
+        self.prev_page_btn.setFixedWidth(56)
         self.prev_page_btn.clicked.connect(self._go_prev_page)
-        layout.addWidget(self.prev_page_btn)
-        
-        # 页码输入
-        layout.addWidget(QLabel("第"))
+        pex.addWidget(self.prev_page_btn)
+
+        pex.addWidget(QLabel("第"))
         self.page_input = QLineEdit()
-        self.page_input.setFixedWidth(50)
+        self.page_input.setFixedWidth(44)
         self.page_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.page_input.setText("1")
         self.page_input.setToolTip("输入页码后按回车跳转")
         self.page_input.returnPressed.connect(self._on_page_input)
-        layout.addWidget(self.page_input)
-        
+        pex.addWidget(self.page_input)
+
         self.total_pages_label = QLabel("/ 1 页")
-        layout.addWidget(self.total_pages_label)
-        
-        # 下一页按钮
+        pex.addWidget(self.total_pages_label)
+
         self.next_page_btn = QPushButton("下一页")
-        self.next_page_btn.setFixedWidth(70)
+        self.next_page_btn.setFixedWidth(56)
         self.next_page_btn.clicked.connect(self._go_next_page)
-        layout.addWidget(self.next_page_btn)
-        
-        # 末页按钮
+        pex.addWidget(self.next_page_btn)
+
         self.last_page_btn = QPushButton("末页")
-        self.last_page_btn.setFixedWidth(60)
+        self.last_page_btn.setFixedWidth(52)
         self.last_page_btn.clicked.connect(self._go_last_page)
-        layout.addWidget(self.last_page_btn)
-        
+        pex.addWidget(self.last_page_btn)
+
+        layout.addWidget(self._pagination_extras)
+
+        self.export_btn = QPushButton("导出")
+        self.export_btn.setEnabled(False)
+        self.export_btn.setToolTip("导出当前结果")
+        self.export_btn.clicked.connect(self.show_export_menu)
+        layout.addWidget(self.export_btn)
+
         return widget
+
+    def _sync_pagination_extras_visibility(self):
+        """与原先「超过 10 行显示分页条」一致；服务端分页在 total_rows 确定后显示。"""
+        if not hasattr(self, "_pagination_extras"):
+            return
+        if self.server_side_paging:
+            tr = getattr(self, "total_rows", None)
+            if tr is None:
+                self._pagination_extras.setVisible(len(self.raw_data or []) > 10)
+            else:
+                self._pagination_extras.setVisible(tr > 10)
+        else:
+            self._pagination_extras.setVisible(len(self.all_data or []) > 10)
     
     def _update_pagination_controls(self):
         """更新分页控件状态"""
@@ -700,7 +748,8 @@ class SingleResultTable(QWidget):
                     f"第 {self.current_page}/{self.total_pages} 页 "
                     f"(显示 {start_row}-{end_row} 行，共 {total_rows} 行)"
                 )
-    
+        self._sync_pagination_extras_visibility()
+
     def _go_first_page(self):
         """跳转到首页"""
         if self.current_page != 1:
@@ -920,13 +969,16 @@ class SingleResultTable(QWidget):
         
         style = self.main_window.style()
         
-        # 定义图标映射
+        # 与系统风格一致的 StandardIcon，保证每项均有图标、语义清晰
         icon_map = {
             'copy': style.standardIcon(style.StandardPixmap.SP_FileDialogListView),
             'refresh': style.standardIcon(style.StandardPixmap.SP_BrowserReload),
             'json': style.standardIcon(style.StandardPixmap.SP_FileDialogContentsView),
+            'json_field': style.standardIcon(style.StandardPixmap.SP_FileDialogDetailedView),
             'null': style.standardIcon(style.StandardPixmap.SP_DialogResetButton),
             'delete': style.standardIcon(style.StandardPixmap.SP_TrashIcon),
+            'star': style.standardIcon(style.StandardPixmap.SP_DialogSaveButton),
+            'history': style.standardIcon(style.StandardPixmap.SP_DialogOpenButton),
         }
         
         return icon_map.get(icon_type, QIcon())
@@ -968,7 +1020,7 @@ class SingleResultTable(QWidget):
             self.raw_data = []
             self.all_data = []
             self.export_btn.setEnabled(False)
-            self.pagination_widget.setVisible(False)
+            self.result_footer.setVisible(False)
             # 恢复透明度
             self.table.setGraphicsEffect(None)
             return
@@ -981,7 +1033,7 @@ class SingleResultTable(QWidget):
             self.raw_data = []
             self.all_data = []
             self.export_btn.setEnabled(False)
-            self.pagination_widget.setVisible(False)
+            self.result_footer.setVisible(False)
             # 恢复透明度
             self.table.setGraphicsEffect(None)
             return
@@ -1001,7 +1053,7 @@ class SingleResultTable(QWidget):
                 self.raw_data = []
                 self.all_data = []
                 self.export_btn.setEnabled(False)
-                self.pagination_widget.setVisible(False)
+                self.result_footer.setVisible(False)
                 # 只在第一次显示或列数变化时调整列宽
                 if not hasattr(self, '_last_column_count') or self._last_column_count != len(columns):
                     self._resize_columns_with_max_width()
@@ -1013,7 +1065,7 @@ class SingleResultTable(QWidget):
                 self.raw_data = []
                 self.all_data = []
                 self.export_btn.setEnabled(False)
-                self.pagination_widget.setVisible(False)
+                self.result_footer.setVisible(False)
             # 恢复透明度
             self.table.setGraphicsEffect(None)
             return
@@ -1069,8 +1121,9 @@ class SingleResultTable(QWidget):
             self.current_page = preserved_page if preserved_page is not None else 1
             self.current_page = min(max(1, self.current_page), self.total_pages)
         
-        # 显示分页控件（数据超过10行时显示）
-        self.pagination_widget.setVisible(len(data) > 10)
+        # 底部栏：有数据时显示；分页条内详细控件由 _sync_pagination_extras_visibility 控制
+        self.result_footer.setVisible(True)
+        self._sync_pagination_extras_visibility()
         
         # 保存原始数据的副本（用于生成WHERE条件）
         import copy
@@ -1119,23 +1172,24 @@ class SingleResultTable(QWidget):
             for row_idx, row_data in enumerate(page_data):
                 for col_idx, col_name in enumerate(columns):
                     value = row_data.get(col_name)
-                    
-                    # 处理None值
-                    if value is None:
-                        display_value = "NULL"
-                    else:
-                        display_value = str(value)
-                    
+
+                    display_value, is_truncated = self._build_cell_display_text(value)
                     item = QTableWidgetItem(display_value)
                     item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                    
+
                     # NULL值特殊样式
                     if value is None:
                         item.setForeground(Qt.GlobalColor.gray)
-                    
-                    # 设置单元格可编辑（包括NULL值）
-                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-                    
+
+                    # 大字段默认只显示摘要，避免在表格内直接编辑摘要文本造成误操作
+                    if is_truncated:
+                        item.setData(self._truncated_item_role, True)
+                        item.setToolTip("该单元格为大字段摘要显示；可右键使用 JSON 查询查看/编辑完整内容")
+                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    else:
+                        # 设置单元格可编辑（包括NULL值）
+                        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+
                     self.table.setItem(row_idx, col_idx, item)
         finally:
             # 恢复更新和信号
@@ -1148,7 +1202,7 @@ class SingleResultTable(QWidget):
             self._last_column_count = len(columns)
         
         # 更新分页控件
-        if self.pagination_widget.isVisible():
+        if self.result_footer.isVisible():
             self._update_pagination_controls()
         
         # 更新状态到主窗口状态栏
@@ -1189,23 +1243,23 @@ class SingleResultTable(QWidget):
             for row_idx, row_data in enumerate(page_data):
                 for col_idx, col_name in enumerate(columns):
                     value = row_data.get(col_name)
-                    
-                    # 处理None值
-                    if value is None:
-                        display_value = "NULL"
-                    else:
-                        display_value = str(value)
-                    
+
+                    display_value, is_truncated = self._build_cell_display_text(value)
                     item = QTableWidgetItem(display_value)
                     item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                    
+
                     # NULL值特殊样式
                     if value is None:
                         item.setForeground(Qt.GlobalColor.gray)
-                    
-                    # 设置单元格可编辑（包括NULL值）
-                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-                    
+
+                    if is_truncated:
+                        item.setData(self._truncated_item_role, True)
+                        item.setToolTip("该单元格为大字段摘要显示；可右键使用 JSON 查询查看/编辑完整内容")
+                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    else:
+                        # 设置单元格可编辑（包括NULL值）
+                        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+
                     self.table.setItem(row_idx, col_idx, item)
         finally:
             # 恢复更新和信号
@@ -1226,23 +1280,42 @@ class SingleResultTable(QWidget):
         QTimer.singleShot(200, self._restore_table_opacity)
     
     def _resize_columns_with_max_width(self):
-        """调整列宽，限制最小和最大宽度"""
-        # 先根据内容调整列宽
-        self.table.resizeColumnsToContents()
-        
-        # 设置最小和最大宽度限制
-        min_column_width = 80   # 最小宽度：80像素
-        max_column_width = 400  # 最大宽度：400像素
-        
-        # 限制每列的宽度在最小和最大值之间
+        """按采样估算列宽并限宽，避免大字段导致 resizeColumnsToContents 卡顿。"""
+        min_column_width = 72
+        max_column_width = 360
+        max_time_column_width = 480
+        sample_rows = min(50, self.table.rowCount())
+        sample_text_limit = 120
+        padding_px = 28
+
         header = self.table.horizontalHeader()
+        metrics = self.table.fontMetrics()
+
         for col_idx in range(self.table.columnCount()):
-            current_width = header.sectionSize(col_idx)
-            
-            if current_width < min_column_width:
-                header.resizeSection(col_idx, min_column_width)
-            elif current_width > max_column_width:
-                header.resizeSection(col_idx, max_column_width)
+            label = ""
+            hi = self.table.horizontalHeaderItem(col_idx)
+            if hi is not None:
+                label = hi.text() or ""
+
+            label_lower = label.lower()
+            # 时间类列略放宽上限，仍设 cap，避免大片空白
+            if any(x in label_lower for x in ("time", "date", "_at", "timestamp", "创建", "更新")):
+                col_max = max_time_column_width
+            else:
+                col_max = max_column_width
+
+            # 基于列名和有限行样本估算宽度，避免全量扫描大文本
+            estimate_px = metrics.horizontalAdvance(label[:sample_text_limit]) + padding_px
+            for row_idx in range(sample_rows):
+                it = self.table.item(row_idx, col_idx)
+                if it is None:
+                    continue
+                sample_text = (it.text() or "")[:sample_text_limit]
+                if sample_text:
+                    estimate_px = max(estimate_px, metrics.horizontalAdvance(sample_text) + padding_px)
+
+            estimate_px = max(min_column_width, min(estimate_px, col_max))
+            header.resizeSection(col_idx, estimate_px)
     
     def eventFilter(self, obj, event):
         """事件过滤器：Ctrl+C 复制；选中状态下直接按键开始编辑；编辑时焦点进入编辑器则挂上实时同步"""
@@ -1419,67 +1492,76 @@ class SingleResultTable(QWidget):
         # 双击时直接进入编辑模式（默认行为）
         pass
     
+    def _style_result_context_menu(self, menu: QMenu) -> None:
+        """结果表右键菜单样式。
+        注意：不要设置 QMenu::item 的 padding。在 Windows 下会挤压系统预留的图标列，
+        导致图标画在菜单白底左缘之外；图标与文字间距也会异常变大。"""
+        menu.setToolTipsVisible(True)
+        # QMenu 无 setIconSize（与 QToolBar 不同），图标尺寸由样式与 QIcon 决定
+        # 仅保留选中色与分隔线，由系统处理图标槽与文字对齐
+        menu.setStyleSheet("""
+            QMenu {
+                padding: 4px 2px;
+            }
+            QMenu::item:selected {
+                background-color: #e0f2fe;
+                color: #111827;
+            }
+            QMenu::separator {
+                height: 1px;
+                margin: 4px 8px;
+                background: #e5e7eb;
+            }
+        """)
+
     def show_context_menu(self, position):
-        """显示右键菜单"""
+        """显示右键菜单（分组：剪贴板 | JSON 查询 | 编辑 | 收藏与刷新）"""
         item = self.table.itemAt(position)
-        
-        # 获取选中的单元格和行
         selected_items = self.table.selectedItems()
         selected_rows = sorted({it.row() for it in selected_items}) if selected_items else []
-        
-        # 创建右键菜单
+
         menu = QMenu(self)
+        self._style_result_context_menu(menu)
 
-        def add_action(icon_key, text, handler):
-            action = menu.addAction(self._get_icon(icon_key), text)
-            action.triggered.connect(handler)
-            return action
+        def add_action(icon_key: str, text: str, handler):
+            act = menu.addAction(self._get_icon(icon_key), text)
+            act.triggered.connect(handler)
+            return act
 
-        def add_separator_if_needed():
-            actions = menu.actions()
-            if actions:
-                last_action = actions[-1]
-                if not last_action.isSeparator():
-                    menu.addSeparator()
-
-        # 复制
-        if selected_items:
-            add_action('copy', "复制选中内容 (Ctrl+C)", self.copy_selected_cells)
-
-        # 行 / 字段查询
-        if item:
-            row = item.row()
-            if 0 <= row < len(self.raw_data):
-                if menu.actions():
-                    menu.addSeparator()
-                add_action('json', "以JSON查询行数据", lambda: self.query_by_json_row(row))
-                add_action('json', "以JSON查询字段数据", lambda: self.query_by_json_field(row, item.column()))
-
-                # 设置为 NULL
-                if selected_items:
-                    add_separator_if_needed()
-                    add_action('null', "设置为NULL", self.fill_selected_cells_with_null)
-
-                # 删除行（放在更靠后的位置）
-                if selected_rows:
-                    add_separator_if_needed()
-                    add_action('delete', f"删除选中行 ({len(selected_rows)} 行)", lambda: self.delete_selected_rows(selected_rows))
-
-        # 收藏相关操作和刷新放在底部
-        if self.original_sql and self.main_window:
+        def sep():
             if menu.actions():
                 menu.addSeparator()
 
-            # 加入收藏（使用当前结果对应的 SQL）
+        # --- 剪贴板 ---
+        if selected_items:
+            add_action('copy', "复制选中内容 (Ctrl+C)", self.copy_selected_cells)
+
+        # --- 按 JSON 查询（需在有效单元格上）---
+        json_row = item.row() if item is not None else None
+        if json_row is not None and 0 <= json_row < len(self.raw_data):
+            sep()
+            add_action('json', "以 JSON 查询行数据", lambda: self.query_by_json_row(json_row))
+            add_action('json_field', "以 JSON 查询字段数据", lambda: self.query_by_json_field(json_row, item.column()))
+
+        # --- 编辑数据 ---
+        in_data_row = item is not None and 0 <= item.row() < len(self.raw_data)
+        if in_data_row and selected_items:
+            sep()
+            add_action('null', "设置为 NULL", self.fill_selected_cells_with_null)
+        if selected_rows:
+            sep()
+            add_action('delete', f"删除选中行（{len(selected_rows)} 行）", lambda: self.delete_selected_rows(selected_rows))
+
+        # --- 收藏与刷新 ---
+        if self.original_sql and self.main_window:
+            sep()
             add_action('star', "加入收藏（当前 SQL）", self.add_to_favorites)
-
-            # 从收藏插入 SQL 到编辑器
             add_action('history', "从收藏插入 SQL", self.insert_from_favorites)
-
-            menu.addSeparator()
+            sep()
             add_action('refresh', "刷新", self.refresh_data)
 
-        # 显示菜单
+        if not menu.actions():
+            return
         menu.exec(self.table.mapToGlobal(position))
 
     def add_to_favorites(self):
@@ -3555,6 +3637,8 @@ class SingleResultTable(QWidget):
         self._show_status_to_main_window("等待查询结果...")
         # 禁用导出按钮
         self.export_btn.setEnabled(False)
+        if hasattr(self, "result_footer"):
+            self.result_footer.setVisible(False)
 
 
 class MultiResultTable(QWidget):
@@ -3604,16 +3688,78 @@ class MultiResultTable(QWidget):
         
         return None, None
     
-    def _format_sql_title(self, sql: str, max_length: int = 40) -> str:
-        """格式化SQL为tab标题"""
-        sql_clean = sql.strip().replace('\n', ' ').replace('\r', ' ')
-        # 移除多余空格
-        sql_clean = ' '.join(sql_clean.split())
-        
-        if len(sql_clean) <= max_length:
-            return sql_clean
-        else:
-            return sql_clean[:max_length] + "..."
+    @staticmethod
+    def _short_text(text: str, max_length: int) -> str:
+        value = (text or "").strip()
+        if len(value) <= max_length:
+            return value
+        return value[:max_length] + "..."
+
+    @staticmethod
+    def _infer_sql_action(sql: str) -> str:
+        sql_upper = (sql or "").strip().upper()
+        if sql_upper.startswith(("SELECT", "SHOW", "DESC", "DESCRIBE", "EXPLAIN")):
+            return "查询"
+        if sql_upper.startswith(("UPDATE",)):
+            return "更新"
+        if sql_upper.startswith(("DELETE",)):
+            return "删除"
+        if sql_upper.startswith(("INSERT", "REPLACE")):
+            return "新增"
+        if sql_upper.startswith(("CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME")):
+            return "结构"
+        return "执行"
+
+    @staticmethod
+    def _normalize_identifier(identifier: str) -> str:
+        value = (identifier or "").strip()
+        if not value:
+            return ""
+        # 统一去掉点号两侧空白，便于 split
+        value = re.sub(r"\s*\.\s*", ".", value)
+        parts = [p.strip().strip("`\"") for p in value.split(".")]
+        parts = [p for p in parts if p]
+        return parts[-1] if parts else ""
+
+    def _extract_table_identifier(self, sql: str) -> Optional[str]:
+        """从 SQL 中提取目标表标识（优先返回表名，不返回库名）。"""
+        sql_clean = (sql or "").strip()
+        if not sql_clean:
+            return None
+
+        patterns = [
+            r"\bFROM\s+((?:`[^`]+`|[A-Za-z0-9_-]+)(?:\s*\.\s*(?:`[^`]+`|[A-Za-z0-9_-]+))?)",
+            r"\bUPDATE\s+((?:`[^`]+`|[A-Za-z0-9_-]+)(?:\s*\.\s*(?:`[^`]+`|[A-Za-z0-9_-]+))?)",
+            r"\bINTO\s+((?:`[^`]+`|[A-Za-z0-9_-]+)(?:\s*\.\s*(?:`[^`]+`|[A-Za-z0-9_-]+))?)",
+            r"\bDELETE\s+FROM\s+((?:`[^`]+`|[A-Za-z0-9_-]+)(?:\s*\.\s*(?:`[^`]+`|[A-Za-z0-9_-]+))?)",
+            r"\bTABLE\s+((?:`[^`]+`|[A-Za-z0-9_-]+)(?:\s*\.\s*(?:`[^`]+`|[A-Za-z0-9_-]+))?)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, sql_clean, re.IGNORECASE)
+            if match:
+                table_name = self._normalize_identifier(match.group(1))
+                if table_name:
+                    return table_name
+        return None
+
+    def _extract_primary_table_name_for_title(self, sql: str) -> Optional[str]:
+        return self._extract_table_identifier(sql)
+
+    def _format_sql_title(self, sql: str, fallback_number: Optional[int] = None) -> str:
+        """格式化结果 Tab 标题：优先“表名 + 动作”，无法识别时使用序号。"""
+        table_name = self._extract_primary_table_name_for_title(sql)
+        action = self._infer_sql_action(sql)
+        if table_name:
+            return f"{self._short_text(table_name, 10)} ({action})"
+        if fallback_number is not None:
+            return f"查询结果 {fallback_number}"
+        return "查询结果"
+
+    def _build_result_tab_tooltip(self, sql: str) -> str:
+        table_name = self._extract_primary_table_name_for_title(sql) or "-"
+        action = self._infer_sql_action(sql)
+        full_sql = (sql or "").strip()
+        return f"表: {table_name}\n动作: {action}\n\n双击复制SQL\n\n{full_sql}"
     
     def eventFilter(self, obj, event):
         """事件过滤器，用于处理tab双击事件"""
@@ -3728,30 +3874,7 @@ class MultiResultTable(QWidget):
         Returns:
             表名，如果无法提取则返回None
         """
-        sql_upper = sql.strip().upper()
-        
-        # 只处理SELECT查询
-        if not sql_upper.startswith("SELECT"):
-            return None
-        
-        # 尝试匹配 FROM table_name 或 FROM database.table_name
-        # 匹配模式：FROM `database`.`table` 或 FROM database.table 或 FROM table
-        patterns = [
-            r'FROM\s+`?(\w+)`?\.`?(\w+)`?',  # FROM database.table 或 FROM `database`.`table`
-            r'FROM\s+`?(\w+)`?',  # FROM table 或 FROM `table`
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, sql_upper, re.IGNORECASE)
-            if match:
-                if len(match.groups()) == 2:
-                    # 返回 database.table 格式
-                    return f"{match.group(1)}.{match.group(2)}"
-                else:
-                    # 返回表名
-                    return match.group(1)
-        
-        return None
+        return self._extract_table_identifier(sql)
     
     def add_result(self, sql: str, data: Optional[List[Dict]] = None, 
                    error: Optional[str] = None, affected_rows: Optional[int] = None,
@@ -3805,11 +3928,11 @@ class MultiResultTable(QWidget):
                                             connection_string, connect_args)
                 
                 # 更新tab标题（可能SQL有变化）
-                tab_title = self._format_sql_title(sql)
+                tab_title = self._format_sql_title(sql, fallback_number=tab_index + 1)
                 self.tab_widget.setTabText(tab_index, tab_title)
                 # 更新tooltip和SQL映射
                 full_sql = sql.strip()
-                self.tab_widget.setTabToolTip(tab_index, f"双击复制SQL\n\n{full_sql}")
+                self.tab_widget.setTabToolTip(tab_index, self._build_result_tab_tooltip(full_sql))
                 self.tab_sql_map[tab_index] = full_sql
                 
                 # 切换到该tab
@@ -3840,7 +3963,7 @@ class MultiResultTable(QWidget):
                                     connection_string, connect_args)
         
         # 生成Tab标题
-        tab_title = self._format_sql_title(sql)
+        tab_title = self._format_sql_title(sql, fallback_number=self.tab_widget.count() + 1)
         
         # 添加Tab
         tab_index = self.tab_widget.addTab(result_table, tab_title)
@@ -3848,7 +3971,7 @@ class MultiResultTable(QWidget):
         
         # 设置tooltip显示完整SQL，并提示双击复制
         full_sql = sql.strip()
-        self.tab_widget.setTabToolTip(tab_index, f"双击复制SQL\n\n{full_sql}")
+        self.tab_widget.setTabToolTip(tab_index, self._build_result_tab_tooltip(full_sql))
         self.tab_sql_map[tab_index] = full_sql
         
         # 如果提取到表名，记录映射关系（使用连接ID和表名的组合）

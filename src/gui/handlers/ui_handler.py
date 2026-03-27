@@ -2,9 +2,9 @@
 UI 初始化处理器
 """
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QSplitter, 
+    QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QTreeWidgetItem, QToolBar, QPushButton, QComboBox, QLabel, QTabWidget,
-    QGroupBox, QMenu, QToolButton
+    QMenu, QToolButton,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QIcon
@@ -104,6 +104,7 @@ class UIHandler:
         
         # 右侧：Tab控件（包含查询tab和新建表tab）
         self.main_window.right_tab_widget = QTabWidget()
+        self.main_window.right_tab_widget.setObjectName("mainWorkAreaTabs")
         self.main_window.right_tab_widget.setTabsClosable(True)
         self.main_window.right_tab_widget.tabCloseRequested.connect(self.main_window.close_query_tab)
         # 设置Tab字体
@@ -112,6 +113,7 @@ class UIHandler:
         
         # 启用tab bar的鼠标滚轮支持
         tab_bar = self.main_window.right_tab_widget.tabBar()
+        tab_bar.setExpanding(False)  # 宽度按标题自适应，不平均拉伸
         tab_bar.setUsesScrollButtons(True)  # 启用滚动按钮
         tab_bar.setElideMode(Qt.TextElideMode.ElideNone)  # 文本超出时不隐藏，显示完整内容
         
@@ -133,39 +135,25 @@ class UIHandler:
         # 第一个tab：查询（包含AI查询、SQL编辑器和结果）
         query_tab = QWidget()
         query_layout = QVBoxLayout()
-        query_layout.setContentsMargins(5, 5, 5, 5)  # 增加内边距
-        query_layout.setSpacing(5)
+        query_layout.setContentsMargins(8, 8, 8, 8)
+        query_layout.setSpacing(8)
         query_tab.setLayout(query_layout)
         
-        # 在查询tab顶部添加连接选择（用GroupBox包裹）
-        connection_group = QGroupBox(self.main_window.tr("查询范围"))
-        connection_group.setStyleSheet("QGroupBox { font-weight: bold; padding-top: 10px; }")
-        connection_group_layout = QHBoxLayout()
-        connection_group_layout.setSpacing(10)
-        connection_group_layout.setContentsMargins(10, 15, 10, 10)
-        connection_group.setLayout(connection_group_layout)
-        
-        # 当前连接
-        connection_label = QLabel(self.main_window.tr("当前连接:"))
-        connection_group_layout.addWidget(connection_label)
-        
+        # 连接/数据库由左侧树与标签标题体现；下拉框仅作内部状态同步，不占用界面
+        _hidden_scope = QWidget()
+        _hidden_scope.setVisible(False)
+        _hs_layout = QHBoxLayout()
+        _hs_layout.setContentsMargins(0, 0, 0, 0)
+        _hidden_scope.setLayout(_hs_layout)
         self.main_window.connection_combo = QComboBox()
-        self.main_window.connection_combo.setMinimumWidth(250)
+        self.main_window.connection_combo.setMinimumWidth(220)
         self.main_window.connection_combo.currentTextChanged.connect(self.main_window.on_connection_combo_changed)
-        connection_group_layout.addWidget(self.main_window.connection_combo)
-        
-        # 当前数据库
-        database_label = QLabel(self.main_window.tr("当前数据库:"))
-        connection_group_layout.addWidget(database_label)
-        
+        _hs_layout.addWidget(self.main_window.connection_combo)
         self.main_window.database_combo = QComboBox()
-        self.main_window.database_combo.setMinimumWidth(200)
+        self.main_window.database_combo.setMinimumWidth(180)
         self.main_window.database_combo.currentTextChanged.connect(self.main_window.on_database_combo_changed)
-        connection_group_layout.addWidget(self.main_window.database_combo)
-        
-        connection_group_layout.addStretch()  # 添加弹性空间
-        
-        query_layout.addWidget(connection_group)
+        _hs_layout.addWidget(self.main_window.database_combo)
+        query_layout.addWidget(_hidden_scope)
         
         query_splitter = QSplitter(Qt.Orientation.Vertical)
         query_splitter.setChildrenCollapsible(False)
@@ -269,10 +257,12 @@ class UIHandler:
         
         settings_menu.addSeparator()
 
-        # AI 记忆可视化
+        # AI 记忆可视化（工具栏会复用同一 QAction）
         memory_view_action = QAction(self._get_icon('ai'), self.main_window.tr("AI 记忆(&M)"), self.main_window)
+        memory_view_action.setToolTip("命名规范、相似历史、表摘要与纠错记录")
         memory_view_action.triggered.connect(self.main_window.show_memory_view)
         settings_menu.addAction(memory_view_action)
+        self.main_window.memory_view_action = memory_view_action
         
         settings_menu.addSeparator()
         
@@ -308,7 +298,8 @@ class UIHandler:
         
         toolbar = QToolBar()
         toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        toolbar.setIconSize(QSize(24, 24))
+        toolbar.setIconSize(QSize(20, 20))
+        toolbar.setMovable(False)
         self.main_window.addToolBar(toolbar)
         
         # AI 配置按钮
@@ -324,6 +315,10 @@ class UIHandler:
         prompt_config_action.triggered.connect(self.main_window.configure_prompts)
         toolbar.addAction(prompt_config_action)
         self.main_window.prompt_config_action = prompt_config_action
+        
+        # 与「设置 → AI 记忆」相同入口
+        if hasattr(self.main_window, 'memory_view_action'):
+            toolbar.addAction(self.main_window.memory_view_action)
         
         toolbar.addSeparator()
         
@@ -461,6 +456,8 @@ class UIHandler:
         # 更新工具栏按钮和标签
         if hasattr(self.main_window, 'ai_config_action'):
             self.main_window.ai_config_action.setText(self.main_window.tr("AI 配置"))
+        if hasattr(self.main_window, 'memory_view_action'):
+            self.main_window.memory_view_action.setText(self.main_window.tr("AI 记忆(&M)"))
         if hasattr(self.main_window, 'add_connection_action'):
             self.main_window.add_connection_action.setText(self.main_window.tr("添加连接"))
         if hasattr(self.main_window, 'import_navicat_action'):
@@ -471,9 +468,6 @@ class UIHandler:
             self.main_window.create_table_action.setText(self.main_window.tr("新建表"))
         if hasattr(self.main_window, 'ai_model_label'):
             self.main_window.ai_model_label.setText(self.main_window.tr("AI模型:"))
-        if hasattr(self.main_window, 'connection_label'):
-            self.main_window.connection_label.setText(self.main_window.tr("当前连接:"))
-        
         # 更新标签页
         if hasattr(self.main_window, 'right_tab_widget'):
             for i in range(self.main_window.right_tab_widget.count()):

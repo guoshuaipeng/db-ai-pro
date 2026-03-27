@@ -10,13 +10,11 @@ from PyQt6.QtWidgets import (
     QLabel,
     QCompleter,
     QSplitter,
-    QTextEdit,
-    QComboBox,
-    QFormLayout,
-    QGroupBox,
+    QFrame,
+    QMenu,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QStringListModel, QModelIndex
-from PyQt6.QtGui import QFont, QTextCursor, QKeyEvent
+from PyQt6.QtGui import QFont, QTextCursor, QKeyEvent, QAction
 from typing import List, Optional, Callable
 from src.core.ai_client import AIClient
 from src.utils.thread_manager import safe_delete_thread
@@ -25,8 +23,136 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# 卡片与按钮样式（与 app_theme 色系一致）
+_EDITOR_CARD_STYLE = """
+    QFrame#sqlEditorCard {
+        background-color: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+    }
+    QLabel#sqlEditorCardTitle {
+        color: #374151;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 0 2px 4px 2px;
+    }
+"""
+_BTN_PRIMARY_GREEN = """
+    QPushButton {
+        background-color: #16a34a;
+        color: #ffffff;
+        padding: 6px 18px;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+    QPushButton:hover { background-color: #15803d; }
+    QPushButton:pressed { background-color: #166534; }
+"""
+_BTN_PRIMARY_BLUE = """
+    QPushButton {
+        background-color: #2563eb;
+        color: #ffffff;
+        padding: 6px 16px;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+    QPushButton:hover { background-color: #1d4ed8; }
+    QPushButton:pressed { background-color: #1e40af; }
+"""
+_BTN_SECONDARY = """
+    QPushButton {
+        background-color: #ffffff;
+        color: #374151;
+        padding: 5px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+    }
+    QPushButton:hover {
+        background-color: #f9fafb;
+        border-color: #9ca3af;
+    }
+"""
 
-class CompletableTextEdit(QPlainTextEdit):
+_EDITOR_CONTEXT_MENU_QSS = """
+    QMenu {
+        padding: 4px 2px;
+    }
+    QMenu::item:selected {
+        background-color: #e0f2fe;
+        color: #111827;
+    }
+    QMenu::separator {
+        height: 1px;
+        margin: 4px 8px;
+        background: #e5e7eb;
+    }
+"""
+
+
+def _style_plain_text_context_menu(menu: QMenu) -> None:
+    menu.setToolTipsVisible(True)
+    menu.setStyleSheet(_EDITOR_CONTEXT_MENU_QSS)
+
+
+class ZhPlainTextEdit(QPlainTextEdit):
+    """带中文右键菜单的纯文本编辑器（替代系统默认英文菜单）。"""
+
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        _style_plain_text_context_menu(menu)
+
+        undo = QAction("撤销", self)
+        undo.setShortcut("Ctrl+Z")
+        undo.setEnabled(self.document().isUndoAvailable())
+        undo.triggered.connect(self.undo)
+        menu.addAction(undo)
+
+        redo = QAction("重做", self)
+        redo.setShortcuts(["Ctrl+Y", "Ctrl+Shift+Z"])
+        redo.setEnabled(self.document().isRedoAvailable())
+        redo.triggered.connect(self.redo)
+        menu.addAction(redo)
+
+        menu.addSeparator()
+
+        cut = QAction("剪切", self)
+        cut.setShortcut("Ctrl+X")
+        cut.setEnabled(self.textCursor().hasSelection())
+        cut.triggered.connect(self.cut)
+        menu.addAction(cut)
+
+        copy = QAction("复制", self)
+        copy.setShortcut("Ctrl+C")
+        copy.setEnabled(self.textCursor().hasSelection())
+        copy.triggered.connect(self.copy)
+        menu.addAction(copy)
+
+        paste = QAction("粘贴", self)
+        paste.setShortcut("Ctrl+V")
+        paste.setEnabled(self.canPaste())
+        paste.triggered.connect(self.paste)
+        menu.addAction(paste)
+
+        menu.addSeparator()
+
+        select_all = QAction("全选", self)
+        select_all.setShortcut("Ctrl+A")
+        select_all.triggered.connect(self.selectAll)
+        menu.addAction(select_all)
+
+        # 允许子类或外部注入附加菜单项（例如 SQL 收藏）
+        self._append_extra_context_actions(menu)
+
+        menu.exec(event.globalPos())
+
+    def _append_extra_context_actions(self, menu: QMenu) -> None:
+        """扩展点：默认无附加动作。"""
+        return
+
+
+class CompletableTextEdit(ZhPlainTextEdit):
     """支持自动完成的文本编辑器"""
     
     def __init__(self, completer: QCompleter, insert_completion_callback: Callable[[str], None], parent=None):
@@ -128,26 +254,29 @@ class SQLEditor(QWidget):
     def init_ui(self):
         """初始化UI"""
         layout = QVBoxLayout()
-        layout.setContentsMargins(5, 5, 5, 5)  # 减少外边距
-        layout.setSpacing(5)  # 减少组件间距
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
         self.setLayout(layout)
+        self.setStyleSheet(_EDITOR_CARD_STYLE)
         
         # 创建水平分割器，将界面分为两部分
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
         
-        # 左侧：AI输入框
-        ai_container = QWidget()
+        # 左侧：AI 卡片
+        ai_frame = QFrame()
+        ai_frame.setObjectName("sqlEditorCard")
         ai_layout = QVBoxLayout()
-        ai_layout.setContentsMargins(5, 5, 5, 5)  # 减少内边距
-        ai_layout.setSpacing(5)  # 减少间距
-        ai_container.setLayout(ai_layout)
+        ai_layout.setContentsMargins(12, 10, 12, 12)
+        ai_layout.setSpacing(8)
+        ai_frame.setLayout(ai_layout)
         
         ai_label = QLabel("AI 智能查询")
-        ai_label.setStyleSheet("font-weight: bold; font-size: 12px; padding: 5px;")
+        ai_label.setObjectName("sqlEditorCardTitle")
         ai_layout.addWidget(ai_label)
         
         # 使用QPlainTextEdit而不是QTextEdit，确保只支持纯文本，不支持格式
-        self.ai_input = QPlainTextEdit()
+        self.ai_input = ZhPlainTextEdit()
         self.ai_input.setPlaceholderText("输入中文描述，AI将生成SQL并执行（Enter查询，Shift+Enter换行）")
         self.ai_input.setFont(QFont("Microsoft YaHei", 10))
         self.ai_input.installEventFilter(self)  # 安装事件过滤器，用于处理回车键
@@ -156,35 +285,25 @@ class SQLEditor(QWidget):
         # 按钮放在输入框下面
         ai_btn_layout = QHBoxLayout()
         self.generate_btn = QPushButton("直接查询")
-        self.generate_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                padding: 5px 15px;
-                border: none;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-        """)
+        self.generate_btn.setStyleSheet(_BTN_PRIMARY_BLUE)
         self.generate_btn.clicked.connect(self.generate_sql_from_ai)
         ai_btn_layout.addWidget(self.generate_btn)
         ai_btn_layout.addStretch()
         ai_layout.addLayout(ai_btn_layout)
         
-        splitter.addWidget(ai_container)
-        splitter.setStretchFactor(0, 1)  # 左侧占1份
+        splitter.addWidget(ai_frame)
+        splitter.setStretchFactor(0, 1)
         
-        # 右侧：SQL编辑器
-        sql_container = QWidget()
+        # 右侧：SQL 卡片
+        sql_frame = QFrame()
+        sql_frame.setObjectName("sqlEditorCard")
         sql_layout = QVBoxLayout()
-        sql_layout.setContentsMargins(5, 5, 5, 5)  # 减少内边距
-        sql_layout.setSpacing(5)  # 减少间距
-        sql_container.setLayout(sql_layout)
+        sql_layout.setContentsMargins(12, 10, 12, 12)
+        sql_layout.setSpacing(8)
+        sql_frame.setLayout(sql_layout)
         
         sql_label = QLabel("SQL 编辑器")
-        sql_label.setStyleSheet("font-weight: bold; font-size: 12px; padding: 5px;")
+        sql_label.setObjectName("sqlEditorCardTitle")
         sql_layout.addWidget(sql_label)
         
         # 先创建完成器（临时，稍后会重新设置）
@@ -212,49 +331,44 @@ class SQLEditor(QWidget):
         
         # 安装事件过滤器以处理 F5 等快捷键
         self.sql_edit.installEventFilter(self)
+        self.sql_edit._append_extra_context_actions = self._append_sql_editor_context_actions
         
         sql_layout.addWidget(self.sql_edit)
         
-        # 按钮放在SQL编辑器下面
+        # 按钮：主操作「执行」+ 次要操作
         sql_btn_layout = QHBoxLayout()
+        sql_btn_layout.setSpacing(8)
         self.execute_btn = QPushButton("执行 (F5)")
         self.execute_btn.clicked.connect(self.execute_sql)
-        self.execute_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                padding: 5px 15px;
-                border: none;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-        """)
+        self.execute_btn.setStyleSheet(_BTN_PRIMARY_GREEN)
+        self.execute_btn.setMinimumHeight(32)
         
         self.clear_btn = QPushButton("清空")
         self.clear_btn.clicked.connect(self.clear_sql)
+        self.clear_btn.setStyleSheet(_BTN_SECONDARY)
 
         self.format_btn = QPushButton("美化")
         self.format_btn.setToolTip("格式化 SQL")
         self.format_btn.clicked.connect(self.format_sql)
+        self.format_btn.setStyleSheet(_BTN_SECONDARY)
 
         self.history_btn = QPushButton("历史")
         self.history_btn.setToolTip("查看最近的查询历史")
         self.history_btn.clicked.connect(self.show_query_history)
+        self.history_btn.setStyleSheet(_BTN_SECONDARY)
         
         sql_btn_layout.addWidget(self.execute_btn)
+        sql_btn_layout.addStretch(1)
         sql_btn_layout.addWidget(self.format_btn)
         sql_btn_layout.addWidget(self.clear_btn)
         sql_btn_layout.addWidget(self.history_btn)
-        sql_btn_layout.addStretch()
         sql_layout.addLayout(sql_btn_layout)
         
-        splitter.addWidget(sql_container)
-        splitter.setStretchFactor(1, 2)  # 右侧占2份
+        splitter.addWidget(sql_frame)
+        splitter.setStretchFactor(1, 3)
         
-        # 设置默认比例（左侧30%，右侧70%）
-        splitter.setSizes([300, 700])
+        # 默认约 32% / 68%，SQL 区域更宽
+        splitter.setSizes([340, 760])
         
         layout.addWidget(splitter)
         
@@ -447,6 +561,76 @@ class SQLEditor(QWidget):
             sql = dlg.get_selected_sql()
             if sql:
                 self.set_sql(sql)
+
+    def add_current_sql_to_favorites(self):
+        """将编辑区当前 SQL 加入收藏。"""
+        sql = self.get_sql()
+        if not sql:
+            self.set_status("没有可收藏的 SQL", is_error=True)
+            return
+        if not self.current_connection_id:
+            self.set_status("请先选择数据库连接", is_error=True)
+            return
+
+        try:
+            from src.core.config_db import get_config_db
+            from src.utils.toast_manager import show_success
+
+            config_db = get_config_db()
+            history_id = config_db.add_query_history(
+                connection_id=self.current_connection_id,
+                database_name=self.current_database or "",
+                sql=sql,
+                source="MANUAL",
+                duration_ms=0,
+                title="",
+            )
+            config_db.set_query_history_favorite(history_id, True)
+            show_success("已加入查询收藏")
+            self.set_status("已加入查询收藏", timeout=3000)
+        except Exception as e:
+            try:
+                from src.utils.toast_manager import show_error
+                show_error(f"加入收藏失败: {e}")
+            except Exception:
+                pass
+            self.set_status(f"加入收藏失败: {e}", is_error=True)
+
+    def insert_from_favorites(self):
+        """从收藏中选择 SQL 并插入编辑区。"""
+        try:
+            from src.gui.dialogs.query_history_dialog import QueryHistoryDialog
+        except Exception as e:
+            logger.error(f"导入查询历史对话框失败: {e}")
+            self.set_status("查询历史对话框加载失败", is_error=True)
+            return
+
+        parent = getattr(self, "_main_window", self)
+        dlg = QueryHistoryDialog(
+            parent=parent,
+            current_connection_id=self.current_connection_id,
+            current_database=self.current_database,
+        )
+        dlg.fav_only_checkbox.setChecked(True)
+
+        if dlg.exec():
+            sql = dlg.get_selected_sql()
+            if sql:
+                self.set_sql(sql)
+                self.set_status("已从收藏插入 SQL", timeout=3000)
+
+    def _append_sql_editor_context_actions(self, menu: QMenu) -> None:
+        """给 SQL 编辑区右键菜单追加收藏入口。"""
+        menu.addSeparator()
+
+        add_fav_action = QAction("加入收藏（当前 SQL）", self)
+        add_fav_action.setEnabled(bool(self.get_sql()))
+        add_fav_action.triggered.connect(self.add_current_sql_to_favorites)
+        menu.addAction(add_fav_action)
+
+        insert_fav_action = QAction("从收藏插入 SQL", self)
+        insert_fav_action.triggered.connect(self.insert_from_favorites)
+        menu.addAction(insert_fav_action)
 
     def format_sql(self):
         """SQL 美化（优先使用 sqlparse，不可用时回退到轻量级格式化）"""
