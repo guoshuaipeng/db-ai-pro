@@ -54,6 +54,12 @@ class FoldableJSONEditor(QWidget):
         super().__init__(parent)
         self._editor = None
         self._use_qscintilla = False
+        # value 内查找（与编辑器类型无关，基于全文索引）
+        self._find_query: Optional[str] = None
+        self._find_case_sensitive: bool = False
+        self._find_match_positions: List[int] = []
+        self._find_match_index: int = -1
+        self._find_dirty: bool = True
         self._init_editor()
     
     def _init_editor(self):
@@ -183,6 +189,7 @@ class FoldableJSONEditor(QWidget):
     
     def set_json_text(self, text: str):
         """设置JSON文本"""
+        self.reset_find_state()
         if self._use_qscintilla:
             # QScintilla
             self._editor.setText(text)
@@ -233,6 +240,128 @@ class FoldableJSONEditor(QWidget):
                 # 自定义编辑器（回退方案）
                 if hasattr(self._editor, 'setReadOnly'):
                     self._editor.setReadOnly(read_only)
+
+    def reset_find_state(self) -> None:
+        """切换内容后清空查找状态"""
+        self._find_query = None
+        self._find_case_sensitive = False
+        self._find_match_positions = []
+        self._find_match_index = -1
+        self._find_dirty = True
+
+    def count_matches_in_value(self, query: str, case_sensitive: bool = False) -> int:
+        """统计当前文本中 query 出现次数（非重叠匹配）"""
+        return len(self._compute_match_positions(query, case_sensitive))
+
+    def find_in_value_next(self, query: str, case_sensitive: bool = False) -> bool:
+        """查找下一处；首次调用定位到第一处"""
+        if not query:
+            return False
+        self._ensure_match_cache(query, case_sensitive)
+        if not self._find_match_positions:
+            return False
+        if self._find_match_index < 0:
+            self._find_match_index = 0
+        else:
+            self._find_match_index = (self._find_match_index + 1) % len(self._find_match_positions)
+        self._apply_selection_for_match(query, self._find_match_positions[self._find_match_index])
+        return True
+
+    def find_in_value_previous(self, query: str, case_sensitive: bool = False) -> bool:
+        """查找上一处；首次调用定位到最后一处"""
+        if not query:
+            return False
+        self._ensure_match_cache(query, case_sensitive)
+        if not self._find_match_positions:
+            return False
+        n = len(self._find_match_positions)
+        if self._find_match_index < 0:
+            self._find_match_index = n - 1
+        else:
+            self._find_match_index = (self._find_match_index - 1 + n) % n
+        self._apply_selection_for_match(query, self._find_match_positions[self._find_match_index])
+        return True
+
+    def find_in_value_match_index(self) -> int:
+        """当前高亮匹配序号（1-based），无则 0"""
+        if self._find_match_index < 0 or not self._find_match_positions:
+            return 0
+        return self._find_match_index + 1
+
+    def find_in_value_match_total(self) -> int:
+        return len(self._find_match_positions)
+
+    def _ensure_match_cache(self, query: str, case_sensitive: bool) -> None:
+        if (
+            self._find_dirty
+            or query != self._find_query
+            or case_sensitive != self._find_case_sensitive
+        ):
+            self._find_query = query
+            self._find_case_sensitive = case_sensitive
+            self._find_match_positions = self._compute_match_positions(query, case_sensitive)
+            self._find_match_index = -1
+            self._find_dirty = False
+
+    def _compute_match_positions(self, query: str, case_sensitive: bool) -> List[int]:
+        text = self.get_json_text()
+        if not query or not text:
+            return []
+        if case_sensitive:
+            hay = text
+            needle = query
+        else:
+            hay = text.lower()
+            needle = query.lower()
+        out: List[int] = []
+        start = 0
+        step = max(1, len(query))
+        while True:
+            i = hay.find(needle, start)
+            if i < 0:
+                break
+            out.append(i)
+            start = i + step
+        return out
+
+    @staticmethod
+    def _pos_to_line_col(s: str, pos: int) -> tuple:
+        if pos < 0:
+            pos = 0
+        if pos > len(s):
+            pos = len(s)
+        before = s[:pos]
+        line = before.count("\n")
+        last_nl = before.rfind("\n")
+        col = pos - (last_nl + 1) if last_nl >= 0 else pos
+        return line, col
+
+    def _apply_selection_for_match(self, query: str, start_pos: int) -> None:
+        text = self.get_json_text()
+        length = len(query)
+        if length <= 0 or start_pos < 0 or start_pos > len(text):
+            return
+        end_char = min(start_pos + length - 1, len(text) - 1)
+        if self._use_qscintilla:
+            line1, col1 = self._pos_to_line_col(text, start_pos)
+            line2, col2 = self._pos_to_line_col(text, end_char)
+            self._editor.setSelection(line1, col1, line2, col2)
+            try:
+                self._editor.ensureLineVisible(line1)
+            except Exception:
+                pass
+        else:
+            from PyQt6.QtGui import QTextCursor
+
+            ed = self._editor
+            c = ed.textCursor()
+            c.setPosition(start_pos)
+            c.setPosition(start_pos + length, QTextCursor.MoveMode.KeepAnchor)
+            ed.setTextCursor(c)
+            try:
+                ed.ensureCursorVisible()
+            except Exception:
+                pass
 
 
 class JSONHighlighter(QSyntaxHighlighter):

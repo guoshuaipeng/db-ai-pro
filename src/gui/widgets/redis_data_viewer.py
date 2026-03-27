@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QTableWidget, QTableWidgetItem, QLabel,
     QPushButton, QHeaderView, QMessageBox, QLineEdit,
-    QApplication, QMenu, QPlainTextEdit
+    QApplication, QMenu, QPlainTextEdit, QCheckBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent
 from PyQt6.QtGui import QFont, QKeySequence
@@ -370,6 +370,58 @@ class RedisDataViewer(QWidget):
         """)
         right_layout.addWidget(self.value_title_label)
         
+        # 详情内容内查找（在右侧 value 文本中搜索）
+        detail_find_layout = QHBoxLayout()
+        detail_find_label = QLabel("内容查找:")
+        detail_find_label.setStyleSheet("color: #666; font-size: 11px;")
+        detail_find_layout.addWidget(detail_find_label)
+        
+        self.value_detail_search_input = QLineEdit()
+        self.value_detail_search_input.setPlaceholderText("在当前内容中查找…（Enter 下一个，Shift+Enter 上一个）")
+        self.value_detail_search_input.setStyleSheet("""
+            QLineEdit {
+                padding: 4px 6px;
+                border: 1px solid #ddd;
+                border-radius: 3px;
+                font-size: 11px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #1976D2;
+            }
+        """)
+        self.value_detail_search_input.textChanged.connect(self._on_value_detail_search_text_changed)
+        self.value_detail_search_input.installEventFilter(self)
+        detail_find_layout.addWidget(self.value_detail_search_input, 1)
+        
+        self.value_detail_find_prev_btn = QPushButton("上一个")
+        self.value_detail_find_next_btn = QPushButton("下一个")
+        for b in (self.value_detail_find_prev_btn, self.value_detail_find_next_btn):
+            b.setStyleSheet("""
+                QPushButton {
+                    padding: 4px 10px;
+                    border: 1px solid #ddd;
+                    border-radius: 3px;
+                    background-color: #fafafa;
+                    font-size: 11px;
+                }
+                QPushButton:hover { background-color: #eeeeee; }
+            """)
+        self.value_detail_find_prev_btn.clicked.connect(self._on_value_detail_find_previous)
+        self.value_detail_find_next_btn.clicked.connect(self._on_value_detail_find_next)
+        detail_find_layout.addWidget(self.value_detail_find_prev_btn)
+        detail_find_layout.addWidget(self.value_detail_find_next_btn)
+        
+        self.value_detail_case_cb = QCheckBox("区分大小写")
+        self.value_detail_case_cb.setStyleSheet("font-size: 11px; color: #555;")
+        self.value_detail_case_cb.toggled.connect(self._on_value_detail_case_toggled)
+        detail_find_layout.addWidget(self.value_detail_case_cb)
+        
+        self.value_detail_find_status_label = QLabel("")
+        self.value_detail_find_status_label.setStyleSheet("color: #666; font-size: 10px; min-width: 120px;")
+        detail_find_layout.addWidget(self.value_detail_find_status_label)
+        
+        right_layout.addLayout(detail_find_layout)
+        
         # 值显示区域 - 使用 JSON 编辑器
         from src.gui.widgets.multi_result_table import FoldableJSONEditor
         self.value_json_editor = FoldableJSONEditor()
@@ -435,6 +487,8 @@ class RedisDataViewer(QWidget):
         
         # 清空搜索框
         self.search_input.clear()
+        self.value_detail_search_input.clear()
+        self.value_detail_find_status_label.setText("")
         
         # 清空之前的数据
         self.keys_table.setRowCount(0)
@@ -443,6 +497,11 @@ class RedisDataViewer(QWidget):
         
         # 填充表格
         self._populate_table(data)
+        
+        # 默认选中第一行，展示右侧详情区域
+        if data:
+            self.keys_table.clearSelection()
+            self.keys_table.selectRow(0)
     
     def _populate_table(self, data: List[Dict]):
         """填充表格数据（使用批量更新模式，避免UI阻塞）"""
@@ -539,7 +598,6 @@ class RedisDataViewer(QWidget):
                 if data and self.keys_table.rowCount() > 0:
                     self.keys_table.clearSelection()
                     self.keys_table.selectRow(0)
-                    self.on_key_selected()
                 else:
                     self.value_title_label.setText("未找到匹配的 key")
                     self.value_json_editor.set_json_text("")
@@ -612,6 +670,11 @@ class RedisDataViewer(QWidget):
                 # 清空 value 显示
                 self.value_json_editor.set_json_text("")
                 self.value_title_label.setText("选择一个 Key 查看详细值")
+                
+                # 默认选中第一行并加载详情
+                if data and self.keys_table.rowCount() > 0:
+                    self.keys_table.clearSelection()
+                    self.keys_table.selectRow(0)
                 
             except Exception as e:
                 logger.error(f"处理重新加载数据失败: {e}", exc_info=True)
@@ -725,6 +788,9 @@ class RedisDataViewer(QWidget):
                 # 处理并显示 value（尝试格式化为 JSON）
                 display_text = self._format_value_for_json(value_text)
                 self.value_json_editor.set_json_text(display_text)
+                
+                if self.value_detail_search_input.text().strip():
+                    self._on_value_detail_search_text_changed(self.value_detail_search_input.text())
                 
                 # 保存当前 key 信息
                 self.current_key_name = key
@@ -1077,6 +1143,53 @@ class RedisDataViewer(QWidget):
 
         worker.start()
     
+    def _value_detail_case_sensitive(self) -> bool:
+        return self.value_detail_case_cb.isChecked()
+    
+    def _on_value_detail_case_toggled(self, _checked: bool):
+        self._on_value_detail_search_text_changed(self.value_detail_search_input.text())
+    
+    def _on_value_detail_search_text_changed(self, text: str):
+        """输入变化时更新匹配数量提示（内容过大时跳过统计）"""
+        q = text.strip()
+        if not q:
+            self.value_detail_find_status_label.setText("")
+            return
+        body = self.value_json_editor.get_json_text()
+        if len(body) > 300_000:
+            self.value_detail_find_status_label.setText("内容较大，请用按钮或 Enter 查找")
+            return
+        n = self.value_json_editor.count_matches_in_value(q, self._value_detail_case_sensitive())
+        if n == 0:
+            self.value_detail_find_status_label.setText("未找到")
+        else:
+            self.value_detail_find_status_label.setText(f"共 {n} 处")
+    
+    def _sync_value_detail_find_status_after_nav(self, query: str):
+        """查找上一个/下一个后更新「第 i/N 处」"""
+        total = self.value_json_editor.find_in_value_match_total()
+        cur = self.value_json_editor.find_in_value_match_index()
+        if not query or total == 0:
+            self.value_detail_find_status_label.setText("未找到")
+        else:
+            self.value_detail_find_status_label.setText(f"第 {cur}/{total} 处")
+    
+    def _on_value_detail_find_next(self):
+        q = self.value_detail_search_input.text().strip()
+        if not q:
+            self.value_detail_find_status_label.setText("")
+            return
+        self.value_json_editor.find_in_value_next(q, self._value_detail_case_sensitive())
+        self._sync_value_detail_find_status_after_nav(q)
+    
+    def _on_value_detail_find_previous(self):
+        q = self.value_detail_search_input.text().strip()
+        if not q:
+            self.value_detail_find_status_label.setText("")
+            return
+        self.value_json_editor.find_in_value_previous(q, self._value_detail_case_sensitive())
+        self._sync_value_detail_find_status_after_nav(q)
+    
     def _display_keys_list(self, keys: list):
         """显示keys列表"""
         # 转换为表格数据格式
@@ -1111,6 +1224,13 @@ class RedisDataViewer(QWidget):
                 if event.modifiers() != Qt.KeyboardModifier.ShiftModifier:
                     self.generate_redis_command_from_ai()
                     return True
+        elif hasattr(self, 'value_detail_search_input') and obj == self.value_detail_search_input and event.type() == QEvent.Type.KeyPress:
+            if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+                if event.modifiers() == Qt.KeyboardModifier.ShiftModifier:
+                    self._on_value_detail_find_previous()
+                else:
+                    self._on_value_detail_find_next()
+                return True
         return super().eventFilter(obj, event)
     
     def copy_selected_cells(self):
