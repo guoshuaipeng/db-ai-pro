@@ -29,8 +29,8 @@ class AIModelConfig(BaseModel):
     provider: AIModelProvider  # 提供商
     api_key: SecretStr  # API密钥（加密存储）
     base_url: Optional[str] = None  # API基础URL（可选，某些提供商需要）
-    default_model: str = "qwen-plus"  # 默认模型名称
-    turbo_model: str = "qwen-turbo"  # Turbo模型名称（用于快速操作）
+    default_model: str = "qwen-plus"  # 主请求使用的模型 ID（与 turbo_model 一致，由配置保存）
+    turbo_model: str = "qwen-turbo"  # 与 default_model 相同；兼容旧字段与 AIClient
     is_active: bool = True  # 是否激活
     # is_default 字段已废弃，不再使用
     

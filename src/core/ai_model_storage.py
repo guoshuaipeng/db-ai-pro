@@ -125,8 +125,8 @@ class AIModelStorage:
         获取当前使用的模型配置
         
         优先级：
-        1. is_current=1 的激活模型
-        2. 第一个激活的模型（如果没有标记为当前的）
+        1. is_current=1 的激活模型（即上次在界面选择的模型）
+        2. 第一个激活的模型（仅内存返回，不写入数据库，避免读操作覆盖「上次使用」）
         3. None（如果没有任何模型）
         """
         try:
@@ -146,7 +146,7 @@ class AIModelStorage:
                 logger.info(f"使用当前标记的模型: {model.name}")
                 return model
             
-            # 如果没有标记为当前的模型，使用第一个激活的模型
+            # 未标记「上次使用」时：供 AIClient 等只读使用，不 set_current，由界面刷新时统一落库
             models = self.load_models()
             if not models:
                 logger.warning("没有找到任何AI模型配置")
@@ -154,9 +154,7 @@ class AIModelStorage:
             
             for model in models:
                 if model.is_active:
-                    logger.info(f"没有标记为当前的模型，使用第一个激活的模型: {model.name}")
-                    # 标记为当前使用的模型
-                    self.set_current_model(model.id)
+                    logger.info(f"未标记上次使用的模型，本次仅使用第一个激活模型（未写入数据库）: {model.name}")
                     return model
             
             logger.warning("没有找到激活的AI模型配置")

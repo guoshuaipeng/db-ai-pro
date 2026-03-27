@@ -1,6 +1,7 @@
 """
 AI模型管理对话框
 """
+import logging
 from PyQt6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -26,6 +27,8 @@ from src.core.ai_model_storage import AIModelStorage
 from src.core.ai_token_stats import TokenStatsStorage
 from src.gui.dialogs.ai_model_dialog import AIModelDialog
 from src.gui.dialogs.prompt_config_dialog import PromptConfigDialog
+
+logger = logging.getLogger(__name__)
 
 
 class AIModelManagerDialog(QDialog):
@@ -236,10 +239,6 @@ class AIModelManagerDialog(QDialog):
         delete_btn = QPushButton("删除")
         delete_btn.clicked.connect(self.delete_selected_model)
         btn_layout.addWidget(delete_btn)
-        
-        set_default_btn = QPushButton("设为默认")
-        set_default_btn.clicked.connect(self.set_default_model)
-        btn_layout.addWidget(set_default_btn)
         
         prompt_btn = QPushButton("编辑提示词")
         prompt_btn.clicked.connect(self.edit_prompts)
@@ -532,18 +531,6 @@ class AIModelManagerDialog(QDialog):
             else:
                 logger.error(f"从数据库删除模型失败: {model_id}")
                 QMessageBox.warning(self, "错误", "删除模型配置失败")
-    
-    def set_default_model(self):
-        """设置默认模型"""
-        current_item = self.model_list.currentItem()
-        if not current_item:
-            QMessageBox.warning(self, "警告", "请先选择一个模型配置")
-            return
-        
-        model_id = current_item.data(Qt.ItemDataRole.UserRole)
-        model = next((m for m in self.models if m.id == model_id), None)
-        # 不再使用默认模型概念，此方法已废弃
-        pass
     
     def edit_prompts(self):
         """编辑提示词"""

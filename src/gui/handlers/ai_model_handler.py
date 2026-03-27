@@ -37,33 +37,37 @@ class AIModelHandler:
         if not hasattr(self.main_window, 'ai_model_combo'):
             return
         
-        self.main_window.ai_model_combo.clear()
+        combo = self.main_window.ai_model_combo
+        # 必须在 clear / addItem / setCurrentIndex 全过程中阻塞信号，否则
+        # 重建列表时会触发 currentIndexChanged，误把「当前模型」写成第一项。
+        combo.blockSignals(True)
         
         # 加载所有模型配置
         models = self.main_window.ai_model_storage.load_models()
         active_models = [m for m in models if m.is_active]
         
         if not active_models:
-            self.main_window.ai_model_combo.addItem("未配置模型", None)
-            self.main_window.ai_model_combo.setEnabled(False)
+            combo.clear()
+            combo.addItem("未配置模型", None)
+            combo.setEnabled(False)
+            combo.blockSignals(False)
             return
         
-        self.main_window.ai_model_combo.setEnabled(True)
+        combo.setEnabled(True)
+        combo.clear()
         
-        # 获取当前使用的模型ID
+        # 获取当前使用的模型ID（仅来自数据库中「上次使用」标记，不做默认推断）
         current_id = self.main_window.ai_model_storage.get_current_model_id()
         
         logger.info(f"刷新AI模型列表，当前使用的模型ID: {current_id}")
         
         # 添加模型到下拉框，并找到当前使用的模型索引
-        selected_index = 0  # 默认选择第一个
+        selected_index = 0
         found_current = False
         
         for i, model in enumerate(active_models):
-            # 只显示模型名称，不显示任何标记
-            self.main_window.ai_model_combo.addItem(model.name, model.id)
+            combo.addItem(model.name, model.id)
             
-            # 如果找到当前使用的模型，记录索引
             if current_id and model.id == current_id:
                 selected_index = i
                 found_current = True
@@ -72,31 +76,23 @@ class AIModelHandler:
         if not found_current and current_id:
             logger.warning(f"当前使用的模型ID {current_id} 未找到或未激活，使用第一个模型")
         
-        # 设置当前选择的模型（优先使用上次使用的模型）
+        # 设置当前选择的模型（仅恢复数据库中记录的上次使用；无记录时再落库第一项）
         if active_models:
             selected_model_id = active_models[selected_index].id
             previous_model_id = getattr(self.main_window, 'current_ai_model_id', None)
             
-            # 先临时断开信号，避免触发 on_ai_model_changed
-            self.main_window.ai_model_combo.blockSignals(True)
-            self.main_window.ai_model_combo.setCurrentIndex(selected_index)
-            self.main_window.ai_model_combo.blockSignals(False)
+            combo.setCurrentIndex(selected_index)
+            combo.blockSignals(False)
             
             # 更新当前模型ID
             self.main_window.current_ai_model_id = selected_model_id
             
-            # 如果找到了当前模型，说明数据库中的模型和下拉框选中的一致，不需要更新数据库
-            if found_current and selected_model_id == current_id:
-                logger.debug(f"当前模型已在列表中且已选中，无需更新数据库: {selected_model_id}")
-            elif not found_current:
-                # 如果当前使用的模型未找到或未激活，需要判断是否需要更新数据库
-                if not current_id:
-                    # 数据库中没有记录，设置第一个激活的模型
-                    self.main_window.ai_model_storage.set_current_model(selected_model_id)
-                    logger.info(f"数据库中没有当前模型记录，已设置第一个激活模型为当前使用: {selected_model_id}")
-                else:
-                    # 当前模型存在但未激活，保持数据库记录不变，只在下拉框中选择第一个
-                    logger.warning(f"当前使用的模型ID {current_id} 未激活，但保持数据库记录不变，下拉框显示第一个模型")
+            # 仅在数据库中无有效「上次使用」或记录已失效时写回，避免刷新时反复覆盖
+            if found_current:
+                logger.debug(f"已恢复上次使用的模型: {selected_model_id}")
+            else:
+                self.main_window.ai_model_storage.set_current_model(selected_model_id)
+                logger.info(f"无有效上次使用记录或配置已失效，已同步当前选中项: {selected_model_id}")
             
             # 只有当模型真正改变时才更新SQL编辑器的AI客户端
             if hasattr(self.main_window, 'sql_editor'):

@@ -189,19 +189,11 @@ class AIModelDialog(QDialog):
         base_url_label.setStyleSheet("font-weight: 500;")
         form_layout.addRow(base_url_label, self.base_url_edit)
         
-        # 默认模型
-        self.default_model_edit = QLineEdit()
-        self.default_model_edit.setText("qwen-plus")
-        self.default_model_edit.setPlaceholderText("例如: qwen-plus")
-        default_model_label = QLabel("默认模型 *")
-        default_model_label.setStyleSheet("font-weight: 500;")
-        form_layout.addRow(default_model_label, self.default_model_edit)
-        
         # Turbo模型
         self.turbo_model_edit = QLineEdit()
         self.turbo_model_edit.setText("qwen-turbo")
         self.turbo_model_edit.setPlaceholderText("例如: qwen-turbo")
-        turbo_model_label = QLabel("Turbo 模型 *")
+        turbo_model_label = QLabel("模型名称 *")
         turbo_model_label.setStyleSheet("font-weight: 500;")
         form_layout.addRow(turbo_model_label, self.turbo_model_edit)
         
@@ -262,7 +254,6 @@ class AIModelDialog(QDialog):
         self.name_edit.setStyleSheet(input_style)
         self.api_key_edit.setStyleSheet(input_style)
         self.base_url_edit.setStyleSheet(input_style)
-        self.default_model_edit.setStyleSheet(input_style)
         self.turbo_model_edit.setStyleSheet(input_style)
         
         # 按钮区域
@@ -342,67 +333,56 @@ class AIModelDialog(QDialog):
         # 定义每个提供商的默认配置和API密钥获取网址
         provider_configs = {
             AIModelProvider.ALIYUN_QIANWEN: {
-                "default_model": "qwen-plus",
                 "turbo_model": "qwen-turbo",
                 "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
                 "api_key_url": "https://dashscope.console.aliyun.com/apiKey"
             },
             AIModelProvider.OPENAI: {
-                "default_model": "gpt-4",
                 "turbo_model": "gpt-3.5-turbo",
                 "base_url": "https://api.openai.com/v1",
                 "api_key_url": "https://platform.openai.com/api-keys"
             },
             AIModelProvider.DEEPSEEK: {
-                "default_model": "deepseek-chat",
                 "turbo_model": "deepseek-chat",
                 "base_url": "https://api.deepseek.com/v1",
                 "api_key_url": "https://platform.deepseek.com/api_keys"
             },
             AIModelProvider.ZHIPU_GLM: {
-                "default_model": "glm-4",
                 "turbo_model": "glm-3-turbo",
                 "base_url": "https://open.bigmodel.cn/api/paas/v4",
                 "api_key_url": "https://open.bigmodel.cn/usercenter/apikeys"
             },
             AIModelProvider.BAIDU_WENXIN: {
-                "default_model": "ernie-4.0",
                 "turbo_model": "ernie-3.5",
                 "base_url": "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop",
                 "api_key_url": "https://console.bce.baidu.com/qianfan/ais/console/applicationConsole/application"
             },
             AIModelProvider.XUNFEI_XINGHUO: {
-                "default_model": "spark-4.0",
                 "turbo_model": "spark-lite",
                 "base_url": "https://spark-api-open.xf-yun.com/v1",
                 "api_key_url": "https://console.xfyun.cn/services/bm35"
             },
             AIModelProvider.MOONSHOT: {
-                "default_model": "moonshot-v1-8k",
                 "turbo_model": "moonshot-v1-8k",
                 "base_url": "https://api.moonshot.cn/v1",
                 "api_key_url": "https://platform.moonshot.cn/console/api-keys"
             },
             AIModelProvider.TENCENT_HUNYUAN: {
-                "default_model": "hunyuan-large",
                 "turbo_model": "hunyuan-lite",
                 "base_url": "https://api.hunyuan.cloud.tencent.com/v1",
                 "api_key_url": "https://console.cloud.tencent.com/hunyuan/api-key"
             },
             AIModelProvider.ANTHROPIC_CLAUDE: {
-                "default_model": "claude-3-5-sonnet-20241022",
                 "turbo_model": "claude-3-haiku-20240307",
                 "base_url": "https://api.anthropic.com/v1",
                 "api_key_url": "https://console.anthropic.com/settings/keys"
             },
             AIModelProvider.GOOGLE_GEMINI: {
-                "default_model": "gemini-pro",
                 "turbo_model": "gemini-pro",
                 "base_url": "https://generativelanguage.googleapis.com/v1",
                 "api_key_url": "https://makersuite.google.com/app/apikey"
             },
             AIModelProvider.CUSTOM: {
-                "default_model": "gpt-3.5-turbo",
                 "turbo_model": "gpt-3.5-turbo",
                 "base_url": "https://api.openai.com/v1",
                 "api_key_url": ""
@@ -411,7 +391,6 @@ class AIModelDialog(QDialog):
         
         config = provider_configs.get(provider)
         if config:
-            self.default_model_edit.setText(config["default_model"])
             self.turbo_model_edit.setText(config["turbo_model"])
             if not self.base_url_edit.text():
                 self.base_url_edit.setPlaceholderText(f"默认: {config['base_url']}")
@@ -443,7 +422,6 @@ class AIModelDialog(QDialog):
         
         if self.model.base_url:
             self.base_url_edit.setText(self.model.base_url)
-        self.default_model_edit.setText(self.model.default_model)
         self.turbo_model_edit.setText(self.model.turbo_model)
         self.active_check.setChecked(self.model.is_active)
     
@@ -457,10 +435,6 @@ class AIModelDialog(QDialog):
             QMessageBox.warning(self, "警告", "请输入API密钥")
             return
         
-        if not self.default_model_edit.text().strip():
-            QMessageBox.warning(self, "警告", "请输入默认模型名称")
-            return
-        
         if not self.turbo_model_edit.text().strip():
             QMessageBox.warning(self, "警告", "请输入Turbo模型名称")
             return
@@ -471,14 +445,15 @@ class AIModelDialog(QDialog):
         """获取模型配置"""
         from pydantic import SecretStr
         
+        turbo = self.turbo_model_edit.text().strip()
         return AIModelConfig(
             id=self.model.id if self.model else str(uuid.uuid4()),
             name=self.name_edit.text().strip(),
             provider=self.current_provider,
             api_key=SecretStr(self.api_key_edit.text().strip()),
             base_url=self.base_url_edit.text().strip() or None,
-            default_model=self.default_model_edit.text().strip(),
-            turbo_model=self.turbo_model_edit.text().strip(),
+            default_model=turbo,
+            turbo_model=turbo,
             is_active=self.active_check.isChecked(),
         )
 
