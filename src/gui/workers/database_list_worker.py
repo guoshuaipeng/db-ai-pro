@@ -148,6 +148,27 @@ class DatabaseListWorker(QThread):
             elif self.db_type == DatabaseType.SQLITE:
                 # SQLite: 单文件数据库，返回 "main" 作为数据库名
                 databases = ["main"]
+            elif self.db_type == DatabaseType.ORACLE:
+                # Oracle: 将 "用户名/Schema(Owner)" 作为数据库节点展示。
+                # - 通过 ALL_TABLES/USER_TABLES 枚举 OWNER，便于用户按用户展开表。
+                # - 如果权限不足枚举失败，则回退到 USER_TABLES（只会显示当前用户下的表）。
+                with engine.connect() as conn:
+                    if self.isInterruptionRequested() or self._should_stop:
+                        return
+
+                    # 首选：列出可见 schema（owner）中有表的用户
+                    try:
+                        result = conn.execute(text("""
+                            SELECT DISTINCT owner
+                            FROM all_tables
+                            WHERE owner NOT IN ('SYS', 'SYSTEM')
+                            ORDER BY owner
+                        """))
+                        databases = [row[0] for row in result if row and row[0]]
+                    except Exception:
+                        # 回退：只显示当前用户
+                        result = conn.execute(text("SELECT USER FROM dual"))
+                        databases = [row[0] for row in result if row and row[0]]
             else:
                 # 其他数据库类型，返回空列表（由调用者处理）
                 databases = []

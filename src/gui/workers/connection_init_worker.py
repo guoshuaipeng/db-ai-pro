@@ -81,7 +81,7 @@ class ConnectionInitWorker(QThread):
                 engine_kwargs['connect_args'] = connect_args.copy()
                 # 确保超时时间不超过30秒
                 timeout = min(self.connection.timeout, 30)
-                engine_kwargs['connect_args']['connect_timeout'] = timeout
+                engine_kwargs['connect_args']['tcp_connect_timeout'] = timeout
             
             if self.isInterruptionRequested() or self._should_stop:
                 return

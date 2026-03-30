@@ -78,7 +78,8 @@ class ConnectionTestWorker(QThread):
             elif self.connection.db_type == DatabaseType.POSTGRESQL:
                 connect_args['connect_timeout'] = min(connect_args.get('connect_timeout', 30), self._max_connect_timeout)
             elif self.connection.db_type == DatabaseType.ORACLE:
-                connect_args['connect_timeout'] = min(connect_args.get('connect_timeout', 30), self._max_connect_timeout)
+                # oracledb.connect 的超时关键字为 tcp_connect_timeout
+                connect_args['tcp_connect_timeout'] = min(connect_args.get('tcp_connect_timeout', 30), self._max_connect_timeout)
             elif self.connection.db_type == DatabaseType.SQLSERVER:
                 connect_args['timeout'] = min(connect_args.get('timeout', 30), self._max_connect_timeout)
             

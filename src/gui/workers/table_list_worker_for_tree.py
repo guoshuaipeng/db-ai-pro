@@ -4,7 +4,7 @@
 import logging
 from PyQt6.QtCore import QThread, pyqtSignal
 from typing import List, Optional
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 from src.core.database_connection import DatabaseType
 
@@ -56,7 +56,8 @@ class TableListWorkerForTree(QThread):
             elif self.db_type == DatabaseType.POSTGRESQL:
                 connect_args['connect_timeout'] = min(connect_args.get('connect_timeout', 30), self._max_connect_timeout)
             elif self.db_type == DatabaseType.ORACLE:
-                connect_args['connect_timeout'] = min(connect_args.get('connect_timeout', 30), self._max_connect_timeout)
+                # oracledb.connect() 的超时关键字为 tcp_connect_timeout
+                connect_args['tcp_connect_timeout'] = min(connect_args.get('tcp_connect_timeout', 30), self._max_connect_timeout)
             elif self.db_type == DatabaseType.SQLSERVER:
                 connect_args['timeout'] = min(connect_args.get('timeout', 30), self._max_connect_timeout)
             elif self.db_type == DatabaseType.HIVE:
@@ -76,6 +77,34 @@ class TableListWorkerForTree(QThread):
             if self.isInterruptionRequested() or self._should_stop:
                 return
             
+            # Oracle：这里的 database 节点展示的是 schema/owner
+            if self.db_type == DatabaseType.ORACLE:
+                owner = (self.database or "").strip()
+                with engine.connect() as conn:
+                    if owner:
+                        # 优先用 ALL_TABLES，能看到当前有权限的对象
+                        result = conn.execute(
+                            text("""
+                                SELECT table_name
+                                FROM all_tables
+                                WHERE owner = :owner
+                                ORDER BY table_name
+                            """),
+                            {"owner": owner},
+                        )
+                    else:
+                        # 回退：只显示当前用户
+                        result = conn.execute(
+                            text("""
+                                SELECT table_name
+                                FROM user_tables
+                                ORDER BY table_name
+                            """)
+                        )
+                    tables = [row[0] for row in result if row and row[0]]
+                self.tables_ready.emit(tables)
+                return
+
             inspector = inspect(engine)
             
             # MySQL/MariaDB: 通过 schema 参数获取指定数据库的表列表

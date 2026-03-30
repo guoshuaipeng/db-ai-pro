@@ -70,6 +70,7 @@ def _build_db_connection(conn_cfg) -> "DatabaseConnection":
         username=conn_cfg.get("username") or "",
         password=(conn_cfg.get("password") or ""),
         charset=conn_cfg.get("charset") or "utf8mb4",
+        extra_params=conn_cfg.get("extra_params") or {},
     )
 
 

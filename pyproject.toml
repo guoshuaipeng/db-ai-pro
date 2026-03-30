@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "dataai"
 # 注意：版本号需要与 src/__init__.py 中的 __version__ 保持一致
 # 版本号统一在 src/__init__.py 中定义，这里是用于包管理的副本
-version = "2026.03.30.0905"  # 请与 src/__init__.py 中的 __version__ 同步
+version = "2026.03.30.1632"  # 请与 src/__init__.py 中的 __version__ 同步
 description = "DataAI - AI驱动的数据库管理工具"
 authors = [
     {name = "codeyG", email = "550187704@qq.com"}

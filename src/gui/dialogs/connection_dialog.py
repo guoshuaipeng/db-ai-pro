@@ -327,6 +327,73 @@ class ConnectionDialog(QDialog):
         self.advanced_label = QLabel("字符集")
         self.advanced_label.setStyleSheet("font-weight: 500;")
         form_layout.addRow(self.advanced_label, charset_layout)
+
+        # Oracle OCI / Instant Client 厚模式配置（仅 oracle 类型展示）
+        self.oci_label = QLabel("Oracle OCI/Instant Client")
+        self.oci_label.setStyleSheet("font-weight: 500;")
+        self.oci_thick_check = QCheckBox("启用厚模式（Instant Client）")
+        self.oci_thick_check.setChecked(False)
+        self.oci_thick_check.stateChanged.connect(self._on_oci_thick_mode_changed)
+        form_layout.addRow(self.oci_label, self.oci_thick_check)
+
+        self.oracle_lib_dir_label = QLabel("lib_dir（可选）")
+        self.oracle_lib_dir_label.setStyleSheet("font-weight: 500;")
+
+        # lib_dir 输入框旁的选择按钮：让用户更容易用文件选择（例如选择 oci.dll 自动回填目录）
+        self.oracle_lib_dir_edit = QLineEdit()
+        self.oracle_lib_dir_edit.setPlaceholderText("例如：C:/instantclient_19_19 或 D:/instantclient/lib")
+
+        self.oracle_lib_dir_browse_btn = QPushButton("选择 oci.dll")
+        self.oracle_lib_dir_browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.oracle_lib_dir_browse_btn.setMaximumWidth(140)
+        self.oracle_lib_dir_browse_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f5f5f5;
+                color: #424242;
+                border: 1px solid #e0e0e0;
+                border-radius: 6px;
+                padding: 8px 10px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #eeeeee;
+                border-color: #bdbdbd;
+            }
+            QPushButton:pressed {
+                background-color: #e0e0e0;
+            }
+        """)
+        self.oracle_lib_dir_browse_btn.clicked.connect(self.on_browse_oracle_oci_dll)
+
+        oracle_lib_dir_layout = QHBoxLayout()
+        oracle_lib_dir_layout.setSpacing(10)
+        oracle_lib_dir_layout.addWidget(self.oracle_lib_dir_edit, 1)
+        oracle_lib_dir_layout.addWidget(self.oracle_lib_dir_browse_btn, 0)
+        form_layout.addRow(self.oracle_lib_dir_label, oracle_lib_dir_layout)
+
+        self.oracle_tns_admin_label = QLabel("TNS_ADMIN（可选）")
+        self.oracle_tns_admin_label.setStyleSheet("font-weight: 500;")
+        self.oracle_tns_admin_edit = QLineEdit()
+        self.oracle_tns_admin_edit.setPlaceholderText("例如：C:/oracle/network/admin")
+        form_layout.addRow(self.oracle_tns_admin_label, self.oracle_tns_admin_edit)
+
+        # Oracle 连接标识类型：Service Name or SID
+        self.oracle_identifier_type_label = QLabel("Oracle 标识类型")
+        self.oracle_identifier_type_label.setStyleSheet("font-weight: 500;")
+        self.oracle_identifier_type_combo = QComboBox()
+        self.oracle_identifier_type_combo.addItems(["service_name(服务名)", "sid(SID)"])
+        form_layout.addRow(self.oracle_identifier_type_label, self.oracle_identifier_type_combo)
+
+        # 默认隐藏（由 on_db_type_changed 决定是否显示）
+        self.oci_label.setVisible(False)
+        self.oci_thick_check.setVisible(False)
+        self.oracle_lib_dir_label.setVisible(False)
+        self.oracle_lib_dir_edit.setVisible(False)
+        self.oracle_lib_dir_browse_btn.setVisible(False)
+        self.oracle_tns_admin_label.setVisible(False)
+        self.oracle_tns_admin_edit.setVisible(False)
+        self.oracle_identifier_type_label.setVisible(False)
+        self.oracle_identifier_type_combo.setVisible(False)
         
         # 将表单添加到连接组
         connection_layout.addLayout(form_layout)
@@ -642,6 +709,14 @@ class ConnectionDialog(QDialog):
         allowed_set = self._load_existing_db_visibility()
 
         # 默认：显示全部（全部勾选）
+        if allowed_set is not None:
+            # 如果旧的白名单与本次加载的数据库列表不匹配，可能导致“一个也不勾选”
+            # 这会让用户感到很奇怪（看起来像“连接下面没东西”）。
+            db_name_set = {str(x) for x in databases}
+            selected_count = len(allowed_set & db_name_set)
+            if selected_count == 0:
+                allowed_set = None
+
         default_show_all = allowed_set is None
 
         for db_name in databases:
@@ -747,6 +822,20 @@ class ConnectionDialog(QDialog):
                 self.host_edit.setText("localhost")
                 self.username_edit.setText("sqlite")
                 self.password_edit.setText("sqlite")
+            
+            # SQLite 隐藏 OCI
+            for w in (
+                self.oci_label,
+                self.oci_thick_check,
+                self.oracle_lib_dir_label,
+                self.oracle_lib_dir_edit,
+                self.oracle_lib_dir_browse_btn,
+                self.oracle_tns_admin_label,
+                self.oracle_tns_admin_edit,
+                self.oracle_identifier_type_label,
+                self.oracle_identifier_type_combo,
+            ):
+                w.setVisible(False)
         elif db_type == DatabaseType.REDIS.value:
             # Redis特殊处理
             # 修改数据库名标签和占位符（Redis使用数字，默认16个，但可配置）
@@ -758,6 +847,20 @@ class ConnectionDialog(QDialog):
             
             # 用户名可选（Redis 6.0+ 支持 ACL）
             self.username_edit.setPlaceholderText("可选（Redis 6.0+ ACL）")
+
+            # Redis 隐藏 OCI
+            for w in (
+                self.oci_label,
+                self.oci_thick_check,
+                self.oracle_lib_dir_label,
+                self.oracle_lib_dir_edit,
+                self.oracle_lib_dir_browse_btn,
+                self.oracle_tns_admin_label,
+                self.oracle_tns_admin_edit,
+                self.oracle_identifier_type_label,
+                self.oracle_identifier_type_combo,
+            ):
+                w.setVisible(False)
         else:
             # 显示所有字段
             self.host_label.setVisible(True)
@@ -780,6 +883,59 @@ class ConnectionDialog(QDialog):
             else:
                 self.database_edit.setPlaceholderText("数据库名称")
             self.browse_btn.setVisible(False)  # 隐藏浏览按钮
+
+            # Oracle 类型显示 OCI，其它隐藏
+            is_oracle = db_type == DatabaseType.ORACLE.value
+            self.oci_label.setVisible(is_oracle)
+            self.oci_thick_check.setVisible(is_oracle)
+            self.oracle_lib_dir_label.setVisible(is_oracle)
+            self.oracle_lib_dir_edit.setVisible(is_oracle)
+            self.oracle_lib_dir_browse_btn.setVisible(is_oracle)
+            self.oracle_tns_admin_label.setVisible(is_oracle)
+            self.oracle_tns_admin_edit.setVisible(is_oracle)
+            self.oracle_identifier_type_label.setVisible(is_oracle)
+            self.oracle_identifier_type_combo.setVisible(is_oracle)
+
+            # 厚模式开关决定 lib_dir / tns_admin 是否可编辑
+            self._on_oci_thick_mode_changed(self.oci_thick_check.checkState())
+
+    def _on_oci_thick_mode_changed(self, _state):
+        """根据厚模式开关，启用/禁用 OCI 输入框。"""
+        enabled = self.oci_thick_check.isChecked()
+        self.oracle_lib_dir_edit.setEnabled(enabled)
+        self.oracle_lib_dir_browse_btn.setEnabled(enabled)
+        self.oracle_tns_admin_edit.setEnabled(enabled)
+
+    def on_browse_oracle_oci_dll(self):
+        """选择 Instant Client 的 oci.dll，然后自动回填其目录到 lib_dir。"""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        import os
+
+        # 允许用户选择 oci.dll，取其所在目录作为 lib_dir
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择 Oracle Instant Client 的 oci.dll",
+            self.oracle_lib_dir_edit.text().strip() or "",
+            "OCI library (oci.dll) (*.dll);;DLL files (*.dll);;All files (*.*)",
+        )
+        if not file_path:
+            return
+
+        try:
+            # 如果用户选中了具体 dll 文件，就使用目录作为 lib_dir
+            if file_path.lower().endswith(".dll"):
+                dir_path = os.path.dirname(file_path)
+            else:
+                dir_path = file_path
+
+            dir_path = (dir_path or "").strip().replace("\\", "/")
+            if not dir_path:
+                QMessageBox.warning(self, "选择失败", "无法解析 oci.dll 所在目录。")
+                return
+
+            self.oracle_lib_dir_edit.setText(dir_path)
+        except Exception as e:
+            QMessageBox.warning(self, "选择失败", f"解析 oci.dll 路径失败: {e}")
     
     def on_browse_database_file(self):
         """浏览或新建SQLite数据库文件"""
@@ -857,6 +1013,20 @@ class ConnectionDialog(QDialog):
         self.password_edit.setText(self.connection.password.get_secret_value())
         self.charset_edit.setText(self.connection.charset)
         self.ssl_check.setChecked(self.connection.use_ssl)
+
+        # Oracle OCI / Instant Client 回填（向后兼容：旧连接可能没有 extra_params）
+        extra = getattr(self.connection, "extra_params", {}) or {}
+        use_thick_mode = extra.get("use_thick_mode")
+        has_lib_dir = bool(extra.get("lib_dir"))
+        self.oci_thick_check.setChecked(bool(use_thick_mode) or has_lib_dir)
+        self.oracle_lib_dir_edit.setText(extra.get("lib_dir") or "")
+        self.oracle_tns_admin_edit.setText(extra.get("tns_admin") or "")
+        identifier_type = (extra.get("oracle_identifier_type") or "service_name").strip().lower()
+        if identifier_type == "sid":
+            self.oracle_identifier_type_combo.setCurrentIndex(1)
+        else:
+            self.oracle_identifier_type_combo.setCurrentIndex(0)
+        self._on_oci_thick_mode_changed(self.oci_thick_check.checkState())
     
     def get_connection(self) -> DatabaseConnection:
         """获取连接配置"""
@@ -877,7 +1047,29 @@ class ConnectionDialog(QDialog):
             password=SecretStr(self.password_edit.text()) if self.db_type_combo.currentText() != DatabaseType.SQLITE.value else SecretStr(""),
             charset=self.charset_edit.text(),
             use_ssl=self.ssl_check.isChecked(),
+            extra_params=self._build_extra_params(),
         )
+
+    def _build_extra_params(self) -> dict:
+        """从 UI 控件构建 extra_params（用于驱动/初始化配置）。"""
+        extra_params: dict = {}
+        db_type = self.db_type_combo.currentText()
+        if db_type == DatabaseType.ORACLE.value:
+            identifier_type = self.oracle_identifier_type_combo.currentText()
+            extra_params["oracle_identifier_type"] = "sid" if identifier_type.startswith("sid") else "service_name"
+
+        if db_type == DatabaseType.ORACLE.value and self.oci_thick_check.isChecked():
+            extra_params["use_thick_mode"] = True
+
+            lib_dir = (self.oracle_lib_dir_edit.text() or "").strip()
+            if lib_dir:
+                extra_params["lib_dir"] = lib_dir
+
+            tns_admin = (self.oracle_tns_admin_edit.text() or "").strip()
+            if tns_admin:
+                extra_params["tns_admin"] = tns_admin
+
+        return extra_params
     
     def closeEvent(self, event):
         """对话框关闭事件"""
