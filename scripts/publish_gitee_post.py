@@ -1,6 +1,8 @@
 """
 使用 Gitee OpenAPI 为 db-ai-pro 仓库发布一篇推荐文章（Issue）。
 
+流程与脚本索引：docs/推荐文章/多平台发布-操作流程.md · scripts/README-发布脚本.md
+
 依赖：
 - 环境变量 GITEE_TOKEN：Gitee 个人访问令牌，需具备 projects / issues 权限。
 

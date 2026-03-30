@@ -1,4 +1,6 @@
 # 将 docs/推荐文章/DataAI推荐.md 一键发布到多个平台（需提前配置各平台凭证）
+# 说明：docs/推荐文章/多平台发布-操作流程.md · scripts/README-发布脚本.md
+#
 # 用法（在仓库根目录 PowerShell）:
 #   .\scripts\publish_recommend_all.ps1
 # 可选:

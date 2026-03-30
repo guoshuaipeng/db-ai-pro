@@ -1,6 +1,8 @@
 """
 使用 OSChina OpenAPI 将推荐文章发布为博客。
 
+流程与脚本索引：docs/推荐文章/多平台发布-操作流程.md · scripts/README-发布脚本.md
+
 access_token 获取与配置方式：
 
 1. 在浏览器中完成 /action/oauth2/authorize 授权，拿到 code
@@ -14,7 +16,7 @@ access_token 获取与配置方式：
 
 用法示例（在 PowerShell 中）：
 
-    cd e:\pythonProjects\db-ai
+    cd E:/pythonProjects/db-ai
     $env:OSCHINA_ACCESS_TOKEN = "你的 access_token"
     python scripts/publish_oschina_blog.py
 

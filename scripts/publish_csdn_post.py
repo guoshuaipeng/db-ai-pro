@@ -1,6 +1,8 @@
 """
 将本地 Markdown 推荐文章发布到 CSDN 博客。
 
+流程与脚本索引：docs/推荐文章/多平台发布-操作流程.md · scripts/README-发布脚本.md
+
 依赖：
 - 环境变量 CSDN_COOKIE：浏览器登录 CSDN 后复制的 Cookie（整串）。
 - 可选：pip install markdown requests_toolbelt（Markdown 转 HTML、multipart 提交）

@@ -1,6 +1,8 @@
 """
 掘金 Markdown 编辑页注入正文（ByteMD + CodeMirror 5）。
 
+流程与脚本索引：docs/推荐文章/多平台发布-操作流程.md · scripts/README-发布脚本.md
+
 掘金编辑器的无障碍树里正文是一个难以被 Playwright fill 的节点；在已登录的
 「写文章」页打开开发者工具 Console，粘贴本脚本输出的代码即可一次性写入正文
 并触发 input/change，便于自动保存草稿。
