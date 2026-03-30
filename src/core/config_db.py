@@ -1106,6 +1106,14 @@ class ConfigDB:
                     UNIQUE(connection_id, database_name)
                 )
             """)
+            # 旧版用「未知表」作分组键，易误解为错误；统一改为空串（与 MemoryStore.TABLE_KEY_UNLABELED 一致）
+            try:
+                c.execute(
+                    "UPDATE memory_table_summaries SET table_key=? WHERE table_key=?",
+                    ("", "未知表"),
+                )
+            except Exception:
+                pass
 
     def get_naming_conventions(self, connection_id: str, database_name: str, limit: int = 10):
         with self._get_connection() as conn:

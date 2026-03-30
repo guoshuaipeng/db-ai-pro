@@ -6,7 +6,7 @@
 
 用法（在 PowerShell 中）：
 
-    cd e:\pythonProjects\db-ai
+    cd e:\\pythonProjects\\db-ai
     python scripts/publish_gitee_post.py
 
 可选参数：

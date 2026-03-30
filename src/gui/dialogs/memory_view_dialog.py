@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from typing import Optional, Any, Dict
 
-from src.core.memory_store import MemoryStore
+from src.core.memory_store import MemoryStore, is_unlabeled_table_key
 from src.core.config_db import get_config_db
 
 
@@ -237,7 +237,11 @@ class MemoryViewDialog(QDialog):
         # 表级摘要
         summaries = self._memory_store.get_table_summaries()
         for s in summaries:
-            title = f"{s['table_key']}（{s['pattern_count']} 条样例）"
+            tk = s.get("table_key") or ""
+            if is_unlabeled_table_key(tk):
+                title = f"表级摘要（{s['pattern_count']} 条样例）"
+            else:
+                title = f"{tk}（{s['pattern_count']} 条样例）"
             item = QListWidgetItem(title)
             item.setData(Qt.ItemDataRole.UserRole, s)
             self.summary_list.addItem(item)
@@ -281,7 +285,11 @@ class MemoryViewDialog(QDialog):
         if not current:
             return
         data = current.data(Qt.ItemDataRole.UserRole) or {}
-        text = f"表组: {data.get('table_key')}\n样例条数: {data.get('pattern_count')}\n\n摘要:\n{data.get('summary')}"
+        pk = data.get("table_key") or ""
+        if is_unlabeled_table_key(pk):
+            text = f"样例条数: {data.get('pattern_count')}\n\n摘要:\n{data.get('summary')}"
+        else:
+            text = f"表组: {pk}\n样例条数: {data.get('pattern_count')}\n\n摘要:\n{data.get('summary')}"
         self.detail_label.setText("表级摘要详情")
         self.detail_text.setPlainText(text)
 

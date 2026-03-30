@@ -23,6 +23,16 @@ logger = logging.getLogger(__name__)
 COMPRESS_THRESHOLD = 30
 # 两次压缩最短间隔（天）
 COMPRESS_INTERVAL_DAYS = 7
+# 无 used_tables 时的分组键：存空串，避免展示「未知表」造成误解（旧数据见 is_unlabeled_table_key）
+TABLE_KEY_UNLABELED = ""
+
+
+def is_unlabeled_table_key(table_key: Optional[str]) -> bool:
+    """未记录涉及表名的分组（含历史库中的「未知表」占位）。"""
+    if table_key is None:
+        return True
+    t = str(table_key).strip()
+    return not t or t == "未知表"
 
 
 @dataclass
@@ -265,7 +275,13 @@ class MemoryStore:
         # 优先使用表级摘要（压缩后的高密度知识）
         summaries = self.get_table_summaries()
         if summaries:
-            lines = [f"- {s['table_key']}：{s['summary']}" for s in summaries[:6]]
+            lines = []
+            for s in summaries[:6]:
+                tk = s.get("table_key")
+                if is_unlabeled_table_key(tk):
+                    lines.append(f"- {s['summary']}")
+                else:
+                    lines.append(f"- {tk}：{s['summary']}")
             parts.append("【该库各表使用规律（AI归纳）】\n" + "\n".join(lines))
 
         # 补充相似具体案例（直接参考 SQL）
@@ -353,7 +369,7 @@ class MemoryStore:
         groups: dict = {}
         for p in all_patterns:
             tables = p["used_tables"]
-            key = "、".join(sorted(tables)) if tables else "未知表"
+            key = "、".join(sorted(tables)) if tables else TABLE_KEY_UNLABELED
             groups.setdefault(key, []).append(p)
 
         compressed_count = 0
@@ -425,9 +441,18 @@ class MemoryStore:
             except Exception as e:
                 logger.warning(f"获取 schema 给 AI 失败（降级为仅历史查询摘要）: {e}")
 
+        if is_unlabeled_table_key(table_key):
+            intro = (
+                f"以下是用户的历史查询记录（未单独标注涉及的表名），"
+                f"共{len(patterns)}条，展示前10条：\n\n{examples}\n\n"
+            )
+        else:
+            intro = (
+                f"以下是用户对【{table_key}】相关表的历史查询记录"
+                f"（共{len(patterns)}条，展示前10条）：\n\n{examples}\n\n"
+            )
         prompt = (
-            f"以下是用户对【{table_key}】相关表的历史查询记录"
-            f"（共{len(patterns)}条，展示前10条）：\n\n{examples}\n\n"
+            intro
             + (f"表结构如下（用于理解列名/主键/注释，可能已截断）：\n{schema_text}\n\n" if schema_text else "")
             + "请用2~3句话归纳这些查询的规律，包括：常用字段（按列名）、常见操作（统计/筛选/关联等）、典型 WHERE 条件。直接输出归纳文字，不要额外解释和标题。"
         )
