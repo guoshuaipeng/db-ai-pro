@@ -1,13 +1,32 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { canSaveFavoriteSql, defaultFavoriteName } from '@shared/favoriteQuickSave'
+import {
+  saveFavoriteCopiedToast,
+  saveFavoriteCopySqlLabel,
+  saveFavoriteEmptyBody,
+  saveFavoriteEmptyTitle,
+  saveFavoriteKicker,
+  saveFavoriteLead,
+  saveFavoriteNameHint,
+  saveFavoriteNameLabel,
+  saveFavoritePreviewLabel,
+  saveFavoriteScopeConnection,
+  saveFavoriteScopeGlobal,
+  saveFavoriteScopeLegend,
+  saveFavoriteSqlPreview,
+  saveFavoriteSqlStats,
+  saveFavoriteSubmitLabel,
+  saveFavoriteTitle,
+} from '@shared/saveFavoriteUi'
 import { useWorkspace } from '../state/workspace'
+import { EmptyState } from './EmptyState'
 
 type Props = {
   open: boolean
   onClose: () => void
 }
 
-/** Quick-save active editor SQL as a favorite snippet (M79). */
+/** Quick-save active editor SQL as a favorite snippet. */
 export function SaveFavoriteDialog({ open, onClose }: Props) {
   const ws = useWorkspace()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -18,6 +37,8 @@ export function SaveFavoriteDialog({ open, onClose }: Props) {
   const sql = ws.activeEditor?.sql ?? ''
   const connectionId = ws.activeConnection?.id ?? null
   const canSave = canSaveFavoriteSql(sql)
+  const stats = useMemo(() => saveFavoriteSqlStats(sql), [sql])
+  const preview = useMemo(() => saveFavoriteSqlPreview(sql), [sql])
 
   useEffect(() => {
     if (!open) return
@@ -61,23 +82,38 @@ export function SaveFavoriteDialog({ open, onClose }: Props) {
     }
   }
 
+  const copySql = () => {
+    void navigator.clipboard.writeText(sql.trim()).then(
+      () => ws.pushToast('success', saveFavoriteCopiedToast()),
+      () => ws.pushToast('error', '复制失败'),
+    )
+  }
+
   return (
     <div className="overlay" role="presentation" onMouseDown={onClose}>
       <div
-        className="dialog"
+        className="dialog dialog-wide save-favorite-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="save-fav-title"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <h2 id="save-fav-title">收藏当前 SQL</h2>
-        <p className="dialog-copy">保存到片段库，可在收藏面板或命令面板插入。</p>
+        <h2 id="save-fav-title">{saveFavoriteTitle()}</h2>
+        <p className="dialog-copy">{saveFavoriteLead()}</p>
         {!canSave ? (
-          <p className="field-error">当前标签没有可收藏的 SQL。</p>
+          <EmptyState
+            compact
+            kicker={saveFavoriteKicker()}
+            title={saveFavoriteEmptyTitle()}
+            body={saveFavoriteEmptyBody()}
+          />
         ) : (
           <>
             <label className="field">
-              <span>名称</span>
+              <span>
+                {saveFavoriteNameLabel()}
+                <em className="save-fav-name-hint">{saveFavoriteNameHint(name)}</em>
+              </span>
               <input
                 ref={inputRef}
                 value={name}
@@ -93,7 +129,7 @@ export function SaveFavoriteDialog({ open, onClose }: Props) {
               />
             </label>
             <fieldset className="fav-scope-fieldset">
-              <legend>范围</legend>
+              <legend>{saveFavoriteScopeLegend()}</legend>
               <label className="checkline">
                 <input
                   type="radio"
@@ -101,7 +137,7 @@ export function SaveFavoriteDialog({ open, onClose }: Props) {
                   checked={scope === 'global'}
                   onChange={() => setScope('global')}
                 />
-                全局片段
+                {saveFavoriteScopeGlobal()}
               </label>
               <label className="checkline">
                 <input
@@ -111,9 +147,19 @@ export function SaveFavoriteDialog({ open, onClose }: Props) {
                   disabled={!connectionId}
                   onChange={() => setScope('connection')}
                 />
-                仅当前连接{ws.activeConnection ? `（${ws.activeConnection.name}）` : ''}
+                {saveFavoriteScopeConnection(ws.activeConnection?.name)}
               </label>
             </fieldset>
+            <div className="save-fav-preview-head">
+              <span>{saveFavoritePreviewLabel()}</span>
+              <span className="save-fav-stats">{stats.label}</span>
+              <button type="button" className="btn btn-ghost tiny-btn" onClick={copySql}>
+                {saveFavoriteCopySqlLabel()}
+              </button>
+            </div>
+            <pre className="save-fav-preview" aria-label={saveFavoritePreviewLabel()}>
+              {preview}
+            </pre>
           </>
         )}
         <div className="dialog-actions">
@@ -126,7 +172,7 @@ export function SaveFavoriteDialog({ open, onClose }: Props) {
             disabled={!canSave || busy}
             onClick={() => void submit()}
           >
-            {busy ? '保存中…' : '收藏'}
+            {saveFavoriteSubmitLabel(busy)}
           </button>
         </div>
       </div>

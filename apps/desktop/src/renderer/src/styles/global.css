@@ -5445,6 +5445,44 @@ body.is-col-resizing .grid-col-resizer {
 
 
 /* M79: quick save favorite dialog */
+.save-favorite-dialog { width: min(520px, 100%); }
+.save-fav-name-hint {
+  margin-left: 8px;
+  font-style: normal;
+  font-weight: 400;
+  color: var(--ink-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.save-fav-preview-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 6px;
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+.save-fav-stats {
+  color: var(--ink-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.save-fav-preview-head .tiny-btn { margin-left: auto; }
+.save-fav-preview {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  max-height: min(220px, 32vh);
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #0f131a;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .fav-scope-fieldset {
   border: 1px solid var(--line);
   border-radius: 8px;
