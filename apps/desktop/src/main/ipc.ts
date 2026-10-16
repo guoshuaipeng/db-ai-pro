@@ -15,7 +15,7 @@ import { streamAlterTable, streamCreateTable } from './aiDdl'
 import { explainDbError } from './errors'
 import { buildExplainSql } from '@shared/explain'
 import type { ImportPlanItem } from '@shared/connectionTransfer'
-import { writeFileSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
 import { ensureParent, seedRetailDatabase } from './sampleDb'
 import { encryptionAvailable } from './secrets'
 import {
@@ -119,13 +119,29 @@ export function sampleFilePath(userData: string): string {
   return join(userData, 'sample', 'retail.db')
 }
 
+/** Packaged sample (extraResources) or repo resources/samples in dev. Never open this path as the live DB. */
+export function packagedSamplePath(): string | undefined {
+  const candidates = [
+    join(process.resourcesPath, 'samples', 'retail.db'),
+    join(process.cwd(), '../../resources/samples/retail.db'),
+    join(app.getAppPath(), '../../../resources/samples/retail.db'),
+    join(app.getAppPath(), '../../resources/samples/retail.db'),
+  ]
+  return candidates.find((path) => existsSync(path))
+}
+
 export function createSample(userData: string) {
   const filePath = sampleFilePath(userData)
   if (!databaseExists(filePath)) {
     ensureParent(filePath)
-    const db = openDatabase(filePath)
-    seedRetailDatabase(db)
-    db.close()
+    const packaged = packagedSamplePath()
+    if (packaged) {
+      copyFileSync(packaged, filePath)
+    } else {
+      const db = openDatabase(filePath)
+      seedRetailDatabase(db)
+      db.close()
+    }
   }
   void closeSession(SAMPLE_CONNECTION_ID)
   return saveConnection({
@@ -136,8 +152,9 @@ export function createSample(userData: string) {
   })
 }
 
+/** When the connection list is empty (missing store or zero rows), register the sample DB. */
 export function ensureFirstLaunchSample(userData: string): void {
-  if (hasConnectionStore()) return
+  if (hasConnectionStore() && listConnections().length > 0) return
   const created = createSample(userData)
   if ('error' in created) throw new Error(created.error)
 }

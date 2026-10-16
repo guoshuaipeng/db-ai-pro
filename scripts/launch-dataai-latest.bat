@@ -1,7 +1,7 @@
-@echo off
+﻿@echo off
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
-title DataAI 最新版
+title DataAI Latest
 
 set "TS_MAIN=E:\pythonProjects\db-ai\apps\desktop"
 set "TS_M2=E:\pythonProjects\db-ai\_ts_workspace\db-ai-pro-m2\apps\desktop"
@@ -13,7 +13,23 @@ set "MAINPY=E:\pythonProjects\db-ai\src\main.py"
 where npm >nul 2>&1
 set "HAS_NPM=%ERRORLEVEL%"
 
-REM 0) 优先：TS 桌面 tip / portable（release 或 dist 下最新 DataAI-*-win-tip.exe）
+REM 1) Prefer M2 TS desktop (source of truth) when node_modules present
+if exist "%TS_M2%\package.json" if exist "%TS_M2%\node_modules" (
+  echo [DataAI] starting M2 TS desktop: %TS_M2%
+  cd /d "%TS_M2%"
+  call npm run dev
+  exit /b %ERRORLEVEL%
+)
+
+REM 2) Main-repo TS desktop when node_modules present
+if exist "%TS_MAIN%\package.json" if exist "%TS_MAIN%\node_modules" (
+  echo [DataAI] starting main TS desktop: %TS_MAIN%
+  cd /d "%TS_MAIN%"
+  call npm run dev
+  exit /b %ERRORLEVEL%
+)
+
+REM 3) tip / portable when source env unavailable
 set "TIP_EXE="
 for %%D in ("%TS_M2%\release" "%TS_MAIN%\release" "%TS_M2%\dist" "%TS_MAIN%\dist") do (
   if exist %%~D\ (
@@ -23,43 +39,26 @@ for %%D in ("%TS_M2%\release" "%TS_MAIN%\release" "%TS_M2%\dist" "%TS_MAIN%\dist
   )
 )
 if defined TIP_EXE (
-  echo [DataAI] 启动 tip/portable: !TIP_EXE!
+  echo [DataAI] starting tip/portable: !TIP_EXE!
   start "" "!TIP_EXE!"
   exit /b 0
 )
 
-REM 0b) win-unpacked tip（若 pack 产出目录结构不同）
 for %%D in ("%TS_M2%\release\win-unpacked" "%TS_MAIN%\release\win-unpacked") do (
   if exist "%%~D\DataAI.exe" (
-    echo [DataAI] 启动 win-unpacked: %%~D\DataAI.exe
+    echo [DataAI] starting win-unpacked: %%~D\DataAI.exe
     start "" "%%~D\DataAI.exe"
     exit /b 0
   )
 )
 
-REM 1) M2 工作区 TS 桌面（真相源，有依赖则直接跑）
-if exist "%TS_M2%\package.json" if exist "%TS_M2%\node_modules" (
-  echo [DataAI] 启动最新 TS 桌面: %TS_M2%
-  cd /d "%TS_M2%"
-  call npm run dev
-  exit /b %ERRORLEVEL%
-)
-
-REM 2) 正式仓库 TS 桌面（有依赖则直接跑）
-if exist "%TS_MAIN%\package.json" if exist "%TS_MAIN%\node_modules" (
-  echo [DataAI] 启动最新 TS 桌面: %TS_MAIN%
-  cd /d "%TS_MAIN%"
-  call npm run dev
-  exit /b %ERRORLEVEL%
-)
-
-REM 3) M2 有源码但缺依赖：尝试 npm install --ignore-scripts 后启动
+REM 4) M2 missing deps: npm install then dev
 if exist "%TS_M2%\package.json" if "%HAS_NPM%"=="0" (
-  echo [DataAI] M2 TS 缺依赖，正在 npm install --ignore-scripts…
+  echo [DataAI] M2 missing deps, npm install --ignore-scripts...
   cd /d "%TS_M2%"
   call npm install --ignore-scripts
   if errorlevel 1 (
-    echo [错误] npm install 失败
+    echo [ERROR] npm install failed
     pause
     exit /b 1
   )
@@ -67,13 +66,12 @@ if exist "%TS_M2%\package.json" if "%HAS_NPM%"=="0" (
   exit /b %ERRORLEVEL%
 )
 
-REM 4) 主仓库有 TS 源码但缺依赖
 if exist "%TS_MAIN%\package.json" if "%HAS_NPM%"=="0" (
-  echo [DataAI] 主仓库 TS 缺依赖，正在 npm install --ignore-scripts…
+  echo [DataAI] main TS missing deps, npm install --ignore-scripts...
   cd /d "%TS_MAIN%"
   call npm install --ignore-scripts
   if errorlevel 1 (
-    echo [错误] npm install 失败
+    echo [ERROR] npm install failed
     pause
     exit /b 1
   )
@@ -81,28 +79,25 @@ if exist "%TS_MAIN%\package.json" if "%HAS_NPM%"=="0" (
   exit /b %ERRORLEVEL%
 )
 
-REM 5) 已打包 Electron win-unpacked（legacy electron/）
 if exist "%EXE_ELECTRON%" (
-  echo [DataAI] 启动已打包 Electron: %EXE_ELECTRON%
+  echo [DataAI] starting packed Electron: %EXE_ELECTRON%
   start "" "%EXE_ELECTRON%"
   exit /b 0
 )
 
-REM 6) PyQt 打包 exe
 if exist "%EXE_PYQT%" (
-  echo [DataAI] 启动 PyQt 打包版: %EXE_PYQT%
+  echo [DataAI] starting PyQt build: %EXE_PYQT%
   start "" "%EXE_PYQT%"
   exit /b 0
 )
 
-REM 7) venv + src/main.py
 if exist "%PY%" if exist "%MAINPY%" (
-  echo [DataAI] 启动 Python 源码: %MAINPY%
+  echo [DataAI] starting Python source: %MAINPY%
   cd /d "E:\pythonProjects\db-ai"
   "%PY%" "%MAINPY%"
   exit /b %ERRORLEVEL%
 )
 
-echo [错误] 未找到可启动的 DataAI 目标。
+echo [ERROR] No DataAI launch target found.
 pause
 exit /b 1

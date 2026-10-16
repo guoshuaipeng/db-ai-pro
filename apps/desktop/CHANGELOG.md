@@ -2,6 +2,12 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 3.26.0 — M65 示例业务库打包
+
+- 将 `resources/samples/retail.db` 打进安装包（electron-builder extraResources）
+- 无连接时默认注册「示例业务库」（connections.json 缺失或列表为空）
+- 首启优先从安装包复制到 userData，缺失时再本地 seed；始终使用可写副本
+
 ## 3.25.0 — M64 对象树刷新
 
 - 连接 / 库 / 表节点菜单「刷新」：重新拉取元数据，无需重启应用
