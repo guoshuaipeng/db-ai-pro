@@ -233,7 +233,7 @@ export function filterCommands(query: string, catalog: CommandDef[] = COMMAND_CA
 }
 
 export const SHORTCUT_HELP: { action: string; keys: string }[] = [
-  { action: '命令面板', keys: 'Ctrl+K · Ctrl+Shift+P' },
+  { action: '命令 / 对象搜索', keys: 'Ctrl+K · Ctrl+P' },
   { action: '运行 SQL', keys: 'Ctrl+Enter · F5' },
   { action: '执行计划', keys: 'Ctrl+Shift+E' },
   { action: '格式化 SQL', keys: 'Shift+Alt+F' },
@@ -248,4 +248,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '快捷键说明', keys: 'F1' },
   { action: '收藏片段变量 {{table}} / {{limit}}', keys: '插入时填写' },
   { action: '最近表 / 最近查询', keys: '标题栏「最近」· Ctrl+K' },
+  { action: '全局搜索表 / 列 / 收藏', keys: 'Ctrl+K · Ctrl+P 输入关键字' },
 ]

@@ -14,6 +14,7 @@ import { ColumnStatsPanel } from './components/ColumnStatsPanel'
 import { ImportWizard } from './components/ImportWizard'
 import { SchemaDiffPanel } from './components/SchemaDiffPanel'
 import { CommandPalette } from './components/CommandPalette'
+import type { SqlFavorite } from '@shared/types'
 import { ShortcutsHelp } from './components/ShortcutsHelp'
 import { SettingsCenter, type SettingsTab } from './components/SettingsCenter'
 import { DEFAULT_PREFS, type AppPrefs } from '@shared/prefs'
@@ -23,6 +24,20 @@ import { useWorkspace } from './state/workspace'
 export function App() {
   const ws = useWorkspace()
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [paletteFavorites, setPaletteFavorites] = useState<SqlFavorite[]>([])
+
+  useEffect(() => {
+    if (!paletteOpen) return
+    let cancelled = false
+    void ws.listFavorites().then((rows) => {
+      if (!cancelled) setPaletteFavorites(rows)
+    }).catch(() => {
+      if (!cancelled) setPaletteFavorites([])
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [paletteOpen, ws])
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('model')
@@ -147,7 +162,7 @@ export function App() {
         return
       }
 
-      if (meta && !event.shiftKey && key === 'k') {
+      if (meta && !event.shiftKey && (key === 'k' || key === 'p')) {
         event.preventDefault()
         setPaletteOpen(true)
         return
@@ -343,7 +358,7 @@ export function App() {
         {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '2.0.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '2.1.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (
@@ -365,6 +380,14 @@ export function App() {
         recentQueries={ws.recentQueries}
         onOpenRecentTable={ws.openRecentTable}
         onOpenRecentQuery={ws.openRecentQuery}
+        schema={ws.schema}
+        connectionId={ws.activeConnection?.id ?? null}
+        connectionName={ws.activeConnection?.name}
+        targetTable={ws.targetTable}
+        favorites={paletteFavorites}
+        onOpenSchemaTable={(item) => ws.openTableQuery(item.connectionId, item.tableName)}
+        onOpenSchemaColumn={(item) => ws.openTableStructure(item.connectionId, item.tableName)}
+        onInsertFavorite={(sql) => ws.insertFavoriteSql(sql)}
       />
       <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <SettingsCenter

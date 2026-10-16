@@ -157,7 +157,7 @@ export function TitleBar({
             </div>
           )}
         </div>
-        <button type="button" className="pill palette-trigger" onClick={onOpenPalette} title="命令面板 (Ctrl+K)">
+        <button type="button" className="pill palette-trigger" onClick={onOpenPalette} title="命令 / 对象搜索 (Ctrl+K · Ctrl+P)">
           Ctrl+K
         </button>
         <button type="button" className="pill" onClick={onOpenSettings} title="设置">

@@ -7,6 +7,10 @@ TypeScript 桌面端（当前主力迭代）见：[`apps/desktop/CHANGELOG.md`](
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**，尚未发布到 GitHub Releases。
 
+## 2.1.0 — M30 全局对象搜索
+
+- Ctrl+K/P 搜索表/列/收藏
+
 ## 2.0.0 — M29 会话恢复（标签）
 
 - 启动恢复查询标签；设置开关；断开标记

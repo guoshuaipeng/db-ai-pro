@@ -1,18 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { filterCommands, type CommandDef } from '@shared/commands'
 import {
+  buildSchemaObjectIndex,
+  searchGlobalObjects,
+  type FavoriteHit,
+  type GlobalSearchHit,
+  type SchemaColumnHit,
+  type SchemaTableHit,
+} from '@shared/globalSearch'
+import {
   filterRecentQueries,
   filterRecentTables,
   recentQueryTitle,
   type RecentQueryItem,
   type RecentTableItem,
 } from '@shared/recentItems'
+import {
+  defaultSnippetValues,
+  expandSnippet,
+  extractSnippetVars,
+  hasSnippetVars,
+} from '@shared/snippetVars'
+import type { SchemaNode, SqlFavorite } from '@shared/types'
 
 type PaletteRow =
   | { kind: 'section'; id: string; label: string }
   | { kind: 'command'; id: string; command: CommandDef }
-  | { kind: 'table'; id: string; item: RecentTableItem }
-  | { kind: 'query'; id: string; item: RecentQueryItem }
+  | { kind: 'recent-table'; id: string; item: RecentTableItem }
+  | { kind: 'recent-query'; id: string; item: RecentQueryItem }
+  | { kind: 'schema-table'; id: string; item: SchemaTableHit }
+  | { kind: 'schema-column'; id: string; item: SchemaColumnHit }
+  | { kind: 'favorite'; id: string; item: FavoriteHit }
 
 type CommandPaletteProps = {
   open: boolean
@@ -22,6 +40,14 @@ type CommandPaletteProps = {
   recentQueries?: RecentQueryItem[]
   onOpenRecentTable?: (item: RecentTableItem) => void
   onOpenRecentQuery?: (item: RecentQueryItem) => void
+  schema?: SchemaNode[]
+  connectionId?: string | null
+  connectionName?: string
+  targetTable?: string
+  favorites?: SqlFavorite[]
+  onOpenSchemaTable?: (item: SchemaTableHit) => void
+  onOpenSchemaColumn?: (item: SchemaColumnHit) => void
+  onInsertFavorite?: (sql: string) => void
 }
 
 export function CommandPalette({
@@ -32,83 +58,235 @@ export function CommandPalette({
   recentQueries = [],
   onOpenRecentTable,
   onOpenRecentQuery,
+  schema = [],
+  connectionId = null,
+  targetTable = '',
+  favorites = [],
+  onOpenSchemaTable,
+  onOpenSchemaColumn,
+  onInsertFavorite,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
+  const [debounced, setDebounced] = useState('')
   const [active, setActive] = useState(0)
+  const [pendingFav, setPendingFav] = useState<SqlFavorite | null>(null)
+  const [varValues, setVarValues] = useState<Record<string, string>>({})
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
+  const index = useMemo(
+    () => buildSchemaObjectIndex(schema, connectionId),
+    [schema, connectionId],
+  )
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebounced(query), 120)
+    return () => window.clearTimeout(handle)
+  }, [query])
+
+  const objectHits = useMemo((): GlobalSearchHit[] => {
+    if (!debounced.trim()) return []
+    return searchGlobalObjects(debounced, index, favorites, {
+      connectionId,
+      limit: 24,
+    })
+  }, [debounced, index, favorites, connectionId])
+
   const rows = useMemo((): PaletteRow[] => {
-    const q = query.trim()
-    const tables = filterRecentTables(recentTables, q).slice(0, q ? 8 : 5)
-    const queries = filterRecentQueries(recentQueries, q).slice(0, q ? 8 : 5)
-    const commands = filterCommands(query)
+    const q = debounced.trim()
     const next: PaletteRow[] = []
-    if (tables.length > 0) {
+
+    if (q) {
+      const tables = objectHits.filter((h): h is SchemaTableHit => h.kind === 'schema-table')
+      const columns = objectHits.filter((h): h is SchemaColumnHit => h.kind === 'schema-column')
+      const favHits = objectHits.filter((h): h is FavoriteHit => h.kind === 'favorite')
+      if (tables.length) {
+        next.push({ kind: 'section', id: 'sec-obj-tables', label: '表' })
+        for (const item of tables.slice(0, 10)) {
+          next.push({
+            kind: 'schema-table',
+            id: `obj-table:${item.connectionId}:${item.tableName}`,
+            item,
+          })
+        }
+      }
+      if (columns.length) {
+        next.push({ kind: 'section', id: 'sec-obj-cols', label: '列' })
+        for (const item of columns.slice(0, 10)) {
+          next.push({
+            kind: 'schema-column',
+            id: `obj-col:${item.connectionId}:${item.tableName}:${item.columnName}`,
+            item,
+          })
+        }
+      }
+      if (favHits.length) {
+        next.push({ kind: 'section', id: 'sec-obj-fav', label: '收藏' })
+        for (const item of favHits.slice(0, 8)) {
+          next.push({
+            kind: 'favorite',
+            id: `obj-fav:${item.favorite.id}`,
+            item,
+          })
+        }
+      }
+    }
+
+    const recentT = filterRecentTables(recentTables, q).slice(0, q ? 5 : 5)
+    const recentQ = filterRecentQueries(recentQueries, q).slice(0, q ? 5 : 5)
+    if (recentT.length) {
       next.push({ kind: 'section', id: 'sec-tables', label: '最近表' })
-      for (const item of tables) {
+      for (const item of recentT) {
         next.push({
-          kind: 'table',
-          id: `table:${item.connectionId}:${item.tableName}`,
+          kind: 'recent-table',
+          id: `recent-table:${item.connectionId}:${item.tableName}`,
           item,
         })
       }
     }
-    if (queries.length > 0) {
+    if (recentQ.length) {
       next.push({ kind: 'section', id: 'sec-queries', label: '最近查询' })
-      for (const item of queries) {
+      for (const item of recentQ) {
         next.push({
-          kind: 'query',
-          id: `query:${item.at}:${item.sql.slice(0, 24)}`,
+          kind: 'recent-query',
+          id: `recent-query:${item.at}:${item.sql.slice(0, 24)}`,
           item,
         })
       }
     }
-    if (commands.length > 0) {
-      if (tables.length > 0 || queries.length > 0) {
-        next.push({ kind: 'section', id: 'sec-cmds', label: '命令' })
-      }
+
+    const commands = filterCommands(query)
+    if (commands.length) {
+      if (next.length) next.push({ kind: 'section', id: 'sec-cmds', label: '命令' })
       for (const command of commands) {
         next.push({ kind: 'command', id: command.id, command })
       }
     }
     return next
-  }, [query, recentTables, recentQueries])
+  }, [debounced, query, objectHits, recentTables, recentQueries])
 
-  const selectable = useMemo(
-    () => rows.filter((row) => row.kind !== 'section'),
-    [rows],
-  )
+  const selectable = useMemo(() => rows.filter((row) => row.kind !== 'section'), [rows])
 
   useEffect(() => {
     if (!open) return
     setQuery('')
+    setDebounced('')
     setActive(0)
+    setPendingFav(null)
     const handle = window.setTimeout(() => inputRef.current?.focus(), 0)
     return () => window.clearTimeout(handle)
   }, [open])
 
   useEffect(() => {
     setActive(0)
-  }, [query])
+  }, [debounced, query])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || pendingFav) return
     const node = listRef.current?.querySelector<HTMLElement>(`[data-cmd-index="${active}"]`)
     node?.scrollIntoView({ block: 'nearest' })
-  }, [active, open, selectable.length])
+  }, [active, open, selectable.length, pendingFav])
 
   if (!open) return null
+
+  const beginFavorite = (fav: SqlFavorite) => {
+    if (!hasSnippetVars(fav.sql)) {
+      onClose()
+      window.setTimeout(() => onInsertFavorite?.(fav.sql), 0)
+      return
+    }
+    setPendingFav(fav)
+    setVarValues(
+      defaultSnippetValues(extractSnippetVars(fav.sql), {
+        table: targetTable || null,
+        limit: '100',
+      }),
+    )
+  }
+
+  const confirmFavorite = () => {
+    if (!pendingFav) return
+    const expanded = expandSnippet(pendingFav.sql, varValues)
+    setPendingFav(null)
+    onClose()
+    window.setTimeout(() => onInsertFavorite?.(expanded), 0)
+  }
 
   const runAt = (index: number) => {
     const row = selectable[index]
     if (!row) return
+    if (row.kind === 'favorite') {
+      beginFavorite(row.item.favorite)
+      return
+    }
     onClose()
     window.setTimeout(() => {
       if (row.kind === 'command') onRun(row.command)
-      else if (row.kind === 'table') onOpenRecentTable?.(row.item)
-      else if (row.kind === 'query') onOpenRecentQuery?.(row.item)
+      else if (row.kind === 'recent-table') onOpenRecentTable?.(row.item)
+      else if (row.kind === 'recent-query') onOpenRecentQuery?.(row.item)
+      else if (row.kind === 'schema-table') onOpenSchemaTable?.(row.item)
+      else if (row.kind === 'schema-column') onOpenSchemaColumn?.(row.item)
     }, 0)
+  }
+
+  if (pendingFav) {
+    const vars = extractSnippetVars(pendingFav.sql)
+    return (
+      <div
+        className="palette-overlay"
+        role="presentation"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            setPendingFav(null)
+            onClose()
+          }
+        }}
+      >
+        <div
+          className="palette palette-vars"
+          role="dialog"
+          aria-modal="true"
+          aria-label="填写片段变量"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <h2 className="palette-vars-title">填写片段变量</h2>
+          <p className="palette-vars-copy">「{pendingFav.name}」</p>
+          <div className="snippet-var-fields">
+            {vars.map((varName, index) => (
+              <label key={varName} className="field">
+                <span>{`{{${varName}}}`}</span>
+                <input
+                  className="fav-input"
+                  value={varValues[varName] ?? ''}
+                  autoFocus={index === 0}
+                  spellCheck={false}
+                  onChange={(e) => setVarValues((prev) => ({ ...prev, [varName]: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      confirmFavorite()
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault()
+                      setPendingFav(null)
+                    }
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+          <pre className="snippet-var-preview">{expandSnippet(pendingFav.sql, varValues)}</pre>
+          <div className="dialog-actions">
+            <button type="button" className="btn btn-ghost" onClick={() => setPendingFav(null)}>
+              返回
+            </button>
+            <button type="button" className="btn btn-primary" onClick={confirmFavorite}>
+              插入
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -123,7 +301,7 @@ export function CommandPalette({
         className="palette"
         role="dialog"
         aria-modal="true"
-        aria-label="命令面板"
+        aria-label="命令与对象搜索"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="palette-search">
@@ -131,8 +309,8 @@ export function CommandPalette({
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索命令 / 最近表 / 最近查询…"
-            aria-label="搜索命令"
+            placeholder="搜索表 / 列 / 收藏 / 命令…（Ctrl+K · Ctrl+P）"
+            aria-label="全局搜索"
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
                 event.preventDefault()
@@ -151,8 +329,12 @@ export function CommandPalette({
           />
           <kbd className="palette-kbd">Esc</kbd>
         </div>
-        <div className="palette-list" role="listbox" aria-label="命令列表" ref={listRef}>
-          {selectable.length === 0 && <p className="palette-empty">没有匹配的命令或最近项</p>}
+        <div className="palette-list" role="listbox" aria-label="搜索结果" ref={listRef}>
+          {selectable.length === 0 && (
+            <p className="palette-empty">
+              {query.trim() ? '没有匹配的对象或命令' : '输入关键字搜索表、列、收藏与命令'}
+            </p>
+          )}
           {rows.map((row) => {
             if (row.kind === 'section') {
               return (
@@ -163,6 +345,7 @@ export function CommandPalette({
             }
             const index = selectable.findIndex((item) => item.id === row.id)
             const isActive = index === active
+            const cls = isActive ? 'palette-item is-active' : 'palette-item'
             if (row.kind === 'command') {
               return (
                 <button
@@ -171,7 +354,7 @@ export function CommandPalette({
                   role="option"
                   data-cmd-index={index}
                   aria-selected={isActive}
-                  className={isActive ? 'palette-item is-active' : 'palette-item'}
+                  className={cls}
                   onMouseEnter={() => setActive(index)}
                   onClick={() => runAt(index)}
                 >
@@ -183,7 +366,7 @@ export function CommandPalette({
                 </button>
               )
             }
-            if (row.kind === 'table') {
+            if (row.kind === 'recent-table') {
               return (
                 <button
                   key={row.id}
@@ -191,17 +374,81 @@ export function CommandPalette({
                   role="option"
                   data-cmd-index={index}
                   aria-selected={isActive}
-                  className={isActive ? 'palette-item is-active' : 'palette-item'}
+                  className={cls}
+                  onMouseEnter={() => setActive(index)}
+                  onClick={() => runAt(index)}
+                >
+                  <span className="palette-item-main">
+                    <span className="palette-title">{row.item.tableName}</span>
+                    <span className="palette-sub">{row.item.connectionName || '连接'} · 最近表</span>
+                  </span>
+                  <kbd className="palette-shortcut">表</kbd>
+                </button>
+              )
+            }
+            if (row.kind === 'recent-query') {
+              return (
+                <button
+                  key={row.id}
+                  type="button"
+                  role="option"
+                  data-cmd-index={index}
+                  aria-selected={isActive}
+                  className={cls}
+                  onMouseEnter={() => setActive(index)}
+                  onClick={() => runAt(index)}
+                >
+                  <span className="palette-item-main">
+                    <span className="palette-title">{recentQueryTitle(row.item.sql)}</span>
+                    <span className="palette-sub">{row.item.connectionName || '查询'} · 最近查询</span>
+                  </span>
+                  <kbd className="palette-shortcut">SQL</kbd>
+                </button>
+              )
+            }
+            if (row.kind === 'schema-table') {
+              return (
+                <button
+                  key={row.id}
+                  type="button"
+                  role="option"
+                  data-cmd-index={index}
+                  aria-selected={isActive}
+                  className={cls}
                   onMouseEnter={() => setActive(index)}
                   onClick={() => runAt(index)}
                 >
                   <span className="palette-item-main">
                     <span className="palette-title">{row.item.tableName}</span>
                     <span className="palette-sub">
-                      {row.item.connectionName || '连接'} · 最近表
+                      {row.item.connectionName} · Enter 打开查询
                     </span>
                   </span>
                   <kbd className="palette-shortcut">表</kbd>
+                </button>
+              )
+            }
+            if (row.kind === 'schema-column') {
+              return (
+                <button
+                  key={row.id}
+                  type="button"
+                  role="option"
+                  data-cmd-index={index}
+                  aria-selected={isActive}
+                  className={cls}
+                  onMouseEnter={() => setActive(index)}
+                  onClick={() => runAt(index)}
+                >
+                  <span className="palette-item-main">
+                    <span className="palette-title">
+                      {row.item.tableName}.{row.item.columnName}
+                    </span>
+                    <span className="palette-sub">
+                      {row.item.dataType || '列'} · Enter 打开结构
+                    </span>
+                  </span>
+                  <kbd className="palette-shortcut">列</kbd>
                 </button>
               )
             }
@@ -212,25 +459,26 @@ export function CommandPalette({
                 role="option"
                 data-cmd-index={index}
                 aria-selected={isActive}
-                className={isActive ? 'palette-item is-active' : 'palette-item'}
+                className={cls}
                 onMouseEnter={() => setActive(index)}
                 onClick={() => runAt(index)}
               >
                 <span className="palette-item-main">
-                  <span className="palette-title">{recentQueryTitle(row.item.sql)}</span>
+                  <span className="palette-title">{row.item.favorite.name}</span>
                   <span className="palette-sub">
-                    {row.item.connectionName || '查询'} · 最近查询
+                    {row.item.favorite.sql.replace(/\s+/g, ' ').slice(0, 64)}
+                    {hasSnippetVars(row.item.favorite.sql) ? ' · 含变量' : ''}
                   </span>
                 </span>
-                <kbd className="palette-shortcut">SQL</kbd>
+                <kbd className="palette-shortcut">收藏</kbd>
               </button>
             )
           })}
         </div>
         <footer className="palette-foot">
           <span>↑↓ 选择</span>
-          <span>Enter 执行</span>
-          <span>Ctrl+K 打开</span>
+          <span>Enter 打开</span>
+          <span>Ctrl+K / Ctrl+P</span>
         </footer>
       </div>
     </div>
