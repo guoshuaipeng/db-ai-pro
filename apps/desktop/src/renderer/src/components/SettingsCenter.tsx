@@ -37,7 +37,18 @@ import {
 } from '@shared/aiModelSettings'
 import { useWorkspace } from '../state/workspace'
 import { getApi } from '../bridge'
-import { RELEASE_NOTES_SNIPPET } from '@shared/releaseNotes'
+import {
+  RELEASE_NOTES_SNIPPET,
+  aboutChangelogEmptyBody,
+  aboutChannelLabel,
+  aboutCopyDiagnosticsLabel,
+  aboutCopyVersionLabel,
+  aboutDiagnosticsText,
+  aboutEncryptionLabel,
+  aboutVersionBadge,
+  aboutVersionCopyText,
+  releaseNotesTitle,
+} from '@shared/releaseNotes'
 
 export type SettingsTab = SettingsTabId
 
@@ -201,6 +212,7 @@ export function SettingsCenter({ open, tab, onTab, onClose, prefs, onPrefs }: Se
                   <AboutPanel
                     version={ws.meta?.version ?? '2.6.0'}
                     encryption={ws.meta?.encryption}
+                    mode={ws.meta?.mode}
                   />
                 )}
               </>
@@ -924,11 +936,14 @@ function AppearancePanel({
 function AboutPanel({
   version,
   encryption,
+  mode,
 }: {
   version: string
   encryption?: 'os' | 'unavailable'
+  mode?: 'desktop' | 'preview'
 }) {
   const api = getApi()
+  const ws = useWorkspace()
   const [note, setNote] = useState('')
 
   const openPath = async (kind: 'userData' | 'logs') => {
@@ -940,6 +955,19 @@ function AboutPanel({
     setNote(`已打开：${result.path}`)
   }
 
+  const copyText = async (text: string, okMsg: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      ws.pushToast('success', okMsg)
+      setNote(okMsg)
+    } catch {
+      ws.pushToast('error', '复制失败，请检查剪贴板权限')
+      setNote('复制失败，请检查剪贴板权限')
+    }
+  }
+
+  const changelogItems = RELEASE_NOTES_SNIPPET.items
+
   return (
     <div className="about-stack">
       <article className="about-hero">
@@ -948,7 +976,10 @@ function AboutPanel({
           <h4>DataAI</h4>
           <p>本地优先的数据库工作台 · 自然语言转 SQL · 深色专业壳</p>
         </div>
-        <span className="about-version">v{version}</span>
+        <div className="about-hero-badges">
+          <span className="about-version">{aboutVersionBadge(version)}</span>
+          <span className="about-channel">{aboutChannelLabel(mode)}</span>
+        </div>
       </article>
       <article className="settings-card about-card">
         <p className="settings-lead">
@@ -957,11 +988,15 @@ function AboutPanel({
         <ul className="about-meta">
           <li>
             <span>版本</span>
-            <strong>{version}</strong>
+            <strong>{aboutVersionCopyText(version)}</strong>
+          </li>
+          <li>
+            <span>通道</span>
+            <strong>{aboutChannelLabel(mode)}</strong>
           </li>
           <li>
             <span>密钥环</span>
-            <strong>{encryption === 'os' ? '系统可用' : '不可用'}</strong>
+            <strong>{aboutEncryptionLabel(encryption)}</strong>
           </li>
           <li>
             <span>许可</span>
@@ -969,6 +1004,25 @@ function AboutPanel({
           </li>
         </ul>
         <div className="about-actions">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => void copyText(aboutVersionCopyText(version), '已复制版本号')}
+          >
+            {aboutCopyVersionLabel()}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() =>
+              void copyText(
+                aboutDiagnosticsText({ version, encryption, mode }),
+                '已复制诊断信息',
+              )
+            }
+          >
+            {aboutCopyDiagnosticsLabel()}
+          </button>
           <button type="button" className="btn btn-ghost" onClick={() => void openPath('userData')}>
             打开工作区目录
           </button>
@@ -979,12 +1033,16 @@ function AboutPanel({
         {note && <p className="field-hint">{note}</p>}
       </article>
       <article className="settings-card about-card about-changelog">
-        <h4 className="about-changelog-title">{RELEASE_NOTES_SNIPPET.title}</h4>
-        <ul className="about-changelog-list">
-          {RELEASE_NOTES_SNIPPET.items.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
+        <h4 className="about-changelog-title">{releaseNotesTitle(version)}</h4>
+        {changelogItems.length === 0 ? (
+          <EmptyState compact kicker="更新" title="暂无摘要" body={aboutChangelogEmptyBody()} />
+        ) : (
+          <ul className="about-changelog-list">
+            {changelogItems.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        )}
         <p className="field-hint">完整日志：仓库内 apps/desktop/CHANGELOG.md</p>
       </article>
     </div>

@@ -112,7 +112,7 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     id: 'about',
     tab: 'about',
     title: '关于 DataAI',
-    keywords: '关于 版本 日志 工作区 许可 MIT',
+    keywords: '关于 版本 更新 诊断 密钥环 工作区 日志 CHANGELOG 复制版本 许可 MIT',
   },
 ]
 

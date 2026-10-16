@@ -2527,6 +2527,20 @@ body.is-col-resizing .grid-col-resizer {
 }
 .about-hero h4 { margin: 0 0 4px; font-size: 16px; }
 .about-hero p { margin: 0; color: var(--ink-secondary); font-size: 12px; }
+.about-hero-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  }
+.about-channel {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
 .about-version {
   font-family: var(--mono);
   font-size: 12px;
