@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { favoritesForConnection, groupFavoritesByFolder, upsertFavorite, upsertFolder } from './favorites'
+import {
+  favoriteSqlCopiedToast,
+  favoritesFilterEmptyBody,
+  favoritesForConnection,
+  filterFavorites,
+  groupFavoritesByFolder,
+  upsertFavorite,
+  upsertFolder,
+} from './favorites'
 import type { FavoriteFolder, SqlFavorite } from './types'
 
 function fav(partial: Partial<SqlFavorite> & Pick<SqlFavorite, 'id' | 'name'>): SqlFavorite {
@@ -52,3 +60,23 @@ describe('favorites helpers', () => {
     expect(upsertFolder(upsertFolder([], a), b).map((f) => f.name)).toEqual(['A', 'Z'])
   })
 })
+
+describe('filterFavorites', () => {
+  it('matches name or sql case-insensitively', () => {
+    const rows = [
+      fav({ id: '1', name: '订单日报', sql: 'SELECT * FROM orders' }),
+      fav({ id: '2', name: '用户', sql: 'select id from users' }),
+    ]
+    expect(filterFavorites(rows, 'order').map((r) => r.id)).toEqual(['1'])
+    expect(filterFavorites(rows, '用户').map((r) => r.id)).toEqual(['2'])
+    expect(filterFavorites(rows, '  ')).toHaveLength(2)
+  })
+})
+
+describe('favorites copy strings', () => {
+  it('returns Chinese guidance', () => {
+    expect(favoriteSqlCopiedToast()).toContain('复制')
+    expect(favoritesFilterEmptyBody()).toContain('匹配')
+  })
+})
+

@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { favoritesForConnection, groupFavoritesByFolder } from '@shared/favorites'
+import {
+  favoriteSqlCopiedToast,
+  favoritesFilterEmptyBody,
+  favoritesForConnection,
+  filterFavorites,
+  groupFavoritesByFolder,
+} from '@shared/favorites'
+import { EmptyState } from './EmptyState'
 import {
   defaultSnippetValues,
   expandSnippet,
@@ -25,6 +32,8 @@ export function FavoritesPanel({ open, onClose }: { open: boolean; onClose: () =
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const [pending, setPending] = useState<SqlFavorite | null>(null)
+  const [filterQuery, setFilterQuery] = useState('')
+  const [copyNote, setCopyNote] = useState('')
   const [varValues, setVarValues] = useState<Record<string, string>>({})
   const connectionId = ws.activeConnection?.id ?? null
 
@@ -53,10 +62,30 @@ export function FavoritesPanel({ open, onClose }: { open: boolean; onClose: () =
   }, [open, connectionId])
 
   useEffect(() => {
-    if (!open) setPending(null)
+    if (!open) {
+      setPending(null)
+      return
+    }
+    setFilterQuery('')
+    setCopyNote('')
   }, [open])
 
-  const groups = useMemo(() => groupFavoritesByFolder(rows, folders), [rows, folders])
+  const filteredRows = useMemo(() => filterFavorites(rows, filterQuery), [rows, filterQuery])
+  const groups = useMemo(() => {
+    const all = groupFavoritesByFolder(filteredRows, folders)
+    if (!filterQuery.trim()) return all
+    return all.filter((group) => group.items.length > 0)
+  }, [filteredRows, folders, filterQuery])
+
+  const copyFavoriteSql = async (sql: string) => {
+    try {
+      await navigator.clipboard.writeText(sql)
+      setCopyNote(favoriteSqlCopiedToast())
+      window.setTimeout(() => setCopyNote(''), 2000)
+    } catch {
+      ws.pushToast('error', '复制失败')
+    }
+  }
 
   if (!open) return null
 
@@ -210,14 +239,48 @@ export function FavoritesPanel({ open, onClose }: { open: boolean; onClose: () =
         </button>
       </div>
 
+      {(rows.length > 0 || folders.length > 0) && (
+        <label className="history-filter fav-filter">
+          <span className="history-filter-label">筛选</span>
+          <input
+            className="history-filter-input"
+            value={filterQuery}
+            onChange={(event) => setFilterQuery(event.target.value)}
+            placeholder="按名称 / SQL 过滤…"
+            aria-label="筛选收藏片段"
+          />
+          {filterQuery.trim() && (
+            <span className="history-filter-count">
+              {filteredRows.length}/{rows.length}
+            </span>
+          )}
+        </label>
+      )}
+      {copyNote && <p className="history-copy-note" role="status">{copyNote}</p>}
+
       {loading && <p className="history-empty">载入中…</p>}
       {!loading && rows.length === 0 && folders.length === 0 && (
-        <p className="history-empty">
-          还没有收藏。把常用语句存成片段，也可先建文件夹归类。SQL 里写 {'{{table}}'}、{'{{limit}}'}{' '}
-          等占位符，插入时会弹出填写框。
-        </p>
+        <EmptyState
+          compact
+          title="还没有收藏"
+          body={
+            '把常用语句存成片段，也可先建文件夹归类。SQL 里写 {{table}}、{{limit}} 等占位符，插入时会弹出填写框。'
+          }
+        />
       )}
-      {!loading && (rows.length > 0 || folders.length > 0) && (
+      {!loading && rows.length > 0 && filterQuery.trim() && filteredRows.length === 0 && (
+        <EmptyState
+          compact
+          title="没有匹配的片段"
+          body={favoritesFilterEmptyBody()}
+          actions={
+            <button type="button" className="btn btn-ghost" onClick={() => setFilterQuery('')}>
+              清除筛选
+            </button>
+          }
+        />
+      )}
+      {!loading && (rows.length > 0 || folders.length > 0) && filteredRows.length > 0 && (
         <div className="fav-groups">
           {groups.map((group) => {
             const key = group.folder?.id ?? 'ungrouped'
@@ -318,6 +381,15 @@ export function FavoritesPanel({ open, onClose }: { open: boolean; onClose: () =
                               </option>
                             ))}
                           </select>
+                          <button
+                            type="button"
+                            className="tiny-btn btn"
+                            aria-label="复制 SQL"
+                            title="复制 SQL"
+                            onClick={() => void copyFavoriteSql(entry.sql)}
+                          >
+                            复制
+                          </button>
                           <button
                             type="button"
                             className="tiny-btn btn"

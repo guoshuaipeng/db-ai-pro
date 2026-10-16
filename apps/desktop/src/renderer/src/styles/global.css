@@ -4377,3 +4377,7 @@ body.is-col-resizing .grid-col-resizer {
 .connection-dialect-help {
   margin: 8px 0 0;
 }
+
+.fav-filter {
+  margin-top: 4px;
+}

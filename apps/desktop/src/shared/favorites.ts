@@ -33,3 +33,23 @@ export function groupFavoritesByFolder(
   }
   return groups
 }
+
+/** Case-insensitive filter by name or SQL. Empty query → copy. */
+export function filterFavorites(list: readonly SqlFavorite[], query: string): SqlFavorite[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return list.slice()
+  return list.filter((row) => {
+    if (row.name.toLowerCase().includes(q)) return true
+    if (row.sql.toLowerCase().includes(q)) return true
+    return false
+  })
+}
+
+export function favoriteSqlCopiedToast(): string {
+  return '已复制片段 SQL 到剪贴板'
+}
+
+export function favoritesFilterEmptyBody(): string {
+  return '没有匹配的收藏片段。试试名称或 SQL 关键字，或清除筛选。'
+}
+
