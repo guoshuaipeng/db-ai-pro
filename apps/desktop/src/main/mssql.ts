@@ -76,7 +76,11 @@ export async function describeMssql(pool: sql.ConnectionPool): Promise<string> {
   )
 }
 
-export async function executeMssql(pool: sql.ConnectionPool, script: string): Promise<StatementResult[]> {
+export async function executeMssql(
+  pool: sql.ConnectionPool,
+  script: string,
+  txn?: sql.Transaction,
+): Promise<StatementResult[]> {
   const statements = splitSql(script)
   if (statements.length === 0) {
     return [{ statement: '', ok: false, error: '没有可执行的语句', elapsedMs: 0 }]
@@ -86,7 +90,8 @@ export async function executeMssql(pool: sql.ConnectionPool, script: string): Pr
   for (const statement of statements) {
     const started = performance.now()
     try {
-      const result = await pool.request().query(statement)
+      const request = txn ? new sql.Request(txn) : pool.request()
+      const result = await request.query(statement)
       const elapsedMs = Math.max(0, Math.round(performance.now() - started))
       const recordset = (result.recordset ?? []) as Record<string, unknown>[]
       const columns = recordset.length > 0 ? Object.keys(recordset[0] ?? {}) : []

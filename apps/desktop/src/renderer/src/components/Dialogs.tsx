@@ -43,6 +43,7 @@ export function Dialogs() {
   }
   if (ws.dialog.type === 'delete') {
     const connection = ws.dialog.connection
+    const inTxn = Boolean(ws.dialog.inTxn)
     return (
       <div className="overlay" role="presentation" onMouseDown={ws.closeDialog}>
         <div
@@ -55,6 +56,7 @@ export function Dialogs() {
           <h2 id="delete-title">删除连接</h2>
           <p className="dialog-copy">
             删除「{connection.name}」。本地数据库文件会保留。
+            {inTxn ? ' 该连接仍在事务中，删除前将回滚未提交更改。' : ''}
           </p>
           <div className="dialog-actions">
             <button type="button" className="btn btn-ghost" onClick={ws.closeDialog}>

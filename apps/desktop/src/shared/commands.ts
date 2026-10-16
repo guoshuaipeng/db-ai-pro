@@ -49,6 +49,27 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'query.beginTxn',
+    title: '开始事务',
+    subtitle: 'BEGIN · 关闭自动提交',
+    keywords: 'begin transaction txn 事务',
+    category: 'query',
+  },
+  {
+    id: 'query.commitTxn',
+    title: '提交事务',
+    subtitle: 'COMMIT',
+    keywords: 'commit transaction txn 提交',
+    category: 'query',
+  },
+  {
+    id: 'query.rollbackTxn',
+    title: '回滚事务',
+    subtitle: 'ROLLBACK',
+    keywords: 'rollback transaction txn 回滚',
+    category: 'query',
+  },
+  {
     id: 'view.focusSearch',
     title: '聚焦对象树搜索',
     subtitle: '过滤连接 / 表 / 列',

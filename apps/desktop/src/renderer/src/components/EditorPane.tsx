@@ -68,6 +68,37 @@ export function EditorPane() {
             <button type="button" className="icon-btn" aria-label="新建查询" onClick={ws.newTab}>
               <IconPlus />
             </button>
+            {ws.txnSupported && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-ghost run-btn"
+                  onClick={() => void ws.beginTxn()}
+                  disabled={ws.running || ws.txnOpen}
+                  title="BEGIN · 开始事务"
+                >
+                  开始事务
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost run-btn"
+                  onClick={() => void ws.commitTxn()}
+                  disabled={ws.running || !ws.txnOpen}
+                  title="COMMIT · 提交事务"
+                >
+                  提交
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost run-btn"
+                  onClick={() => void ws.rollbackTxn()}
+                  disabled={ws.running || !ws.txnOpen}
+                  title="ROLLBACK · 回滚事务"
+                >
+                  回滚
+                </button>
+              </>
+            )}
             <button
               type="button"
               className="btn btn-ghost run-btn"

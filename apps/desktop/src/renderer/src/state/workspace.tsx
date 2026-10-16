@@ -14,6 +14,7 @@ import { changesSchema, identStyle, selectAll, selectAllWithRowid, statementTitl
 import { INITIAL_TABS } from '@shared/session'
 import { countTreeNodes, extrasFromConnections, filterNodes } from '@shared/tree'
 import { isKvDialect } from '@shared/types'
+import { supportsManualTransaction } from '@shared/transaction'
 import { trimAiTurns } from '@shared/aiMemory'
 import { formatExplainText } from '@shared/explain'
 import { analyzeDestructiveSql } from '@shared/destructiveSql'
@@ -79,7 +80,7 @@ type DestructiveDecision = 'run' | 'skip-session' | 'cancel'
 type DialogState =
   | null
   | { type: 'connection'; connection?: ConnectionPublic }
-  | { type: 'delete'; connection: ConnectionPublic }
+  | { type: 'delete'; connection: ConnectionPublic; inTxn?: boolean }
   | { type: 'import'; path: string; plan: ImportPlanItem[] }
   | {
       type: 'destructive'
@@ -111,6 +112,11 @@ type WorkspaceValue = {
   setActiveResult: (id: string) => void
   running: boolean
   lastRun: LastRunStats | null
+  txnOpen: boolean
+  txnSupported: boolean
+  beginTxn: () => Promise<void>
+  commitTxn: () => Promise<void>
+  rollbackTxn: () => Promise<void>
   run: () => Promise<void>
   cancelRun: () => void
   explain: () => Promise<void>
@@ -259,6 +265,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [activeEditorId, setActiveEditorId] = useState('query-1')
   const [resultMap, setResultMap] = useState<Record<string, ResultState>>({})
   const [running, setRunning] = useState(false)
+  const [txnOpen, setTxnOpen] = useState(false)
+  const [txnSupported, setTxnSupported] = useState(false)
   const [lastRun, setLastRun] = useState<LastRunStats | null>(null)
   const [cursor, setCursor] = useState({ line: 1, column: 1 })
   const [aiTurns, setAiTurns] = useState<AiTurnState[]>([])
@@ -627,10 +635,85 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
 
 
+  const refreshTxnStatus = async (connectionId?: string | null) => {
+    const id = connectionId === undefined ? activeConnectionId : connectionId
+    if (!id) {
+      setTxnOpen(false)
+      setTxnSupported(false)
+      return
+    }
+    const conn = connections.find((c) => c.id === id)
+    if (!conn || !supportsManualTransaction(conn.dialect)) {
+      setTxnOpen(false)
+      setTxnSupported(false)
+      return
+    }
+    try {
+      const status = await api.sql.txnStatus(id)
+      setTxnOpen(status.open)
+      setTxnSupported(status.supported)
+    } catch {
+      setTxnOpen(false)
+      setTxnSupported(supportsManualTransaction(conn.dialect))
+    }
+  }
+
+  const beginTxn = async () => {
+    if (!activeConnection) {
+      pushToast('info', '先在左侧选择一个连接')
+      return
+    }
+    if (!supportsManualTransaction(activeConnection.dialect)) {
+      pushToast('info', '当前数据库类型不支持手动事务')
+      return
+    }
+    try {
+      const status = await api.sql.beginTxn(activeConnection.id)
+      setTxnOpen(status.open)
+      setTxnSupported(status.supported)
+      pushToast('success', '已开始事务（自动提交已关闭）')
+    } catch (error) {
+      pushToast('error', error instanceof Error ? error.message : '开始事务失败')
+    }
+  }
+
+  const commitTxn = async () => {
+    if (!activeConnection) {
+      pushToast('info', '先在左侧选择一个连接')
+      return
+    }
+    try {
+      const status = await api.sql.commitTxn(activeConnection.id)
+      setTxnOpen(status.open)
+      setTxnSupported(status.supported)
+      pushToast('success', '事务已提交')
+    } catch (error) {
+      pushToast('error', error instanceof Error ? error.message : '提交失败')
+      await refreshTxnStatus(activeConnection.id)
+    }
+  }
+
+  const rollbackTxn = async () => {
+    if (!activeConnection) {
+      pushToast('info', '先在左侧选择一个连接')
+      return
+    }
+    try {
+      const status = await api.sql.rollbackTxn(activeConnection.id)
+      setTxnOpen(status.open)
+      setTxnSupported(status.supported)
+      pushToast('info', '事务已回滚')
+    } catch (error) {
+      pushToast('error', error instanceof Error ? error.message : '回滚失败')
+      await refreshTxnStatus(activeConnection.id)
+    }
+  }
+
   const cancelRun = () => {
     const requestId = sqlRequestRef.current
     if (!requestId) return
     void api.sql.cancel(requestId)
+    void refreshTxnStatus(activeConnectionId).then(() => undefined)
   }
 
   const run = async () => {
@@ -1053,6 +1136,12 @@ ${sql.trim()}
     setConnections(rows)
     setDialog(null)
     await refreshSchema(rows, activeConnectionId === id ? null : activeConnectionId)
+    if (activeConnectionId === id) {
+      setTxnOpen(false)
+      setTxnSupported(false)
+    } else {
+      await refreshTxnStatus(activeConnectionId)
+    }
     pushToast('success', '连接已删除')
   }
 
@@ -1068,6 +1157,10 @@ ${sql.trim()}
   const tableCrumb =
     selected?.kind === 'table' && selected.connectionId === activeConnection?.id ? selected.displayName : null
   const breadcrumb = [activeConnection?.name, tableCrumb].filter(Boolean).join('  /  ')
+
+  useEffect(() => {
+    void refreshTxnStatus(activeConnectionId)
+  }, [activeConnectionId, connections])
 
   const value: WorkspaceValue = {
     ready,
@@ -1099,6 +1192,11 @@ ${sql.trim()}
     },
     running,
     lastRun,
+    txnOpen,
+    txnSupported,
+    beginTxn,
+    commitTxn,
+    rollbackTxn,
     run,
     cancelRun,
     explain,
@@ -1143,7 +1241,20 @@ ${sql.trim()}
     dialog,
     openCreate: () => setDialog({ type: 'connection' }),
     openEdit: (connection) => setDialog({ type: 'connection', connection }),
-    askDelete: (connection) => setDialog({ type: 'delete', connection }),
+    askDelete: (connection) => {
+      void (async () => {
+        let inTxn = false
+        try {
+          if (supportsManualTransaction(connection.dialect)) {
+            const status = await api.sql.txnStatus(connection.id)
+            inTxn = status.open
+          }
+        } catch {
+          inTxn = false
+        }
+        setDialog({ type: 'delete', connection, inTxn })
+      })()
+    },
     closeDialog: () => setDialog(null),
     saveConnection,
     testConnection: (input) => api.connections.test(input),

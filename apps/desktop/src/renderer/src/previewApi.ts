@@ -271,6 +271,10 @@ export function createPreviewApi(): DesktopApi {
     },
     sql: {
       cancel: async (_requestId: string) => ({ ok: true as const }),
+      txnStatus: async () => ({ open: false, supported: true }),
+      beginTxn: async () => ({ open: true, supported: true }),
+      commitTxn: async () => ({ open: false, supported: true }),
+      rollbackTxn: async () => ({ open: false, supported: true }),
       importPick: async () => ({ cancelled: true as const }),
       importRead: async () => {
         throw new Error('预览模式不支持导入文件')

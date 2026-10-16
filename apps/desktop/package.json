@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop \u2014 CSV/Excel import into table",
+  "description": "DataAI TypeScript desktop — CSV/Excel import into table",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

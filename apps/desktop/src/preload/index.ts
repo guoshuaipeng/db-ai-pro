@@ -59,6 +59,22 @@ const api: DesktopApi = {
       return result.results
     },
     cancel: (requestId: string) => ipcRenderer.invoke('sql:cancel', requestId),
+    txnStatus: (connectionId: string) => ipcRenderer.invoke('sql:txnStatus', connectionId),
+    beginTxn: async (connectionId: string) => {
+      const result = await ipcRenderer.invoke('sql:beginTxn', connectionId)
+      if (result?.error) throw new Error(result.error)
+      return result.status
+    },
+    commitTxn: async (connectionId: string) => {
+      const result = await ipcRenderer.invoke('sql:commitTxn', connectionId)
+      if (result?.error) throw new Error(result.error)
+      return result.status
+    },
+    rollbackTxn: async (connectionId: string) => {
+      const result = await ipcRenderer.invoke('sql:rollbackTxn', connectionId)
+      if (result?.error) throw new Error(result.error)
+      return result.status
+    },
     tableStructure: async (payload) => {
       const result = await ipcRenderer.invoke('sql:tableStructure', payload)
       if (result?.error) throw new Error(result.error)

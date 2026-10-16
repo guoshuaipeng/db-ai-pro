@@ -65,6 +65,15 @@ export function App() {
         case 'query.history':
           emitDataai('dataai:open-history')
           break
+        case 'query.beginTxn':
+          void ws.beginTxn()
+          break
+        case 'query.commitTxn':
+          void ws.commitTxn()
+          break
+        case 'query.rollbackTxn':
+          void ws.rollbackTxn()
+          break
         case 'view.focusSearch':
           if (!ws.sidebarOpen) ws.toggleSidebar()
           window.setTimeout(() => emitDataai('dataai:focus-tree-search'), 40)
@@ -288,6 +297,11 @@ export function App() {
         <span className="status-item">
           行 {ws.cursor.line} · 列 {ws.cursor.column}
         </span>
+        {ws.txnOpen ? (
+          <span className="status-item is-txn" aria-live="polite" title="当前连接处于手动事务中">
+            事务中
+          </span>
+        ) : null}
         {ws.running ? (
           <span className="status-item is-running" aria-live="polite">
             <span className="status-pulse" />
@@ -300,7 +314,7 @@ export function App() {
         {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '0.15.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '0.16.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (

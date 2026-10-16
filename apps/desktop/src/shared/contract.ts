@@ -24,7 +24,7 @@ export type DesktopApi = {
   window: {
     minimize: () => Promise<void>
     maximize: () => Promise<{ maximized: boolean }>
-    close: () => Promise<void>
+    close: () => Promise<{ closed: boolean } | void>
     isMaximized: () => Promise<boolean>
   }
   prefs: {
@@ -63,6 +63,10 @@ export type DesktopApi = {
       timeoutMs?: number
     }) => Promise<StatementResult[]>
     cancel: (requestId: string) => Promise<{ ok: boolean }>
+    txnStatus: (connectionId: string) => Promise<{ open: boolean; supported: boolean }>
+    beginTxn: (connectionId: string) => Promise<{ open: boolean; supported: boolean }>
+    commitTxn: (connectionId: string) => Promise<{ open: boolean; supported: boolean }>
+    rollbackTxn: (connectionId: string) => Promise<{ open: boolean; supported: boolean }>
     tableStructure: (payload: { connectionId: string; table: string }) => Promise<TableStructure>
     importPick: () => Promise<{ path: string } | { cancelled: true }>
     importRead: (filePath: string) => Promise<ImportSheetData>

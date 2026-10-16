@@ -15,6 +15,8 @@ import {
   inspectSqliteTable,
 } from './tableStructure'
 import type { TableStructure } from '@shared/tableStructure'
+import { supportsManualTransaction, transactionSql } from '@shared/transaction'
+import sql from 'mssql'
 
 export type { SqlTarget } from './target'
 
@@ -34,9 +36,16 @@ type Live =
   | { kind: 'sqlite'; db: Database.Database; stamp: string }
   | { kind: 'mysql'; conn: Connection; stamp: string }
   | { kind: 'postgres'; client: Client; stamp: string }
-  | { kind: 'mssql'; pool: import('mssql').ConnectionPool; stamp: string }
+  | {
+      kind: 'mssql'
+      pool: import('mssql').ConnectionPool
+      stamp: string
+      txn?: import('mssql').Transaction
+    }
 
 const live = new Map<string, Live>()
+/** Connection ids with an open manual transaction (autocommit off). */
+const openTxns = new Set<string>()
 
 type ActiveQuery = {
   connectionId: string
@@ -82,9 +91,31 @@ async function release(row: Live): Promise<void> {
 }
 
 /** Hard-kill an open session so in-flight driver work aborts when possible. */
+function clearTxn(connectionId: string): void {
+  openTxns.delete(connectionId)
+  const row = live.get(connectionId)
+  if (row?.kind === 'mssql') row.txn = undefined
+}
+
+export function isInTransaction(connectionId: string): boolean {
+  return openTxns.has(connectionId)
+}
+
+export function hasAnyOpenTransaction(): boolean {
+  return openTxns.size > 0
+}
+
+export function openTransactionConnectionIds(): string[] {
+  return [...openTxns]
+}
+
 async function killSession(connectionId: string): Promise<void> {
   const row = live.get(connectionId)
-  if (!row) return
+  if (!row) {
+    clearTxn(connectionId)
+    return
+  }
+  clearTxn(connectionId)
   live.delete(connectionId)
   try {
     if (row.kind === 'sqlite') {
@@ -135,6 +166,7 @@ async function killSession(connectionId: string): Promise<void> {
 }
 
 export async function closeSession(id: string): Promise<void> {
+  clearTxn(id)
   const row = live.get(id)
   if (row) {
     live.delete(id)
@@ -169,7 +201,12 @@ export async function openSession(target: SqlTarget): Promise<Live> {
   const stamp = stampOf(target)
   const cached = live.get(target.id)
   if (cached && cached.stamp === stamp) return cached
-  if (cached) await closeSession(target.id)
+  if (cached) {
+    if (openTxns.has(target.id)) {
+      throw new Error('当前连接仍在事务中，请先提交或回滚后再更改连接参数')
+    }
+    await closeSession(target.id)
+  }
   const created = await connect(target)
   live.set(target.id, created)
   return created
@@ -211,13 +248,13 @@ export type ExecuteSessionOptions = {
   timeoutMs?: number
 }
 
-async function runOnSession(target: SqlTarget, sql: string): Promise<StatementResult[]> {
+async function runOnSession(target: SqlTarget, sqlText: string): Promise<StatementResult[]> {
   if (target.dialect === 'redis') throw new Error('Redis 请使用键浏览器，而不是 SQL 编辑器')
   const session = await openSession(target)
-  if (session.kind === 'sqlite') return executeScript(session.db, sql)
-  if (session.kind === 'mysql') return executeMysql(session.conn, sql)
-  if (session.kind === 'postgres') return executePostgres(session.client, sql)
-  return executeMssql(session.pool, sql)
+  if (session.kind === 'sqlite') return executeScript(session.db, sqlText)
+  if (session.kind === 'mysql') return executeMysql(session.conn, sqlText)
+  if (session.kind === 'postgres') return executePostgres(session.client, sqlText)
+  return executeMssql(session.pool, sqlText, session.txn)
 }
 
 export async function executeSession(
@@ -306,3 +343,72 @@ export async function inspectTableSession(target: SqlTarget, tableName: string):
   if (session.kind === 'postgres') return inspectPostgresTable(session.client, target, name)
   return inspectMssqlTable(session.pool, target, name)
 }
+
+export type TxnStatus = { open: boolean; supported: boolean }
+
+export function transactionStatus(target: SqlTarget): TxnStatus {
+  const supported = supportsManualTransaction(target.dialect)
+  return { open: openTxns.has(target.id), supported }
+}
+
+export async function beginTransaction(target: SqlTarget): Promise<TxnStatus> {
+  if (!supportsManualTransaction(target.dialect)) throw new Error('当前数据库类型不支持手动事务')
+  if (openTxns.has(target.id)) throw new Error('已经在事务中')
+  const session = await openSession(target)
+  if (session.kind === 'sqlite') {
+    session.db.exec(transactionSql('sqlite', 'begin'))
+  } else if (session.kind === 'mysql') {
+    await session.conn.beginTransaction()
+  } else if (session.kind === 'postgres') {
+    await session.client.query(transactionSql('postgresql', 'begin'))
+  } else {
+    const txn = new sql.Transaction(session.pool)
+    await txn.begin()
+    session.txn = txn
+    live.set(target.id, session)
+  }
+  openTxns.add(target.id)
+  return transactionStatus(target)
+}
+
+export async function commitTransaction(target: SqlTarget): Promise<TxnStatus> {
+  if (!openTxns.has(target.id)) throw new Error('当前没有未提交的事务')
+  const session = await openSession(target)
+  try {
+    if (session.kind === 'sqlite') session.db.exec(transactionSql('sqlite', 'commit'))
+    else if (session.kind === 'mysql') await session.conn.commit()
+    else if (session.kind === 'postgres') await session.client.query(transactionSql('postgresql', 'commit'))
+    else {
+      if (!session.txn) throw new Error('事务状态丢失')
+      await session.txn.commit()
+      session.txn = undefined
+    }
+  } finally {
+    clearTxn(target.id)
+  }
+  return transactionStatus(target)
+}
+
+export async function rollbackTransaction(target: SqlTarget): Promise<TxnStatus> {
+  if (!openTxns.has(target.id)) throw new Error('当前没有未提交的事务')
+  const session = live.get(target.id)
+  try {
+    if (!session) {
+      clearTxn(target.id)
+      return transactionStatus(target)
+    }
+    if (session.kind === 'sqlite') session.db.exec(transactionSql('sqlite', 'rollback'))
+    else if (session.kind === 'mysql') await session.conn.rollback()
+    else if (session.kind === 'postgres') await session.client.query(transactionSql('postgresql', 'rollback'))
+    else if (session.txn) {
+      await session.txn.rollback()
+      session.txn = undefined
+    }
+  } catch {
+    /* connection may already be dead after cancel */
+  } finally {
+    clearTxn(target.id)
+  }
+  return transactionStatus(target)
+}
+

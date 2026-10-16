@@ -26,6 +26,12 @@ import {
   probeTarget,
   schemaForSession,
   inspectTableSession,
+  beginTransaction,
+  commitTransaction,
+  rollbackTransaction,
+  transactionStatus,
+  hasAnyOpenTransaction,
+  isInTransaction,
 } from './sessions'
 import type { SqlTarget } from './target'
 import { readRedisValue, scanRedisKeys } from './redis'
@@ -173,8 +179,22 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     else win.maximize()
     return { maximized: win.isMaximized() }
   })
-  ipcMain.handle('window:close', () => {
-    getWindow()?.close()
+  ipcMain.handle('window:close', async () => {
+    const win = getWindow()
+    if (win && hasAnyOpenTransaction()) {
+      const choice = await dialog.showMessageBox(win, {
+        type: 'warning',
+        buttons: ['取消', '强制关闭'],
+        defaultId: 0,
+        cancelId: 0,
+        title: '未提交的事务',
+        message: '仍有连接处于事务中',
+        detail: '强制关闭将丢弃未提交的更改。',
+      })
+      if (choice.response !== 1) return { closed: false }
+    }
+    win?.close()
+    return { closed: true }
   })
   ipcMain.handle('window:isMaximized', () => Boolean(getWindow()?.isMaximized()))
 
@@ -210,9 +230,18 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     return { connection: saved.connection }
   })
 
-  ipcMain.handle('connections:remove', (_event, id: string) => {
-    void closeSession(id)
+  ipcMain.handle('connections:remove', async (_event, id: string) => {
+    if (isInTransaction(id)) {
+      try {
+        const row = getConnection(id)
+        if (row) await rollbackTransaction(targetFromStored(row))
+      } catch {
+        /* best-effort */
+      }
+    }
+    await closeSession(id)
     removeConnection(id)
+    return { ok: true }
   })
 
   ipcMain.handle('connections:seedSample', () => {
@@ -370,6 +399,47 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     try {
       const data = await readImportFile(filePath)
       return { data }
+    } catch (error) {
+      return { error: explainDbError(error) }
+    }
+  })
+
+
+  ipcMain.handle('sql:txnStatus', (_event, connectionId: string) => {
+    const row = getConnection(connectionId)
+    if (!row) return { open: false, supported: false }
+    return transactionStatus(targetFromStored(row))
+  })
+
+  ipcMain.handle('sql:beginTxn', async (_event, connectionId: string) => {
+    const row = getConnection(connectionId)
+    if (!row) return { error: '连接不存在' }
+    if (!dialectInfo(row.dialect).executable) return { error: '这个类型还不支持事务' }
+    try {
+      const status = await beginTransaction(targetFromStored(row))
+      return { status }
+    } catch (error) {
+      return { error: explainDbError(error) }
+    }
+  })
+
+  ipcMain.handle('sql:commitTxn', async (_event, connectionId: string) => {
+    const row = getConnection(connectionId)
+    if (!row) return { error: '连接不存在' }
+    try {
+      const status = await commitTransaction(targetFromStored(row))
+      return { status }
+    } catch (error) {
+      return { error: explainDbError(error) }
+    }
+  })
+
+  ipcMain.handle('sql:rollbackTxn', async (_event, connectionId: string) => {
+    const row = getConnection(connectionId)
+    if (!row) return { error: '连接不存在' }
+    try {
+      const status = await rollbackTransaction(targetFromStored(row))
+      return { status }
     } catch (error) {
       return { error: explainDbError(error) }
     }
