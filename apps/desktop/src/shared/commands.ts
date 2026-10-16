@@ -246,4 +246,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '对象树搜索', keys: 'Ctrl+Shift+F' },
   { action: '聚焦编辑器', keys: 'Ctrl+Shift+1' },
   { action: '快捷键说明', keys: 'F1' },
+  { action: '收藏片段变量 {{table}} / {{limit}}', keys: '插入时填写' },
 ]

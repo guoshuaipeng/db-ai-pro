@@ -7,6 +7,10 @@ TypeScript 桌面端（当前主力迭代）见：[`apps/desktop/CHANGELOG.md`](
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**，尚未发布到 GitHub Releases。
 
+## 1.8.0 — M27 片段变量
+
+- 收藏片段 `{{var}}` 占位符 + 插入填写
+
 ## 1.7.0 — M26 导出 Markdown / HTML
 
 - 结果导出 MD / HTML；导出行上限

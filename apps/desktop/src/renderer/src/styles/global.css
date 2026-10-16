@@ -2418,3 +2418,26 @@ button:disabled { cursor: default; opacity: 0.45; }
   color: var(--ink-tertiary);
   background: rgba(255, 255, 255, 0.04);
 }
+
+.fav-var-hint { margin: 4px 0 8px; }
+.snippet-var-overlay { z-index: 80; }
+.snippet-var-dialog { width: min(440px, 100%); }
+.snippet-var-fields { margin-bottom: 12px; }
+.snippet-var-preview {
+  margin: 0 0 16px;
+  max-height: 160px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--bg-elevated, #10141c);
+  color: var(--ink-secondary);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.history-badge.is-warn {
+  background: color-mix(in srgb, var(--warn, #d4a017) 22%, transparent);
+  color: var(--warn, #e6c35c);
+}
+

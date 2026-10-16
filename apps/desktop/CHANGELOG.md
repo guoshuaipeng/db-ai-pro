@@ -2,6 +2,11 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 1.8.0 — M27 片段变量
+
+- 收藏 SQL 支持 `{{table}}` / `{{limit}}` 等占位符；插入时深色表单填写并展开
+- F1 快捷键说明与收藏空态提示文档化
+
 ## 1.7.0 — M26 导出 Markdown / HTML
 
 - 结果工具栏导出 Markdown 表与简易 HTML（与筛选/排序视图一致）
