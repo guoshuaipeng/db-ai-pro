@@ -57,6 +57,8 @@ export type ConnectionInput = {
   username?: string
   password?: string
   createFile?: boolean
+  /** Per-connection safe mode: block writes / DDL. */
+  readOnly?: boolean
 }
 
 export type ConnectionPublic = {
@@ -69,6 +71,8 @@ export type ConnectionPublic = {
   database?: string
   username?: string
   hasPassword: boolean
+  /** Per-connection safe mode. */
+  readOnly?: boolean
   createdAt: string
   updatedAt: string
 }

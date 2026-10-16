@@ -226,6 +226,7 @@ export function createPreviewApi(): DesktopApi {
         highContrast: false,
         queryTimeoutSec: 30,
         restoreTabsOnLaunch: true,
+        globalReadOnly: false,
       }),
       save: async (input) => ({
         density: input.density === 'compact' ? ('compact' as const) : ('comfortable' as const),
@@ -235,6 +236,7 @@ export function createPreviewApi(): DesktopApi {
             ? Math.min(600, Math.max(0, Math.round(input.queryTimeoutSec)))
             : 30,
         restoreTabsOnLaunch: input.restoreTabsOnLaunch !== false,
+        globalReadOnly: input.globalReadOnly === true,
       }),
     },
     app: {

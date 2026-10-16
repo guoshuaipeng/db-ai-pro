@@ -83,7 +83,7 @@ export function TableStructurePanel() {
               type="button"
               className="btn btn-ghost tiny-btn"
               disabled={!structure}
-              onClick={() => setSampleOpen(true)}
+              onClick={() => ws.assertWritable('样例填充') && setSampleOpen(true)}
             >
               样例数据
             </button>

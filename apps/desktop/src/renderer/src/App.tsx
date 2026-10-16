@@ -122,6 +122,12 @@ export function App() {
         case 'connection.healthAll':
           void ws.checkAllConnectionHealth()
           break
+        case 'safe.globalReadOnly':
+          void ws.setGlobalReadOnly(!ws.globalReadOnly)
+          break
+        case 'safe.connectionReadOnly':
+          void ws.toggleConnectionReadOnly()
+          break
         case 'connection.new':
           ws.openCreate()
           break
@@ -344,6 +350,15 @@ export function App() {
         <span className="status-item">
           行 {ws.cursor.line} · 列 {ws.cursor.column}
         </span>
+        {ws.readOnlyActive ? (
+          <span
+            className="status-item is-readonly"
+            aria-live="polite"
+            title={ws.globalReadOnly ? '全局只读已开启' : '当前连接为只读'}
+          >
+            只读
+          </span>
+        ) : null}
         {ws.txnOpen ? (
           <span className="status-item is-txn" aria-live="polite" title="当前连接处于手动事务中">
             事务中
@@ -361,7 +376,7 @@ export function App() {
         {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '2.2.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '2.3.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (

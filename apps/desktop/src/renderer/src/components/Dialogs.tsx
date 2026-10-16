@@ -171,6 +171,7 @@ function ConnectionDialog() {
   const [database, setDatabase] = useState(existing?.database ?? '')
   const [username, setUsername] = useState(existing?.username ?? '')
   const [password, setPassword] = useState('')
+  const [readOnly, setReadOnly] = useState(existing?.readOnly === true)
   const [error, setError] = useState('')
   const [probe, setProbe] = useState('')
   const [probing, setProbing] = useState(false)
@@ -193,6 +194,7 @@ function ConnectionDialog() {
       dialect,
       createFile,
       password: password || undefined,
+      readOnly,
     }
     if (dialect === 'sqlite') input.filePath = filePath
     else {
@@ -333,7 +335,11 @@ function ConnectionDialog() {
         </p>
         {probe && <p className="field-ok">{probe}</p>}
         {error && <p className="field-error">{error}</p>}
-        <div className="dialog-actions">
+                <label className="checkline">
+          <input type="checkbox" checked={readOnly} onChange={(event) => setReadOnly(event.target.checked)} />
+          只读连接（拦截写入 / DDL）
+        </label>
+<div className="dialog-actions">
           <button type="button" className="btn btn-ghost" onClick={ws.closeDialog}>
             取消
           </button>

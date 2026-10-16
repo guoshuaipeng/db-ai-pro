@@ -7,6 +7,10 @@ TypeScript 桌面端（当前主力迭代）见：[`apps/desktop/CHANGELOG.md`](
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**，尚未发布到 GitHub Releases。
 
+## 2.3.0 — M32 只读 / 安全模式
+
+- 全局/连接只读 + 状态栏徽章
+
 ## 2.2.0 — M31 窗格布局持久化
 
 - 分隔比例持久化 + 钳制

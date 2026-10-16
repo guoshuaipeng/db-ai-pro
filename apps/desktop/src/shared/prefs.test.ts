@@ -25,3 +25,9 @@ describe('normalizePrefs', () => {
     expect(normalizePrefs({ restoreTabsOnLaunch: true }).restoreTabsOnLaunch).toBe(true)
   })
 })
+
+  it('defaults globalReadOnly off', () => {
+    expect(normalizePrefs(null).globalReadOnly).toBe(false)
+    expect(normalizePrefs({ globalReadOnly: true }).globalReadOnly).toBe(true)
+  })
+

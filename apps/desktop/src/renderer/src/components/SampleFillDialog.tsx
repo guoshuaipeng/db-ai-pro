@@ -26,11 +26,13 @@ export function SampleFillDialog({
   )
 
   const writeEditor = () => {
+    if (!ws.assertWritable('样例填充')) return
     ws.openSqlTab(`样例 ${structure.tableName}`, plan.sql)
     onClose()
   }
 
   const runNow = async () => {
+    if (!ws.assertWritable('样例填充')) return
     setBusy(true)
     try {
       ws.openSqlTab(`样例 ${structure.tableName}`, plan.sql)

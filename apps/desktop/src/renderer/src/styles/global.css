@@ -2614,3 +2614,10 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   font-variant-numeric: tabular-nums;
 }
 
+.status-item.is-readonly {
+  color: var(--warn, #e6c35c);
+  background: color-mix(in srgb, var(--warn, #d4a017) 16%, transparent);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+

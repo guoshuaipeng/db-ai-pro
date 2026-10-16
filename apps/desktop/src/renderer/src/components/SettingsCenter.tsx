@@ -84,7 +84,7 @@ export function SettingsCenter({ open, tab, onTab, onClose, prefs, onPrefs }: Se
             {tab === 'model' && <ModelPanel onClose={onClose} />}
             {tab === 'appearance' && <AppearancePanel prefs={prefs} onPrefs={onPrefs} />}
             {tab === 'query' && <QueryPanel prefs={prefs} onPrefs={onPrefs} />}
-            {tab === 'about' && <AboutPanel version={ws.meta?.version ?? '2.2.0'} encryption={ws.meta?.encryption} />}
+            {tab === 'about' && <AboutPanel version={ws.meta?.version ?? '2.3.0'} encryption={ws.meta?.encryption} />}
           </div>
         </section>
       </div>
@@ -209,6 +209,7 @@ function QueryPanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs: AppP
 
 function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs: AppPrefs) => void }) {
   const api = getApi()
+  const ws = useWorkspace()
   const [busy, setBusy] = useState(false)
 
   const setDensity = async (density: UiDensity) => {
@@ -235,6 +236,17 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
     setBusy(true)
     try {
       const next = await api.prefs.save({ restoreTabsOnLaunch })
+      onPrefs(next)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const setGlobalReadOnly = async (globalReadOnly: boolean) => {
+    setBusy(true)
+    try {
+      await ws.setGlobalReadOnly(globalReadOnly)
+      const next = await api.prefs.get()
       onPrefs(next)
     } finally {
       setBusy(false)
@@ -295,6 +307,22 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
           onClick={() => void setRestoreTabs(!prefs.restoreTabsOnLaunch)}
         >
           {prefs.restoreTabsOnLaunch ? '已开启' : '已关闭'}
+        </button>
+      </div>
+      <div className="contrast-block">
+        <div className="contrast-copy">
+          <strong>全局只读</strong>
+          <span>拦截所有连接的 INSERT / UPDATE / DELETE / DDL、单元格编辑与导入；SELECT / EXPLAIN / 导出仍可用。也可在连接对话框设单连接只读。</span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={prefs.globalReadOnly}
+          className={prefs.globalReadOnly ? 'contrast-switch is-on' : 'contrast-switch'}
+          disabled={busy}
+          onClick={() => void setGlobalReadOnly(!prefs.globalReadOnly)}
+        >
+          {prefs.globalReadOnly ? '已开启' : '已关闭'}
         </button>
       </div>
     </div>

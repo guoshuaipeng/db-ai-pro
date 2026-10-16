@@ -8,6 +8,8 @@ export type AppPrefs = {
   queryTimeoutSec: number
   /** Restore query tabs from last session on launch. Default on. */
   restoreTabsOnLaunch: boolean
+  /** Global safe mode: block writes / DDL on every connection. */
+  globalReadOnly: boolean
 }
 
 export const DEFAULT_PREFS: AppPrefs = {
@@ -15,6 +17,7 @@ export const DEFAULT_PREFS: AppPrefs = {
   highContrast: false,
   queryTimeoutSec: 30,
   restoreTabsOnLaunch: true,
+  globalReadOnly: false,
 }
 
 const TIMEOUT_MIN = 0
@@ -36,5 +39,6 @@ export function normalizePrefs(value: unknown): AppPrefs {
       row.queryTimeoutSec === undefined ? DEFAULT_PREFS.queryTimeoutSec : row.queryTimeoutSec,
     ),
     restoreTabsOnLaunch: row.restoreTabsOnLaunch !== false,
+    globalReadOnly: row.globalReadOnly === true,
   }
 }

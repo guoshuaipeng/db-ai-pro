@@ -35,6 +35,7 @@ import {
 } from '@shared/layoutBounds'
 import { formatExplainText } from '@shared/explain'
 import { analyzeDestructiveSql } from '@shared/destructiveSql'
+import { analyzeReadOnlySql, isReadOnlyEffective } from '@shared/readOnlySql'
 import type { TableStructure } from '@shared/tableStructure'
 import type { Dialect } from '@shared/types'
 
@@ -140,6 +141,11 @@ type WorkspaceValue = {
   lastRun: LastRunStats | null
   txnOpen: boolean
   txnSupported: boolean
+  readOnlyActive: boolean
+  globalReadOnly: boolean
+  setGlobalReadOnly: (value: boolean) => Promise<void>
+  toggleConnectionReadOnly: () => Promise<void>
+  assertWritable: (action?: string) => boolean
   beginTxn: () => Promise<void>
   commitTxn: () => Promise<void>
   rollbackTxn: () => Promise<void>
@@ -335,6 +341,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const setEditorRatio = useCallback((value: number) => {
     setEditorRatioState(clampEditorRatio(value))
   }, [])
+  const [globalReadOnly, setGlobalReadOnlyState] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [aiOpen, setAiOpen] = useState(true)
   const requestRef = useRef<string | null>(null)
@@ -398,6 +405,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setConnections(rows)
         setSettings(aiSettings)
         applyRecentState(recent)
+        setGlobalReadOnlyState(Boolean(prefs.globalReadOnly))
         const connectionIds = new Set(rows.map((row) => row.id))
         let restoreConnectionId = workspace?.activeConnectionId ?? rows[0]?.id ?? null
         if (workspace) {
@@ -645,6 +653,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const openImportWizard = (input: { connectionId: string; tableName?: string }) => {
     const connection = connections.find((item) => item.id === input.connectionId)
+    if (isReadOnlyEffective(globalReadOnly, connection?.readOnly)) {
+      pushToast('info', '只读模式已开启，已拦截数据导入。')
+      return
+    }
     setActiveConnectionId(input.connectionId)
     setImportTarget({
       connectionId: input.connectionId,
@@ -797,6 +809,49 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     })
   }
 
+
+  const readOnlyActive = isReadOnlyEffective(globalReadOnly, activeConnection?.readOnly)
+
+  const assertWritable = useCallback(
+    (action = '写操作') => {
+      if (!isReadOnlyEffective(globalReadOnly, activeConnection?.readOnly)) return true
+      pushToast('info', `只读模式已开启，已拦截${action}。SELECT / EXPLAIN / 导出仍可用。`)
+      return false
+    },
+    [globalReadOnly, activeConnection?.readOnly, pushToast],
+  )
+
+  const setGlobalReadOnly = useCallback(
+    async (value: boolean) => {
+      const next = await api.prefs.save({ globalReadOnly: value })
+      setGlobalReadOnlyState(next.globalReadOnly === true)
+      pushToast('success', next.globalReadOnly ? '已开启全局只读' : '已关闭全局只读')
+    },
+    [api, pushToast],
+  )
+
+  const toggleConnectionReadOnly = useCallback(async () => {
+    if (!activeConnection) {
+      pushToast('info', '先选择一个连接')
+      return
+    }
+    const nextFlag = !activeConnection.readOnly
+    await api.connections.save({
+      id: activeConnection.id,
+      name: activeConnection.name,
+      dialect: activeConnection.dialect,
+      filePath: activeConnection.filePath,
+      host: activeConnection.host,
+      port: activeConnection.port,
+      database: activeConnection.database,
+      username: activeConnection.username,
+      readOnly: nextFlag,
+    })
+    const rows = await api.connections.list()
+    setConnections(rows)
+    pushToast('success', nextFlag ? `「${activeConnection.name}」已设为只读` : `「${activeConnection.name}」已允许写入`)
+  }, [activeConnection, api, pushToast])
+
   const runSqlText = async (sql: string) => {
     if (running) return
     if (!activeConnection) {
@@ -805,6 +860,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
     if (isKvDialect(activeConnection.dialect)) {
       pushToast('info', 'Redis 请使用键浏览器，而不是 SQL 运行')
+      return
+    }
+    const readOnlyHit = analyzeReadOnlySql(sql)
+    if (readOnlyActive && readOnlyHit.blocked) {
+      pushToast('info', readOnlyHit.reason)
       return
     }
     if (!(await confirmIfDestructive(sql))) {
@@ -887,6 +947,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   const beginTxn = async () => {
+    if (!assertWritable('开始事务')) return
     if (!activeConnection) {
       pushToast('info', '先在左侧选择一个连接')
       return
@@ -1168,6 +1229,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
     if (isKvDialect(activeConnection.dialect)) {
       pushToast('info', 'Redis 不支持执行 SQL')
+      return
+    }
+    const readOnlyHit = analyzeReadOnlySql(sql)
+    if (readOnlyActive && readOnlyHit.blocked) {
+      pushToast('info', readOnlyHit.reason)
       return
     }
     applySql(sql)
@@ -1455,6 +1521,11 @@ ${sql.trim()}
     lastRun,
     txnOpen,
     txnSupported,
+    readOnlyActive,
+    globalReadOnly,
+    setGlobalReadOnly,
+    toggleConnectionReadOnly,
+    assertWritable,
     beginTxn,
     commitTxn,
     rollbackTxn,

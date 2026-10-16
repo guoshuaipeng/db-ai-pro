@@ -2,6 +2,11 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 2.3.0 — M32 只读 / 安全模式
+
+- 全局或单连接「只读」：拦截 INSERT/UPDATE/DELETE/DDL、单元格编辑、导入与样例填充；SELECT/EXPLAIN/导出可用
+- 状态栏「只读」徽章；设置开关与 Ctrl+K 切换
+
 ## 2.2.0 — M31 窗格布局持久化
 
 - 记住侧栏宽度、助手宽度、编辑器/结果分隔比例与开合状态

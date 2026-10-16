@@ -304,6 +304,10 @@ export function ResultGrid({
       setEditing(null)
       return
     }
+    if (!ws.assertWritable('单元格编辑')) {
+      setEditing(null)
+      return
+    }
     const ok = window.confirm(`确认把 ${table}.${column}（rowid=${rowid}）改成「${editing.draft || 'NULL'}」？`)
     if (!ok) {
       setEditing(null)

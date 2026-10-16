@@ -50,6 +50,7 @@ type StoredConnection = {
   passwordCipher?: string
   /** Legacy plaintext — migrated on load and never written back. */
   password?: string
+  readOnly?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -125,6 +126,7 @@ function toPublic(row: StoredConnection): ConnectionPublic {
     database: row.database,
     username: row.username,
     hasPassword: Boolean(row.passwordCipher),
+    readOnly: row.readOnly === true,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
@@ -171,6 +173,8 @@ export function saveConnection(input: ConnectionInput): { connection: Connection
     database: input.database?.trim() || undefined,
     username: input.username?.trim() || undefined,
     passwordCipher,
+    readOnly:
+      input.readOnly === undefined ? (existing?.readOnly === true) : input.readOnly === true,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
