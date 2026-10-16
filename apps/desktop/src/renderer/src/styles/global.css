@@ -410,6 +410,7 @@ button.crumb-btn .crumb-text {
 
 
 .tree { overflow: auto; padding: 0 8px 12px; min-height: 0; }
+.tree:has(.menu) { overflow: visible; }
 .tree-row {
   position: relative;
   min-height: 28px;
@@ -480,8 +481,8 @@ button.crumb-btn .crumb-text {
   position: absolute;
   right: 8px;
   top: 26px;
-  z-index: 5;
-  min-width: 120px;
+  z-index: 40;
+  min-width: 140px;
   padding: 4px;
   border-radius: 8px;
   background: #1c2433;
@@ -3909,6 +3910,22 @@ body.is-col-resizing .grid-col-resizer {
   color: var(--ink-tertiary);
   background: rgba(255, 255, 255, 0.04);
 }
+
+button.health-badge {
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+button.health-badge:hover {
+  filter: brightness(1.12);
+}
+button.health-badge:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
 .health-badge.is-idle {
   color: var(--ink-tertiary);
   background: color-mix(in srgb, var(--ink-tertiary) 12%, transparent);
@@ -5440,7 +5457,8 @@ body.is-col-resizing .grid-col-resizer {
   gap: 6px;
   flex: 1 1 auto;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 .toolbar-overflow-primary {
   display: flex;
@@ -5529,6 +5547,7 @@ body.is-col-resizing .grid-col-resizer {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 0 0 auto;
   min-height: 36px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--line);
@@ -5536,6 +5555,10 @@ body.is-col-resizing .grid-col-resizer {
   min-width: 0;
 }
 .editor-toolbar-row .editor-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
   border-bottom: 0;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { emitDataai, onDataai } from '../appEvents'
 import { dialectInfo } from '@shared/types'
 import { formatLatency } from '@shared/connHealth'
@@ -48,7 +48,6 @@ import type { Dialect, SchemaNode } from '@shared/types'
 import { IconColumn, IconDatabase, IconMore, IconPlus, IconRefresh, IconSearch, IconTable } from './icons'
 import { EmptyState } from './EmptyState'
 import { useWorkspace } from '../state/workspace'
-import { recentQueryTitle } from '@shared/recentItems'
 import {
   collectMatchedTables,
   countTreeNodes,
@@ -90,7 +89,7 @@ export function ConnectionPane() {
   }, [ws.search])
 
   useEffect(() => {
-    const close = (event: MouseEvent) => {
+    const close = (event: globalThis.MouseEvent) => {
       if (!root.current?.contains(event.target as Node)) setMenuId(null)
     }
     window.addEventListener('mousedown', close)
@@ -239,46 +238,7 @@ export function ConnectionPane() {
         </div>
       ) : null}
 
-      {(ws.recentTables.length > 0 || ws.recentQueries.length > 0) && !ws.search.trim() && (
-        <div className="recent-side" aria-label="最近">
-          <div className="recent-side-head">
-            <span>最近</span>
-            <button type="button" className="tiny-btn btn btn-ghost" onClick={() => void ws.clearRecent()}>
-              清空
-            </button>
-          </div>
-          {ws.recentTables.slice(0, 6).map((item) => (
-            <button
-              key={`t:${item.connectionId}:${item.tableName}`}
-              type="button"
-              className="recent-side-item"
-              title={`${item.connectionName} / ${item.tableName}`}
-              onClick={() => ws.openRecentTable(item)}
-            >
-              <IconTable />
-              <span className="recent-side-text">
-                <span className="recent-side-title">{item.tableName}</span>
-                <span className="recent-side-sub">{item.connectionName || '表'}</span>
-              </span>
-            </button>
-          ))}
-          {ws.recentQueries.slice(0, 4).map((item) => (
-            <button
-              key={`q:${item.connectionId ?? 'g'}:${item.at}`}
-              type="button"
-              className="recent-side-item"
-              title={item.sql}
-              onClick={() => ws.openRecentQuery(item)}
-            >
-              <span className="recent-side-sql-badge">SQL</span>
-              <span className="recent-side-text">
-                <span className="recent-side-title">{recentQueryTitle(item.sql, 40)}</span>
-                <span className="recent-side-sub">{item.connectionName || '查询'}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Bugfix: 侧栏最近区块已移除 */}
       <div className="conn-group-bar">
         <input
           className="fav-input"
@@ -477,6 +437,8 @@ function TreeNode({
     ? ws.connections.find((item) => item.id === node.connectionId)
     : undefined
   const dialect = node.dialect || nodeConn?.dialect || connection?.dialect
+  const tableKey = node.kind === 'table' ? (node.tableName || node.name || '').trim() : ''
+  const canTableMenu = node.kind === 'table' && !!node.connectionId && !!tableKey
   const failed = node.status === 'error'
   const refreshingHere =
     ws.schemaRefreshing &&
@@ -540,7 +502,25 @@ function TreeNode({
 
   return (
     <div className="tree-branch">
-      <div className={rowClass} style={{ paddingLeft: 8 + depth * 14 }} role="treeitem" aria-expanded={hasChildren ? expanded : undefined}>
+      <div
+        className={rowClass}
+        style={{ paddingLeft: 8 + depth * 14 }}
+        role="treeitem"
+        aria-expanded={hasChildren ? expanded : undefined}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          if (
+            node.kind === 'connection' ||
+            node.kind === 'database' ||
+            node.kind === 'table' ||
+            node.kind === 'column' ||
+            node.kind === 'key'
+          ) {
+            onMenu(menuId === node.id ? null : node.id)
+          }
+        }}
+      >
         {hasChildren ? (
           <button
             type="button"
@@ -578,8 +558,8 @@ function TreeNode({
             ws.selectNode(node)
           }}
           onDoubleClick={() => {
-            if (node.kind === 'table' && node.connectionId && node.tableName) {
-              ws.openTableStructure(node.connectionId, node.tableName)
+            if (node.kind === 'table' && node.connectionId && tableKey) {
+              ws.openTableStructure(node.connectionId, tableKey)
             }
           }}
           title={
@@ -607,7 +587,10 @@ function TreeNode({
           {node.kind === 'key' && node.dataType && <span className="col-type">{node.dataType}</span>}
           {node.kind === 'connection' && node.dialect && <DialectBadge dialect={node.dialect} />}
           {node.kind === 'connection' && node.connectionId && (
-            <HealthBadge health={ws.healthById[node.connectionId]} />
+            <HealthBadge
+              connectionId={node.connectionId}
+              health={ws.healthById[node.connectionId]}
+            />
           )}
         </button>
         {node.kind === 'connection' && connection && (
@@ -632,13 +615,16 @@ function TreeNode({
             <IconMore />
           </button>
         )}
-        {node.kind === 'table' && node.connectionId && node.tableName && (
+        {canTableMenu && (
           <button
             type="button"
             className="icon-btn tiny"
             aria-label={`${node.displayName}的操作`}
             aria-expanded={menuId === node.id}
-            onClick={() => onMenu(menuId === node.id ? null : node.id)}
+            onClick={(event) => {
+              event.stopPropagation()
+              onMenu(menuId === node.id ? null : node.id)
+            }}
           >
             <IconMore />
           </button>
@@ -771,7 +757,7 @@ function TreeNode({
             </button>
           </div>
         )}
-        {menuId === node.id && node.kind === 'table' && node.connectionId && node.tableName && (
+        {menuId === node.id && canTableMenu && (
           <div className="menu" role="menu">
             <button
               type="button"
@@ -809,7 +795,7 @@ function TreeNode({
               role="menuitem"
               onClick={() => {
                 onMenu(null)
-                ws.openTableStructure(node.connectionId!, node.tableName!)
+                ws.openTableStructure(node.connectionId!, tableKey)
               }}
             >
               查看结构
@@ -819,7 +805,7 @@ function TreeNode({
               role="menuitem"
               onClick={() => {
                 onMenu(null)
-                ws.openTableQuery(node.connectionId!, node.tableName!, node.databaseName)
+                ws.openTableQuery(node.connectionId!, tableKey, node.databaseName)
               }}
             >
               打开查询
@@ -829,7 +815,7 @@ function TreeNode({
               role="menuitem"
               onClick={() => {
                 onMenu(null)
-                ws.openImportWizard({ connectionId: node.connectionId!, tableName: node.tableName! })
+                ws.openImportWizard({ connectionId: node.connectionId!, tableName: tableKey })
               }}
             >
               导入 CSV/Excel
@@ -877,26 +863,65 @@ function TreeNode({
   )
 }
 
-function HealthBadge({ health }: { health?: import('@shared/connHealth').ConnHealth }) {
+function HealthBadge({
+  connectionId,
+  health,
+}: {
+  connectionId: string
+  health?: import('@shared/connHealth').ConnHealth
+}) {
+  const ws = useWorkspace()
+  const [busy, setBusy] = useState(false)
+  const probe = (event: ReactMouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (busy) return
+    setBusy(true)
+    void ws.checkConnectionHealth(connectionId, false).finally(() => setBusy(false))
+  }
   if (!health) {
     return (
-      <span className="health-badge is-idle" title={healthBadgeIdleTitle()}>
-        {healthBadgeIdleLabel()}
-      </span>
+      <button
+        type="button"
+        className="health-badge is-idle"
+        title={healthBadgeIdleTitle()}
+        aria-label={healthBadgeIdleTitle()}
+        disabled={busy}
+        onClick={probe}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        {busy ? '…' : healthBadgeIdleLabel()}
+      </button>
     )
   }
   if (health.unsupported) {
     return (
-      <span className="health-badge is-unsupported" title={healthBadgeTitle(health)}>
-        {healthBadgeUnsupportedLabel()}
-      </span>
+      <button
+        type="button"
+        className="health-badge is-unsupported"
+        title={healthBadgeTitle(health)}
+        aria-label={healthBadgeTitle(health)}
+        disabled={busy}
+        onClick={probe}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        {busy ? '…' : healthBadgeUnsupportedLabel()}
+      </button>
     )
   }
   const label = health.ok ? formatLatency(health.latencyMs) : healthBadgeFailLabel()
   return (
-    <span className={`health-badge is-${health.tone}`} title={healthBadgeTitle(health)}>
-      {label}
-    </span>
+    <button
+      type="button"
+      className={`health-badge is-${health.tone}`}
+      title={healthBadgeTitle(health)}
+      aria-label={healthBadgeTitle(health)}
+      disabled={busy}
+      onClick={probe}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      {busy ? '…' : label}
+    </button>
   )
 }
 

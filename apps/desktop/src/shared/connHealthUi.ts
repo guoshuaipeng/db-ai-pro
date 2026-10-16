@@ -7,7 +7,7 @@ export function healthBadgeIdleLabel(): string {
 }
 
 export function healthBadgeIdleTitle(): string {
-  return '尚未探测延迟。可在连接菜单中「检测延迟」。'
+  return '尚未探测延迟。点击徽章探测，或在连接菜单中「检测延迟」。'
 }
 
 export function healthBadgeUnsupportedLabel(): string {
@@ -23,10 +23,10 @@ export function healthBadgeTitle(health: ConnHealth): string {
     return health.error?.trim() || '当前类型暂不支持延迟探测'
   }
   if (!health.ok) {
-    return health.error?.trim() || '连接探测失败，可重试'
+    return (health.error?.trim() || '连接探测失败') + ' · 点击重试'
   }
   const when = formatCheckedAt(health.checkedAt)
-  return `延迟 ${formatLatency(health.latencyMs)} · ${when}`
+  return `延迟 ${formatLatency(health.latencyMs)} · ${when} · 点击重新探测`
 }
 
 export function formatCheckedAt(iso: string): string {
