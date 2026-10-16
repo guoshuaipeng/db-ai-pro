@@ -30,6 +30,11 @@ import {
   type AppPrefs,
 } from '@shared/prefs'
 import { LAYOUT } from '@shared/layoutBounds'
+import {
+  layoutResetDefaults,
+  layoutResetToast,
+  layoutSplitterAriaLabel,
+} from '@shared/layoutReset'
 import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
 import { statusBarRerunAction } from '@shared/statusBarRerun'
 import {
@@ -297,6 +302,15 @@ export function App() {
         case 'view.zoomOut':
           zoomOut()
           break
+        case 'view.resetLayout':
+          {
+            const d = layoutResetDefaults()
+            ws.setSidebarWidth(d.sidebarWidth)
+            ws.setAiWidth(d.aiWidth)
+            ws.setEditorRatio(d.editorRatio)
+            ws.pushToast('success', layoutResetToast('all'))
+          }
+          break
         case 'view.zoomReset':
           zoomReset()
           break
@@ -549,6 +563,10 @@ export function App() {
           <Splitter
             label="调整连接栏宽度"
             onDelta={(delta) => ws.setSidebarWidth(ws.sidebarWidth + delta)}
+            onReset={() => {
+              ws.setSidebarWidth(layoutResetDefaults().sidebarWidth)
+              ws.pushToast('success', layoutResetToast('sidebar'))
+            }}
           />
         )}
         <main
@@ -570,6 +588,10 @@ export function App() {
                 label="调整编辑器高度"
                 orientation="horizontal"
                 onDelta={(delta) => ws.setEditorRatio(ws.editorRatio + delta / 280)}
+                onReset={() => {
+                  ws.setEditorRatio(layoutResetDefaults().editorRatio)
+                  ws.pushToast('success', layoutResetToast('editor'))
+                }}
               />
               <ResultPane />
             </>
@@ -579,6 +601,10 @@ export function App() {
           <Splitter
             label="调整助手宽度"
             onDelta={(delta) => ws.setAiWidth(ws.aiWidth - delta)}
+            onReset={() => {
+              ws.setAiWidth(layoutResetDefaults().aiWidth)
+              ws.pushToast('success', layoutResetToast('ai'))
+            }}
           />
         )}
         {ws.aiOpen && <AiPane />}
@@ -676,10 +702,13 @@ export function App() {
 
 function Splitter({
   onDelta,
+  onReset,
   label,
   orientation = 'vertical',
 }: {
   onDelta: (delta: number) => void
+  /** Double-click restores the default size for this pane. */
+  onReset?: () => void
   label: string
   orientation?: 'vertical' | 'horizontal'
 }) {
@@ -740,11 +769,18 @@ function Splitter({
       }
       role="separator"
       aria-orientation={orientation}
-      aria-label={label}
+      aria-label={onReset ? layoutSplitterAriaLabel(label) : label}
+      title={onReset ? layoutSplitterAriaLabel(label) : label}
       onPointerDown={down}
       onPointerMove={move}
       onPointerUp={up}
       onPointerCancel={up}
+      onDoubleClick={(event) => {
+        if (!onReset) return
+        event.preventDefault()
+        event.stopPropagation()
+        onReset()
+      }}
     />
   )
 }

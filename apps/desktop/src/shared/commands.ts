@@ -364,6 +364,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'connection',
   },
   {
+    id: 'view.resetLayout',
+    title: '重置布局分栏',
+    subtitle: '连接栏 / 编辑器·结果 / 助手恢复默认尺寸',
+    keywords: 'reset layout splitter 重置 布局 分栏 默认',
+    shortcut: '分栏双击 · Ctrl+K',
+    category: 'view',
+  },
+  {
     id: 'view.toggleMinimap',
     title: '切换编辑器小地图',
     subtitle: 'Monaco minimap 开 / 关',
@@ -521,6 +529,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '只读 / 安全模式', keys: '状态栏「只读/可写」· 设置 · Ctrl+K「只读」' },
   { action: '窗口置顶', keys: '标题栏「置顶」· Ctrl+K' },
   { action: '放大 / 缩小 / 重置缩放', keys: 'Ctrl+= · Ctrl+- · Ctrl+0' },
+  { action: '重置布局分栏', keys: '分栏双击恢复默认 · Ctrl+K「重置布局」' },
   { action: '编辑器小地图', keys: '状态栏「小地图」· 设置 · Ctrl+K「小地图」' },
   { action: '自动换行', keys: 'Alt+Z · 工具栏「换行」· 状态栏「换行」' },
   { action: '编辑器字号', keys: '设置 → 外观' },

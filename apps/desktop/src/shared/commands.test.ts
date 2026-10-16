@@ -31,6 +31,10 @@ describe('filterCommands', () => {
     expect(filterCommands('zoom').some((item) => item.id === 'view.zoomIn')).toBe(true)
   })
 
+  it('finds reset layout command', () => {
+    expect(filterCommands('重置布局').some((item) => item.id === 'view.resetLayout')).toBe(true)
+  })
+
   it('finds minimap command', () => {
     expect(filterCommands('小地图').some((item) => item.id === 'view.toggleMinimap')).toBe(true)
   })
