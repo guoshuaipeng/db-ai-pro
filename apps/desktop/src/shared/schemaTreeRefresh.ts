@@ -18,6 +18,17 @@ export function normalizeExpanded(raw: unknown): Record<string, boolean> {
   return next
 }
 
+/** Count keys marked open (true) in a persisted expand map. */
+export function countOpenExpands(expanded: Record<string, boolean> | null | undefined): number {
+  if (!expanded) return 0
+  let n = 0
+  for (const value of Object.values(expanded)) {
+    if (value === true) n += 1
+  }
+  return n
+}
+
+
 /**
  * Whether a tree node should render expanded.
  * Search forces expand. Explicit map wins. Unset → only connection roots open.

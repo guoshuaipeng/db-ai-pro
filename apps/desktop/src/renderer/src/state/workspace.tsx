@@ -16,6 +16,7 @@ import {
   collapseSchemaTreeToast,
   expandSchemaTreeOneLevel,
   expandSchemaTreeOneLevelToast,
+  countOpenExpands,
   normalizeExpanded,
   replaceConnectionNode,
   seedExpanded,
@@ -168,6 +169,7 @@ import type {
   WorkspaceState,
 } from '@shared/types'
 import { dbVisibilitySavedToast } from '@shared/dbVisibilityUi'
+import { expandRestoredToast } from '@shared/treeExpandPersistUi'
 
 export type ResultTab = {
   id: string
@@ -729,7 +731,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           setActiveConnectionId(restoreConnectionId)
         }
         if (workspace?.expanded) {
-          setExpanded(normalizeExpanded(workspace.expanded))
+          const restored = normalizeExpanded(workspace.expanded)
+          setExpanded(restored)
+          const openCount = countOpenExpands(restored)
+          if (openCount > 0) {
+            pushToast('info', expandRestoredToast(openCount))
+          }
         }
         await refreshSchema(rows, restoreConnectionId)
         loaded.current = true

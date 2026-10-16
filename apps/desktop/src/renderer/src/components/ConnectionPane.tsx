@@ -4,7 +4,11 @@ import { dialectInfo } from '@shared/types'
 import { formatLatency } from '@shared/connHealth'
 import { bucketSchemaByGroup, colorForTag, CONN_COLOR_TAGS } from '@shared/connGroups'
 import { quoteIdentIfNeeded } from '@shared/sql'
-import { isTreeNodeExpanded } from '@shared/schemaTreeRefresh'
+import { countOpenExpands, isTreeNodeExpanded } from '@shared/schemaTreeRefresh'
+import {
+  expandPersistHint,
+  expandPersistStatus,
+} from '@shared/treeExpandPersistUi'
 import { qualifyBrowseTable } from '@shared/tablePaging'
 import {
   treeColumnCopyText,
@@ -45,6 +49,7 @@ export function ConnectionPane() {
   }, [ws.filteredSchema, ws.search, searchKind])
 
   const displayStats = useMemo(() => countTreeNodes(displaySchema), [displaySchema])
+  const expandOpenCount = useMemo(() => countOpenExpands(ws.expanded), [ws.expanded])
 
   const matchedTables = useMemo(() => collectMatchedTables(displaySchema), [displaySchema])
 
@@ -130,6 +135,9 @@ export function ConnectionPane() {
           </button>
         </div>
       </div>
+      <p className="expand-persist-status" title={expandPersistHint()} role="status">
+        {expandPersistStatus(expandOpenCount)}
+      </p>
       <label className="search">
         <IconSearch />
         <input

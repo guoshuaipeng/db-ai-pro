@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   collectNodeIds,
   isTreeNodeExpanded,
+  countOpenExpands,
   normalizeExpanded,
   replaceConnectionNode,
   seedExpanded,
@@ -137,3 +138,10 @@ describe('expandSchemaTreeOneLevelToast', () => {
   })
 })
 
+
+describe('countOpenExpands', () => {
+  it('counts true flags only', () => {
+    expect(countOpenExpands(undefined)).toBe(0)
+    expect(countOpenExpands({ a: true, b: false, c: true })).toBe(2)
+  })
+})
