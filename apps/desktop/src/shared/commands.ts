@@ -578,8 +578,73 @@ export function filterCommands(query: string, catalog: CommandDef[] = COMMAND_CA
   return ranked.map((row) => row.command)
 }
 
+
+export type CommandCategoryFilter = CommandCategory | 'all'
+
+export const COMMAND_CATEGORY_FILTERS: readonly { id: CommandCategoryFilter; label: string }[] = [
+  { id: 'all', label: '全部' },
+  { id: 'query', label: '查询' },
+  { id: 'view', label: '视图' },
+  { id: 'connection', label: '连接' },
+  { id: 'ai', label: '助手' },
+  { id: 'help', label: '帮助' },
+]
+
+export function commandCategoryLabel(category: CommandCategory): string {
+  switch (category) {
+    case 'query':
+      return '查询'
+    case 'view':
+      return '视图'
+    case 'connection':
+      return '连接'
+    case 'ai':
+      return '助手'
+    case 'help':
+      return '帮助'
+    default:
+      return category
+  }
+}
+
+/** Narrow a command list by palette category chip (`all` = unchanged). */
+export function filterCommandsByCategory(
+  commands: readonly CommandDef[],
+  category: CommandCategoryFilter,
+): CommandDef[] {
+  if (category === 'all') return commands.slice()
+  return commands.filter((command) => command.category === category)
+}
+
+/** Clipboard line: title TAB shortcut (or title only). */
+export function formatCommandClipboard(command: CommandDef): string {
+  const title = command.title.trim()
+  const shortcut = (command.shortcut ?? '').trim()
+  if (!title) return shortcut
+  if (!shortcut) return title
+  return title + '\t' + shortcut
+}
+
+export function commandCopiedToast(command: CommandDef): string {
+  const name = command.title.trim() || '命令'
+  return `已复制「${name}」`
+}
+
+export function paletteEmptyBody(hasQuery: boolean, category: CommandCategoryFilter): string {
+  if (hasQuery && category !== 'all') {
+    return '没有匹配项。试试更短的关键字，或切换到「全部」分类。'
+  }
+  if (hasQuery) {
+    return '没有匹配的对象或命令。试试表名、列名，或命令关键字（如「运行」「格式化」）。'
+  }
+  if (category !== 'all') {
+    return `「${COMMAND_CATEGORY_FILTERS.find((item) => item.id === category)?.label ?? ''}」分类下暂无命令。`
+  }
+  return '输入关键字搜索表、列、收藏与命令，或点分类浏览命令。'
+}
+
 export const SHORTCUT_HELP: { action: string; keys: string }[] = [
-  { action: '命令 / 对象搜索', keys: 'Ctrl+K · Ctrl+P' },
+  { action: '命令 / 对象搜索', keys: 'Ctrl+K · Ctrl+P · 分类芯片 · Ctrl+C 复制命令' },
   { action: '运行 SQL（有选区则只跑选区）', keys: 'Ctrl+Enter · F5' },
   { action: '多语句条数', keys: '状态栏「N 条语句」（≥2 条时显示）' },
   { action: '编辑器选区统计', keys: '状态栏「已选 N 字符 / 行」（有选区时）' },

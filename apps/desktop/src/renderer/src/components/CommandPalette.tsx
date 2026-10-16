@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { filterCommands, type CommandDef } from '@shared/commands'
+import {
+  COMMAND_CATEGORY_FILTERS,
+  filterCommands,
+  filterCommandsByCategory,
+  formatCommandClipboard,
+  commandCopiedToast,
+  paletteEmptyBody,
+  type CommandCategoryFilter,
+  type CommandDef,
+} from '@shared/commands'
+import { EmptyState } from './EmptyState'
 import {
   buildSchemaObjectIndex,
   searchGlobalObjects,
@@ -68,7 +78,9 @@ export function CommandPalette({
 }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
+  const [category, setCategory] = useState<CommandCategoryFilter>('all')
   const [active, setActive] = useState(0)
+  const [copyNote, setCopyNote] = useState('')
   const [pendingFav, setPendingFav] = useState<SqlFavorite | null>(null)
   const [varValues, setVarValues] = useState<Record<string, string>>({})
   const inputRef = useRef<HTMLInputElement>(null)
@@ -155,7 +167,7 @@ export function CommandPalette({
       }
     }
 
-    const commands = filterCommands(query)
+    const commands = filterCommandsByCategory(filterCommands(query), category)
     if (commands.length) {
       if (next.length) next.push({ kind: 'section', id: 'sec-cmds', label: '命令' })
       for (const command of commands) {
@@ -163,7 +175,7 @@ export function CommandPalette({
       }
     }
     return next
-  }, [debounced, query, objectHits, recentTables, recentQueries])
+  }, [debounced, query, category, objectHits, recentTables, recentQueries])
 
   const selectable = useMemo(() => rows.filter((row) => row.kind !== 'section'), [rows])
 
@@ -171,15 +183,17 @@ export function CommandPalette({
     if (!open) return
     setQuery('')
     setDebounced('')
+    setCategory('all')
     setActive(0)
     setPendingFav(null)
+    setCopyNote('')
     const handle = window.setTimeout(() => inputRef.current?.focus(), 0)
     return () => window.clearTimeout(handle)
   }, [open])
 
   useEffect(() => {
     setActive(0)
-  }, [debounced, query])
+  }, [debounced, query, category])
 
   useEffect(() => {
     if (!open || pendingFav) return
@@ -227,6 +241,22 @@ export function CommandPalette({
       else if (row.kind === 'schema-table') onOpenSchemaTable?.(row.item)
       else if (row.kind === 'schema-column') onOpenSchemaColumn?.(row.item)
     }, 0)
+  }
+
+  const copyActive = () => {
+    const row = selectable[active]
+    if (!row || row.kind !== 'command') {
+      setCopyNote('请先选中一条命令再复制')
+      return
+    }
+    const text = formatCommandClipboard(row.command)
+    void navigator.clipboard.writeText(text).then(
+      () => {
+        setCopyNote(commandCopiedToast(row.command))
+        window.setTimeout(() => setCopyNote(''), 1600)
+      },
+      () => setCopyNote('复制失败'),
+    )
   }
 
   if (pendingFav) {
@@ -314,7 +344,26 @@ export function CommandPalette({
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
                 event.preventDefault()
+                if (query.trim()) {
+                  setQuery('')
+                  setDebounced('')
+                  return
+                }
+                if (category !== 'all') {
+                  setCategory('all')
+                  return
+                }
                 onClose()
+              } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+                const input = event.currentTarget
+                const hasSelection =
+                  (input.selectionStart ?? 0) !== (input.selectionEnd ?? 0)
+                if (hasSelection) return
+                const row = selectable[active]
+                if (row?.kind === 'command') {
+                  event.preventDefault()
+                  copyActive()
+                }
               } else if (event.key === 'ArrowDown') {
                 event.preventDefault()
                 setActive((index) => Math.min(selectable.length - 1, index + 1))
@@ -329,11 +378,49 @@ export function CommandPalette({
           />
           <kbd className="palette-kbd">Esc</kbd>
         </div>
+        <div className="palette-categories" role="tablist" aria-label="命令分类">
+          {COMMAND_CATEGORY_FILTERS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={category === item.id}
+              className={category === item.id ? 'palette-cat is-active' : 'palette-cat'}
+              onClick={() => setCategory(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
         <div className="palette-list" role="listbox" aria-label="搜索结果" ref={listRef}>
           {selectable.length === 0 && (
-            <p className="palette-empty">
-              {query.trim() ? '没有匹配的对象或命令' : '输入关键字搜索表、列、收藏与命令'}
-            </p>
+            <EmptyState
+              compact
+              kicker="命令面板"
+              title={query.trim() ? '没有匹配项' : '开始搜索或浏览分类'}
+              body={paletteEmptyBody(Boolean(query.trim()), category)}
+              actions={
+                <>
+                  {category !== 'all' ? (
+                    <button type="button" className="btn btn-ghost" onClick={() => setCategory('all')}>
+                      查看全部分类
+                    </button>
+                  ) : null}
+                  {query.trim() ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setQuery('')
+                        setDebounced('')
+                      }}
+                    >
+                      清除关键字
+                    </button>
+                  ) : null}
+                </>
+              }
+            />
           )}
           {rows.map((row) => {
             if (row.kind === 'section') {
@@ -478,7 +565,9 @@ export function CommandPalette({
         <footer className="palette-foot">
           <span>↑↓ 选择</span>
           <span>Enter 打开</span>
-          <span>Ctrl+K / Ctrl+P</span>
+          <span>Ctrl+C 复制命令</span>
+          <span>{selectable.length} 项</span>
+          {copyNote ? <span className="palette-copy-note">{copyNote}</span> : null}
         </footer>
       </div>
     </div>

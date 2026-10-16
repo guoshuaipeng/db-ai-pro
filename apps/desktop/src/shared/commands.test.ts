@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { COMMAND_CATALOG, filterCommands, fuzzyScore } from './commands'
+import {
+  COMMAND_CATALOG,
+  commandCategoryLabel,
+  commandCopiedToast,
+  filterCommands,
+  filterCommandsByCategory,
+  formatCommandClipboard,
+  fuzzyScore,
+  paletteEmptyBody,
+} from './commands'
 
 describe('fuzzyScore', () => {
   it('ranks substring matches above subsequences', () => {
@@ -129,5 +138,25 @@ describe('filterCommands', () => {
   it('finds query templates', () => {
     expect(filterCommands('模板').some((item) => item.id === 'query.templates')).toBe(true)
     expect(filterCommands('COUNT').some((item) => item.id === 'query.tpl.selectCount')).toBe(true)
+  })
+})
+
+
+describe('palette category helpers', () => {
+  it('filters by category', () => {
+    const queryOnly = filterCommandsByCategory(COMMAND_CATALOG, 'query')
+    expect(queryOnly.length).toBeGreaterThan(0)
+    expect(queryOnly.every((item) => item.category === 'query')).toBe(true)
+    expect(filterCommandsByCategory(COMMAND_CATALOG, 'all')).toHaveLength(COMMAND_CATALOG.length)
+  })
+
+  it('labels and clipboard', () => {
+    expect(commandCategoryLabel('ai')).toBe('助手')
+    const run = COMMAND_CATALOG.find((item) => item.id === 'query.run')!
+    expect(formatCommandClipboard(run)).toContain('运行')
+    expect(formatCommandClipboard(run)).toContain('Ctrl+Enter')
+    expect(commandCopiedToast(run)).toContain('运行')
+    expect(paletteEmptyBody(true, 'all')).toContain('没有匹配')
+    expect(paletteEmptyBody(false, 'query')).toContain('查询')
   })
 })

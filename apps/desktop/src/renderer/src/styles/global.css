@@ -1952,6 +1952,40 @@ body.is-col-resizing .grid-col-resizer {
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   overflow: hidden;
 }
+
+.palette-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 12px 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+.palette-cat {
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--muted, #8b95a8);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.palette-cat:hover {
+  color: var(--ink);
+  background: rgba(255,255,255,0.04);
+}
+.palette-cat.is-active {
+  color: var(--ink);
+  border-color: var(--accent, #5b8def);
+  background: rgba(91, 141, 239, 0.12);
+}
+.palette-copy-note {
+  color: var(--accent, #5b8def);
+  margin-left: auto;
+}
+.palette-list .empty-state {
+  margin: 12px 8px;
+}
+
 .palette-search {
   display: flex;
   align-items: center;
