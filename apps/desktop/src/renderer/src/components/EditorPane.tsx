@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { emitDataai, onDataai } from '../appEvents'
+import { sqlFormatDoneToast, sqlFormatDoneTone } from '@shared/sqlFormatFeedback'
 import { pickRunSql, type RunSqlPick } from '@shared/runSqlPick'
 import { suggestionsFromSchema } from '@shared/schemaSuggest'
 import { IconClock, IconPlay, IconPlus, IconStar, IconStop } from './icons'
@@ -80,6 +81,13 @@ export function EditorPane() {
     setHistoryOpen(true)
     setFavoritesOpen(false)
   }), [])
+  useEffect(() => {
+    return onDataai('dataai:sql-format-done', (detail) => {
+      if (!detail) return
+      ws.pushToast(sqlFormatDoneTone(detail.changed), sqlFormatDoneToast(detail))
+    })
+  }, [ws])
+
   useEffect(() => onDataai('dataai:open-templates', () => {
     setTemplatesOpen(true)
     setFavoritesOpen(false)
@@ -375,7 +383,7 @@ export function EditorPane() {
               className="btn btn-ghost run-btn"
               onClick={() => emitDataai('dataai:format-sql')}
               disabled={ws.running}
-              title="格式化 SQL（Shift+Alt+F）"
+              title="格式化 SQL（Shift+Alt+F；有选区则只格式化选区）"
             >
               格式化
             </button>

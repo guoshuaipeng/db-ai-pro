@@ -3,7 +3,7 @@ import { KeyCode, KeyMod, editor, languages, type IDisposable } from 'monaco-edi
 import { conf, language } from 'monaco-editor/languages/definitions/sql/sql'
 import editorWorker from 'monaco-editor/editor/editor.worker?worker'
 import { filterSuggestions, type SchemaSuggestItem } from '@shared/schemaSuggest'
-import { onDataai } from '../appEvents'
+import { emitDataai, onDataai } from '../appEvents'
 import { pickRunSql, selectionIsNonEmpty } from '@shared/runSqlPick'
 import { isSqlDragEvent, readSqlDragText } from '@shared/sqlDragDrop'
 import { isOsFileDrag } from '@shared/sqlFileDrop'
@@ -366,17 +366,19 @@ export function SqlEditor({
         const model = instance.getModel()
         if (!model) return
         const selection = instance.getSelection()
-        const hasSelection =
+        const fromSelection =
           !!selection &&
           (selection.startLineNumber !== selection.endLineNumber ||
             selection.startColumn !== selection.endColumn)
-        if (hasSelection && selection) {
+        let changed = false
+        if (fromSelection && selection) {
           const selected = model.getValueInRange(selection)
           const formatted = formatSql(selected)
           if (formatted !== selected) {
             instance.executeEdits('format-sql', [
               { range: selection, text: formatted, forceMoveMarkers: true },
             ])
+            changed = true
           }
         } else {
           const full = model.getValue()
@@ -385,8 +387,10 @@ export function SqlEditor({
             instance.executeEdits('format-sql', [
               { range: model.getFullModelRange(), text: formatted, forceMoveMarkers: true },
             ])
+            changed = true
           }
         }
+        emitDataai('dataai:sql-format-done', { changed, fromSelection })
         instance.focus()
       }),
     [],
