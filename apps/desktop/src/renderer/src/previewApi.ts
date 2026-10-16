@@ -6,6 +6,7 @@ import { draftAlterTable, draftCreateTable } from '@shared/ddlDraft'
 import { draftLocalAnswer, SAMPLE_CONNECTION_ID, SAMPLE_CONNECTION_NAME } from '@shared/session'
 import { splitSql } from '@shared/sql'
 import { dialectInfo } from '@shared/types'
+import { nextDuplicateConnectionName } from '@shared/duplicateConnection'
 import type {
   AiEvent,
   AiSettingsInput,
@@ -343,6 +344,23 @@ export function createPreviewApi(): DesktopApi {
           updatedAt: now,
         }
         memory.connections = [...memory.connections.filter((row) => row.id !== next.id), next]
+        return next
+      },
+      duplicate: async (id: string) => {
+        const source = memory.connections.find((row) => row.id === id)
+        if (!source) throw new Error('连接不存在')
+        const now = new Date().toISOString()
+        const next = {
+          ...source,
+          id: crypto.randomUUID(),
+          name: nextDuplicateConnectionName(
+            source.name,
+            memory.connections.map((row) => row.name),
+          ),
+          createdAt: now,
+          updatedAt: now,
+        }
+        memory.connections = [...memory.connections, next]
         return next
       },
       remove: async (id: string) => {

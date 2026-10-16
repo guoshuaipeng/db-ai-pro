@@ -305,6 +305,7 @@ type WorkspaceValue = {
   askDelete: (connection: ConnectionPublic) => void
   closeDialog: () => void
   saveConnection: (input: ConnectionInput) => Promise<void>
+  duplicateConnection: (id: string) => Promise<void>
   setConnectionColorTag: (connectionId: string, colorTag: string | null) => Promise<void>
   testConnection: (input: ConnectionInput) => Promise<{ ok: boolean; error?: string }>
   deleteConnection: (id: string) => Promise<void>
@@ -2095,6 +2096,19 @@ ${sql.trim()}
     pushToast('success', '连接已保存')
   }
 
+  const duplicateConnection = async (id: string) => {
+    try {
+      const saved = await api.connections.duplicate(id)
+      const rows = await api.connections.list()
+      setConnections(rows)
+      setActiveConnectionId(saved.id)
+      await refreshSchema(rows, saved.id)
+      pushToast('success', `已复制为「${saved.name}」`)
+    } catch (error) {
+      pushToast('error', error instanceof Error ? error.message : '复制连接失败')
+    }
+  }
+
   const openDbVisibility = (connection: ConnectionPublic) => {
     if (connection.dialect === 'sqlite' || connection.dialect === 'redis') {
       pushToast('info', '当前连接类型不支持实例库列表')
@@ -2359,6 +2373,7 @@ ${sql.trim()}
     },
     closeDialog: () => setDialog(null),
     saveConnection,
+    duplicateConnection,
     setConnectionColorTag,
     testConnection: (input) => api.connections.test(input),
     deleteConnection,

@@ -62,6 +62,7 @@ export type DesktopApi = {
     saveGroup: (input: { id?: string; name: string; sort?: number }) => Promise<ConnectionGroup>
     removeGroup: (id: string) => Promise<void>
     save: (input: ConnectionInput) => Promise<ConnectionPublic>
+    duplicate: (id: string) => Promise<ConnectionPublic>
     remove: (id: string) => Promise<void>
     schema: (id: string) => Promise<SchemaNode>
     listDatabases: (id: string) => Promise<string[]>

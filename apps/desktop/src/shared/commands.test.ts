@@ -49,6 +49,10 @@ describe('filterCommands', () => {
     expect(filterCommands('abort').some((item) => item.id === 'query.cancel')).toBe(true)
   })
 
+  it('finds duplicate connection command', () => {
+    expect(filterCommands('复制连接').some((item) => item.id === 'connection.duplicate')).toBe(true)
+  })
+
   it('finds query templates', () => {
     expect(filterCommands('模板').some((item) => item.id === 'query.templates')).toBe(true)
     expect(filterCommands('COUNT').some((item) => item.id === 'query.tpl.selectCount')).toBe(true)

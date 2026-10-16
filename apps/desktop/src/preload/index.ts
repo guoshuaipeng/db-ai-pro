@@ -43,6 +43,11 @@ const api: DesktopApi = {
       if (result?.error) throw new Error(result.error)
       return result.connection
     },
+    duplicate: async (id: string) => {
+      const result = await ipcRenderer.invoke('connections:duplicate', id)
+      if (result?.error) throw new Error(result.error)
+      return result.connection
+    },
     remove: (id: string) => ipcRenderer.invoke('connections:remove', id),
     schema: async (id: string) => {
       const result = await ipcRenderer.invoke('connections:schema', id)

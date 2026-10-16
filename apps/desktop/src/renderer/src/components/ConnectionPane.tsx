@@ -527,6 +527,16 @@ function TreeNode({
                 显示的库…
               </button>
             )}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onMenu(null)
+                void ws.duplicateConnection(connection.id)
+              }}
+            >
+              复制连接
+            </button>
             <button type="button" role="menuitem" onClick={() => { onMenu(null); ws.openEdit(connection) }}>
               编辑
             </button>

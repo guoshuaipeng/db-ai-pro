@@ -70,6 +70,7 @@ import {
   removeFavorite,
   removeQueryHistoryEntry,
   saveConnection,
+  duplicateConnection,
   saveFavorite,
   saveSettings,
   saveWorkspace,
@@ -293,6 +294,12 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
   )
   ipcMain.handle('connections:removeGroup', (_event, id: string) => {
     removeConnectionGroup(id)
+  })
+
+  ipcMain.handle('connections:duplicate', (_event, id: string) => {
+    const duplicated = duplicateConnection(id)
+    if ('error' in duplicated) return duplicated
+    return { connection: duplicated.connection }
   })
 
   ipcMain.handle('connections:save', (_event, input: ConnectionInput) => {

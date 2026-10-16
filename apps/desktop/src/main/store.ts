@@ -38,6 +38,7 @@ import {
   type TransferConnection,
 } from '@shared/connectionTransfer'
 import { createId } from './sampleDb'
+import { nextDuplicateConnectionName } from '../shared/duplicateConnection'
 import { migrateConnectionPlaintext, migrateSettingsPlaintext } from './migratePlaintext'
 import { encryptionAvailable, openSecret, sealSecret } from './secrets'
 
@@ -200,6 +201,26 @@ export function saveConnection(input: ConnectionInput): { connection: Connection
 
   const without = rows.filter((row) => row.id !== next.id)
   writeJson('connections.json', [...without, next])
+  return { connection: toPublic(next) }
+}
+
+export function duplicateConnection(id: string): { connection: ConnectionPublic } | { error: string } {
+  const rows = loadConnectionsRaw()
+  const source = rows.find((row) => row.id === id)
+  if (!source) return { error: '连接不存在' }
+  const now = new Date().toISOString()
+  const name = nextDuplicateConnectionName(
+    source.name,
+    rows.map((row) => row.name),
+  )
+  const next: StoredConnection = {
+    ...source,
+    id: createId(),
+    name,
+    createdAt: now,
+    updatedAt: now,
+  }
+  writeJson('connections.json', [...rows, next])
   return { connection: toPublic(next) }
 }
 

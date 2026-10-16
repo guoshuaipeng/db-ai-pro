@@ -229,6 +229,13 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'connection',
   },
   {
+    id: 'connection.duplicate',
+    title: '复制当前连接',
+    subtitle: '克隆连接配置（含已保存密码），名称加「副本」',
+    keywords: 'duplicate clone copy connection 复制 连接 副本',
+    category: 'connection',
+  },
+  {
     id: 'connection.export',
     title: '导出连接',
     subtitle: 'JSON（仅密封密文）',
@@ -431,6 +438,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '快速查询模板', keys: '工具栏「模板」· Ctrl+K' },
   { action: '插入表名 / 列名', keys: '对象树菜单 · Alt/Ctrl+单击' },
   { action: '复制表名 / 列名 / 库名', keys: '对象树菜单「复制…」' },
+  { action: '复制连接', keys: '对象树菜单「复制连接」· Ctrl+K' },
   { action: '未保存标签关闭确认', keys: '关闭脏标签 / 关窗时提示' },
   { action: '固定查询标签', keys: '标签右键 · 固定/取消固定' },
   { action: '重命名查询标签', keys: '右键 / 双击 / F2' },

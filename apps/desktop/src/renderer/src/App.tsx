@@ -219,6 +219,10 @@ export function App() {
         case 'connection.new':
           ws.openCreate()
           break
+        case 'connection.duplicate':
+          if (ws.activeConnection) void ws.duplicateConnection(ws.activeConnection.id)
+          else ws.pushToast('info', '先选择一个连接')
+          break
         case 'connection.export':
           void ws.exportConnections()
           break
