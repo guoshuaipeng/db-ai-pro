@@ -5,6 +5,8 @@ import type {
   AppMeta,
   ConnectionInput,
   ConnectionPublic,
+  RedisKeyInfo,
+  RedisValueView,
   SchemaNode,
   StatementResult,
   WorkspaceState,
@@ -24,10 +26,20 @@ export type DesktopApi = {
   sql: {
     execute: (payload: { connectionId: string; sql: string }) => Promise<StatementResult[]>
   }
+  redis: {
+    scan: (payload: { connectionId: string; pattern?: string; count?: number }) => Promise<RedisKeyInfo[]>
+    get: (payload: { connectionId: string; key: string }) => Promise<RedisValueView>
+  }
   ai: {
     getSettings: () => Promise<AiSettingsPublic>
     saveSettings: (input: AiSettingsInput) => Promise<AiSettingsPublic>
     start: (payload: { requestId: string; connectionId: string | null; prompt: string }) => Promise<void>
+    repair: (payload: {
+      requestId: string
+      connectionId: string | null
+      sql: string
+      error: string
+    }) => Promise<void>
     cancel: (requestId: string) => Promise<void>
     onEvent: (listener: (event: AiEvent) => void) => () => void
   }

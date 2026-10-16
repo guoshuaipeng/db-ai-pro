@@ -12,7 +12,10 @@ export type DialectInfo = {
   id: Dialect
   label: string
   defaultPort?: number
+  /** SQL 查询是否已接通 */
   executable: boolean
+  /** Redis 等 KV 浏览是否已接通 */
+  kv?: boolean
 }
 
 export const DIALECTS: DialectInfo[] = [
@@ -23,7 +26,7 @@ export const DIALECTS: DialectInfo[] = [
   { id: 'oracle', label: 'Oracle', defaultPort: 1521, executable: false },
   { id: 'sqlserver', label: 'SQL Server', defaultPort: 1433, executable: false },
   { id: 'hive', label: 'Hive', defaultPort: 10000, executable: false },
-  { id: 'redis', label: 'Redis', defaultPort: 6379, executable: false },
+  { id: 'redis', label: 'Redis', defaultPort: 6379, executable: false, kv: true },
 ]
 
 export function dialectInfo(id: Dialect): DialectInfo {
@@ -32,6 +35,15 @@ export function dialectInfo(id: Dialect): DialectInfo {
 
 export function needsServerDatabase(dialect: Dialect): boolean {
   return dialect === 'mysql' || dialect === 'mariadb' || dialect === 'postgresql'
+}
+
+export function isKvDialect(dialect: Dialect): boolean {
+  return Boolean(dialectInfo(dialect).kv)
+}
+
+export function canInspect(dialect: Dialect): boolean {
+  const info = dialectInfo(dialect)
+  return info.executable || Boolean(info.kv)
 }
 
 export type ConnectionInput = {
@@ -63,7 +75,7 @@ export type ConnectionPublic = {
 
 export type SchemaNode = {
   id: string
-  kind: 'connection' | 'database' | 'table' | 'column' | 'note'
+  kind: 'connection' | 'database' | 'table' | 'column' | 'note' | 'key'
   name: string
   displayName: string
   dialect?: Dialect
@@ -72,6 +84,9 @@ export type SchemaNode = {
   dataType?: string
   status?: 'ok' | 'error'
   note?: string
+  redisKey?: string
+  redisType?: string
+  ttl?: number
   children?: SchemaNode[]
 }
 
@@ -100,6 +115,7 @@ export type AiSettingsInput = {
 
 export type AiEvent =
   | { requestId: string; type: 'delta'; delta: string; mode: 'model' | 'preview' }
+  | { requestId: string; type: 'progress'; mode: 'model' | 'preview'; step: string; detail?: string }
   | { requestId: string; type: 'done'; mode: 'model' | 'preview' }
   | { requestId: string; type: 'error'; message: string }
 
@@ -120,6 +136,7 @@ export type AiTurnState = {
   role: 'user' | 'assistant'
   content: string
   mode?: 'model' | 'preview'
+  steps?: { step: string; detail?: string }[]
 }
 
 export type WorkspaceState = {
@@ -134,3 +151,17 @@ export type WorkspaceState = {
   sidebarOpen: boolean
   aiOpen: boolean
 }
+
+export type RedisKeyInfo = {
+  key: string
+  type: string
+  ttl: number
+}
+
+export type RedisValueView =
+  | { kind: 'string'; value: string }
+  | { kind: 'hash'; fields: { field: string; value: string }[] }
+  | { kind: 'list'; items: string[] }
+  | { kind: 'zset'; items: { member: string; score: number }[] }
+  | { kind: 'set'; members: string[] }
+  | { kind: 'unsupported'; redisType: string; note: string }

@@ -3,8 +3,9 @@ import { IconSidebar, IconSpark, Mark } from './components/icons'
 import { ConnectionPane } from './components/ConnectionPane'
 import { EditorPane, ResultPane } from './components/EditorPane'
 import { AiPane } from './components/AiPane'
+import { RedisPane } from './components/RedisPane'
 import { Dialogs } from './components/Dialogs'
-import { dialectInfo } from '@shared/types'
+import { dialectInfo, isKvDialect } from '@shared/types'
 import { useWorkspace } from './state/workspace'
 
 export function App() {
@@ -92,15 +93,25 @@ export function App() {
         )}
         <main
           className="stage"
-          style={{ gridTemplateRows: `minmax(180px, ${ws.editorRatio}fr) 5px minmax(160px, 1fr)` }}
+          style={
+            ws.activeConnection && isKvDialect(ws.activeConnection.dialect)
+              ? { gridTemplateRows: 'minmax(0, 1fr)' }
+              : { gridTemplateRows: `minmax(180px, ${ws.editorRatio}fr) 5px minmax(160px, 1fr)` }
+          }
         >
-          <EditorPane />
-          <Splitter
-            label="调整编辑器高度"
-            orientation="horizontal"
-            onDelta={(delta) => ws.setEditorRatio(Math.min(3.2, Math.max(0.6, ws.editorRatio + delta / 280)))}
-          />
-          <ResultPane />
+          {ws.activeConnection && isKvDialect(ws.activeConnection.dialect) ? (
+            <RedisPane />
+          ) : (
+            <>
+              <EditorPane />
+              <Splitter
+                label="调整编辑器高度"
+                orientation="horizontal"
+                onDelta={(delta) => ws.setEditorRatio(Math.min(3.2, Math.max(0.6, ws.editorRatio + delta / 280)))}
+              />
+              <ResultPane />
+            </>
+          )}
         </main>
         {ws.aiOpen && (
           <Splitter
@@ -123,7 +134,7 @@ export function App() {
           />
           {ws.activeConnection ? (
             <>
-              <span className={`badge badge-${ws.activeConnection.dialect}${dialectInfo(ws.activeConnection.dialect).executable ? '' : ' badge-pending'}`}>
+              <span className={`badge badge-${ws.activeConnection.dialect}${dialectInfo(ws.activeConnection.dialect).executable || dialectInfo(ws.activeConnection.dialect).kv ? '' : ' badge-pending'}`}>
                 {dialectInfo(ws.activeConnection.dialect).label}
               </span>
               {ws.activeConnection.name}
@@ -138,7 +149,7 @@ export function App() {
         <span className="status-spacer" />
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item">F5 运行</span>
-        <span className="status-item">{ws.meta?.version ?? '0.2.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '0.3.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (

@@ -38,7 +38,7 @@ export function ConnectionPane() {
         <div className="empty">
           <IconDatabase />
           <p className="empty-title">还没有连接</p>
-          <p className="empty-copy">SQLite、MySQL、MariaDB 和 PostgreSQL 可以直接查询。其他类型可以先保存。</p>
+          <p className="empty-copy">SQLite / MySQL / MariaDB / PostgreSQL 可查 SQL；Redis 可浏览键值。其他类型可以先保存。</p>
           <button type="button" className="btn btn-primary" onClick={ws.openCreate}>
             新建连接
           </button>
@@ -106,11 +106,12 @@ function TreeNode({
         )}
         <button type="button" className="tree-hit" onClick={() => ws.selectNode(node)}>
           <span className="tree-icon">
-            {node.kind === 'table' ? <IconTable /> : node.kind === 'column' ? <IconColumn /> : <IconDatabase />}
+            {node.kind === 'table' ? <IconTable /> : node.kind === 'column' ? <IconColumn /> : node.kind === 'key' ? <IconColumn /> : <IconDatabase />}
           </span>
           <span className="tree-label">{node.displayName}</span>
           {node.kind === 'table' && node.displayName !== node.name && <span className="tree-meta">{node.name}</span>}
           {node.kind === 'column' && node.dataType && <span className="col-type">{node.dataType}</span>}
+          {node.kind === 'key' && node.dataType && <span className="col-type">{node.dataType}</span>}
           {node.kind === 'connection' && node.dialect && <DialectBadge dialect={node.dialect} />}
         </button>
         {node.kind === 'connection' && connection && (
@@ -153,7 +154,7 @@ function TreeNode({
 
 function DialectBadge({ dialect }: { dialect: Dialect }) {
   const info = dialectInfo(dialect)
-  const pending = info.executable ? '' : ' badge-pending'
+  const pending = info.executable || info.kv ? '' : ' badge-pending'
   return <span className={`badge badge-${dialect}${pending}`}>{info.label}</span>
 }
 

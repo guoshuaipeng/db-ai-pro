@@ -32,6 +32,18 @@ const api: DesktopApi = {
       return result.results
     },
   },
+  redis: {
+    scan: async (payload) => {
+      const result = await ipcRenderer.invoke('redis:scan', payload)
+      if (result?.error) throw new Error(result.error)
+      return result.keys
+    },
+    get: async (payload) => {
+      const result = await ipcRenderer.invoke('redis:get', payload)
+      if (result?.error) throw new Error(result.error)
+      return result.value
+    },
+  },
   ai: {
     getSettings: () => ipcRenderer.invoke('ai:getSettings'),
     saveSettings: async (input: AiSettingsInput) => {
@@ -40,6 +52,7 @@ const api: DesktopApi = {
       return result.settings
     },
     start: (payload) => ipcRenderer.invoke('ai:start', payload),
+    repair: (payload) => ipcRenderer.invoke('ai:repair', payload),
     cancel: (requestId: string) => ipcRenderer.invoke('ai:cancel', requestId),
     onEvent: (listener) => {
       const channel = (_event: unknown, data: AiEvent) => listener(data)

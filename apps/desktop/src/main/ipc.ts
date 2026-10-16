@@ -5,15 +5,24 @@ import { BrowserWindow, dialog, ipcMain } from 'electron'
 const require = createRequire(import.meta.url)
 const pkg = require('../../package.json') as { version: string }
 import { connectionErrorNode } from '@shared/schema'
+import { tablesFromDescribe } from '@shared/describeParse'
 import { SAMPLE_CONNECTION_ID, SAMPLE_CONNECTION_NAME } from '@shared/session'
 import type { AiEvent, AiSettingsInput, ConnectionInput, SchemaNode, WorkspaceState } from '@shared/types'
-import { dialectInfo } from '@shared/types'
-import { streamAnswer } from './ai'
+import { canInspect, dialectInfo, isKvDialect } from '@shared/types'
+import { streamAnswer, streamRepair } from './ai'
 import { explainDbError } from './errors'
 import { ensureParent, seedRetailDatabase } from './sampleDb'
 import { encryptionAvailable } from './secrets'
-import { closeAllSessions, closeSession, describeSession, executeSession, probeTarget, schemaForSession } from './sessions'
+import {
+  closeAllSessions,
+  closeSession,
+  describeSession,
+  executeSession,
+  probeTarget,
+  schemaForSession,
+} from './sessions'
 import type { SqlTarget } from './target'
+import { readRedisValue, scanRedisKeys } from './redis'
 import { databaseExists, openDatabase } from './sqlite'
 import {
   connectionPassword,
@@ -117,6 +126,17 @@ function savedNote(connectionId: string, name: string, dialect: SchemaNode['dial
   }
 }
 
+async function loadTables(connectionId: string | null) {
+  const row = connectionId ? getConnection(connectionId) : undefined
+  if (!row || !dialectInfo(row.dialect).executable) return []
+  try {
+    const text = await describeSession(targetFromStored(row))
+    return tablesFromDescribe(text)
+  } catch {
+    return []
+  }
+}
+
 export function registerIpc(getWindow: () => BrowserWindow | null, userData: string): void {
   ipcMain.handle('meta:get', () => ({
     version: pkg.version,
@@ -165,8 +185,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
   ipcMain.handle('connections:schema', async (_event, id: string) => {
     const row = getConnection(id)
     if (!row) return { error: '连接不存在' }
-    const info = dialectInfo(row.dialect)
-    if (!info.executable) return { schema: savedNote(row.id, row.name, row.dialect) }
+    if (!canInspect(row.dialect)) return { schema: savedNote(row.id, row.name, row.dialect) }
     try {
       return { schema: await schemaForSession(targetFromStored(row)) }
     } catch (error) {
@@ -198,51 +217,103 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     }
   })
 
+  ipcMain.handle(
+    'redis:scan',
+    async (_event, payload: { connectionId: string; pattern?: string; count?: number }) => {
+      const row = getConnection(payload.connectionId)
+      if (!row) return { error: '连接不存在' }
+      if (!isKvDialect(row.dialect)) return { error: '当前连接不是 Redis' }
+      try {
+        const keys = await scanRedisKeys(targetFromStored(row), payload.pattern ?? '*', payload.count ?? 120)
+        return { keys }
+      } catch (error) {
+        return { error: explainDbError(error) }
+      }
+    },
+  )
+
+  ipcMain.handle('redis:get', async (_event, payload: { connectionId: string; key: string }) => {
+    const row = getConnection(payload.connectionId)
+    if (!row) return { error: '连接不存在' }
+    if (!isKvDialect(row.dialect)) return { error: '当前连接不是 Redis' }
+    try {
+      const value = await readRedisValue(targetFromStored(row), payload.key)
+      return { value }
+    } catch (error) {
+      return { error: explainDbError(error) }
+    }
+  })
+
   ipcMain.handle('ai:getSettings', () => settingsPublic())
   ipcMain.handle('ai:saveSettings', (_event, input: AiSettingsInput) => saveSettings(input))
 
+  const runAi = async (
+    payload: { requestId: string; connectionId: string | null },
+    work: (send: (event: AiEvent) => void, signal: AbortSignal) => Promise<void>,
+  ) => {
+    const win = getWindow()
+    const send = (event: AiEvent) => {
+      if (!win || win.isDestroyed()) return
+      win.webContents.send('ai:event', event)
+    }
+    const controller = new AbortController()
+    aborts.set(payload.requestId, controller)
+    try {
+      await work(send, controller.signal)
+    } catch (error) {
+      if (controller.signal.aborted) return
+      const message = error instanceof Error ? error.message : '助手没有完成这次起草'
+      send({ requestId: payload.requestId, type: 'error', message })
+    } finally {
+      aborts.delete(payload.requestId)
+    }
+  }
+
   ipcMain.handle(
     'ai:start',
-    async (
-      _event,
-      payload: { requestId: string; connectionId: string | null; prompt: string },
-    ) => {
-      const win = getWindow()
-      const send = (event: AiEvent) => {
-        if (!win || win.isDestroyed()) return
-        win.webContents.send('ai:event', event)
-      }
-      const controller = new AbortController()
-      aborts.set(payload.requestId, controller)
-      try {
+    async (_event, payload: { requestId: string; connectionId: string | null; prompt: string }) => {
+      await runAi(payload, async (send, signal) => {
         const row = payload.connectionId ? getConnection(payload.connectionId) : undefined
-        let schema = ''
-        if (row && dialectInfo(row.dialect).executable) {
-          try {
-            schema = await describeSession(targetFromStored(row))
-          } catch {
-            schema = ''
-          }
-        }
+        const tables = await loadTables(payload.connectionId)
         const settings = settingsSecrets()
         await streamAnswer({
           requestId: payload.requestId,
           prompt: payload.prompt,
-          schema,
+          tables,
           dialect: row?.dialect ?? 'sqlite',
           baseUrl: settings.baseUrl,
           model: settings.model,
           apiKey: settings.apiKey,
-          signal: controller.signal,
+          signal,
           send,
         })
-      } catch (error) {
-        if (controller.signal.aborted) return
-        const message = error instanceof Error ? error.message : '助手没有完成这次起草'
-        send({ requestId: payload.requestId, type: 'error', message })
-      } finally {
-        aborts.delete(payload.requestId)
-      }
+      })
+    },
+  )
+
+  ipcMain.handle(
+    'ai:repair',
+    async (
+      _event,
+      payload: { requestId: string; connectionId: string | null; sql: string; error: string },
+    ) => {
+      await runAi(payload, async (send, signal) => {
+        const row = payload.connectionId ? getConnection(payload.connectionId) : undefined
+        const tables = await loadTables(payload.connectionId)
+        const settings = settingsSecrets()
+        await streamRepair({
+          requestId: payload.requestId,
+          sql: payload.sql,
+          error: payload.error,
+          tables,
+          dialect: row?.dialect ?? 'sqlite',
+          baseUrl: settings.baseUrl,
+          model: settings.model,
+          apiKey: settings.apiKey,
+          signal,
+          send,
+        })
+      })
     },
   )
 

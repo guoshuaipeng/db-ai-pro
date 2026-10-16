@@ -5,6 +5,7 @@ import type { Client } from 'pg'
 import type Database from 'better-sqlite3'
 import { describeMysql, executeMysql, listMysqlSchema, openMysql, type ServerLogin } from './mysql'
 import { describePostgres, executePostgres, listPostgresSchema, openPostgres } from './postgres'
+import { closeRedis, listRedisSchema, probeRedis, scanRedisKeys } from './redis'
 import { databaseExists, describeSchema, executeScript, listSchema, openDatabase } from './sqlite'
 
 export type { SqlTarget } from './target'
@@ -52,9 +53,11 @@ async function release(row: Live): Promise<void> {
 
 export async function closeSession(id: string): Promise<void> {
   const row = live.get(id)
-  if (!row) return
-  live.delete(id)
-  await release(row)
+  if (row) {
+    live.delete(id)
+    await release(row)
+  }
+  await closeRedis(id)
 }
 
 export async function closeAllSessions(): Promise<void> {
@@ -87,6 +90,10 @@ export async function openSession(target: SqlTarget): Promise<Live> {
 }
 
 export async function probeTarget(target: SqlTarget): Promise<void> {
+  if (target.dialect === 'redis') {
+    await probeRedis(target)
+    return
+  }
   const created = await connect(target)
   try {
     if (created.kind === 'sqlite') created.db.prepare('SELECT 1').get()
@@ -98,6 +105,10 @@ export async function probeTarget(target: SqlTarget): Promise<void> {
 }
 
 export async function schemaForSession(target: SqlTarget): Promise<SchemaNode> {
+  if (target.dialect === 'redis') {
+    const keys = await scanRedisKeys(target, '*', 120)
+    return listRedisSchema(target, keys)
+  }
   const session = await openSession(target)
   if (session.kind === 'sqlite') {
     return listSchema(target.id, target.name, target.filePath ?? '', session.db)
@@ -107,6 +118,7 @@ export async function schemaForSession(target: SqlTarget): Promise<SchemaNode> {
 }
 
 export async function executeSession(target: SqlTarget, sql: string): Promise<StatementResult[]> {
+  if (target.dialect === 'redis') throw new Error('Redis 请使用键浏览器，而不是 SQL 编辑器')
   const session = await openSession(target)
   if (session.kind === 'sqlite') return executeScript(session.db, sql)
   if (session.kind === 'mysql') return executeMysql(session.conn, sql)
@@ -114,6 +126,7 @@ export async function executeSession(target: SqlTarget, sql: string): Promise<St
 }
 
 export async function describeSession(target: SqlTarget): Promise<string> {
+  if (target.dialect === 'redis') return ''
   const session = await openSession(target)
   if (session.kind === 'sqlite') return describeSchema(session.db)
   if (session.kind === 'mysql') return describeMysql(session.conn)

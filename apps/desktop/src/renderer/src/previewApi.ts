@@ -244,7 +244,27 @@ export function createPreviewApi(): DesktopApi {
     sql: {
       execute: async ({ sql }) => splitSql(sql).map((statement) => previewRows(statement)),
     },
-    ai: {
+    redis: {
+    scan: async () => [
+      { key: 'user:1', type: 'hash', ttl: -1 },
+      { key: 'session:abc', type: 'string', ttl: 3600 },
+      { key: 'rank:week', type: 'zset', ttl: -1 },
+      { key: 'queue:jobs', type: 'list', ttl: -1 },
+    ],
+    get: async ({ key }) => {
+      if (key.startsWith('user:')) {
+        return { kind: 'hash', fields: [{ field: 'name', value: '预览用户' }, { field: 'region', value: '华东' }] }
+      }
+      if (key.startsWith('rank:')) {
+        return { kind: 'zset', items: [{ member: 'a', score: 10 }, { member: 'b', score: 7 }] }
+      }
+      if (key.startsWith('queue:')) {
+        return { kind: 'list', items: ['job-1', 'job-2'] }
+      }
+      return { kind: 'string', value: `preview:${key}` }
+    },
+  },
+  ai: {
       getSettings: async () => memory.settings,
       saveSettings: async (input: AiSettingsInput) => {
         memory.settings = {
@@ -255,7 +275,22 @@ export function createPreviewApi(): DesktopApi {
         }
         return memory.settings
       },
+      repair: async ({ requestId, sql, error }) => {
+        for (const listener of listeners) {
+          listener({ requestId, type: 'progress', mode: 'preview', step: '分析执行错误', detail: error.slice(0, 120) })
+        }
+        const text = `执行失败：${error}\n\n\`\`\`sql\n${sql.trim()}\n\`\`\``
+        const chunks = text.match(/.{1,3}/gs) ?? [text]
+        for (const delta of chunks) {
+          await new Promise((resolve) => setTimeout(resolve, 12))
+          for (const listener of listeners) listener({ requestId, type: 'delta', delta, mode: 'preview' })
+        }
+        for (const listener of listeners) listener({ requestId, type: 'done', mode: 'preview' })
+      },
       start: async ({ requestId, prompt }) => {
+        for (const listener of listeners) {
+          listener({ requestId, type: 'progress', mode: 'preview', step: 'search_relevant_tables', detail: '本地预览检索' })
+        }
         const text = draftLocalAnswer(prompt)
         const chunks = text.match(/.{1,3}/gs) ?? [text]
         for (const delta of chunks) {

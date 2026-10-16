@@ -46,7 +46,7 @@ export function AiPane() {
             <p className="card-kicker">从当前库开始</p>
             <h3>用一句话描述要看的数据</h3>
             <p className="card-body">
-              助手会结合已打开的表起草 SQLite。语句先留在这里，确认后再写入编辑器。
+              助手会先检索相关表、读取字段，再起草 SQL。语句先留在深色卡片里，确认后再写入编辑器。
             </p>
             <div className="chips">
               {ASSISTANT_PROMPTS.map((prompt) => (
@@ -68,8 +68,18 @@ export function AiPane() {
               <p className="card-kicker">
                 <IconSpark />
                 {turn.mode === 'model' ? '模型' : '本地预览'}
-                {turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming ? ' · 正在起草' : ''}
+                {turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming ? ' · 工具链运行中' : ''}
               </p>
+              {turn.steps && turn.steps.length > 0 && (
+                <ul className="ai-steps">
+                  {turn.steps.map((step, index) => (
+                    <li key={`${turn.id}:step:${index}`}>
+                      <strong>{step.step}</strong>
+                      {step.detail ? <span>{step.detail}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
               <AssistantBody content={turn.content} streaming={turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming} />
             </article>
           ),
@@ -111,9 +121,9 @@ export function AiPane() {
 
 function AssistantBody({ content, streaming }: { content: string; streaming: boolean }) {
   const ws = useWorkspace()
-  if (!content && streaming) return <p className="card-body dim">正在读取表结构…</p>
+  if (!content && streaming) return <p className="card-body dim">正在检索表结构…</p>
   const blocks = parseBlocks(content)
-  if (blocks.length === 0) return <p className="card-body">{content}</p>
+  if (blocks.length === 0) return content ? <p className="card-body">{content}</p> : null
   return (
     <div className="card-blocks">
       {blocks.map((block, index) =>

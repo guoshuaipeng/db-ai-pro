@@ -142,7 +142,7 @@ function ConnectionDialog() {
                 }}
               >
                 <span>{item.label}</span>
-                <span className="tree-meta">{item.executable ? '可查询' : '先保存'}</span>
+                <span className="tree-meta">{item.executable ? '可查询' : item.kv ? '可浏览' : '先保存'}</span>
               </button>
             ))}
           </div>

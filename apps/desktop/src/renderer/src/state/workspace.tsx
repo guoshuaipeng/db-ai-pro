@@ -13,6 +13,7 @@ import { connectionErrorNode } from '@shared/schema'
 import { changesSchema, identStyle, selectAll, statementTitle } from '@shared/sql'
 import { INITIAL_TABS } from '@shared/session'
 import { filterNodes } from '@shared/tree'
+import { isKvDialect } from '@shared/types'
 import type {
   AiSettingsPublic,
   AiTurnState,
@@ -71,6 +72,7 @@ type WorkspaceValue = {
   aiTurns: AiTurnState[]
   aiStreaming: boolean
   sendAi: (text?: string) => Promise<void>
+  repairAi: (sql: string, error: string) => Promise<void>
   cancelAi: () => void
   applySql: (sql: string) => void
   settings: AiSettingsPublic | null
@@ -286,14 +288,35 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     return api.ai.onEvent((event) => {
       if (event.requestId !== requestRef.current) return
+      if (event.type === 'progress') {
+        setAiTurns((turns) =>
+          turns.map((turn) =>
+            turn.id === event.requestId
+              ? {
+                  ...turn,
+                  mode: event.mode,
+                  steps: [...(turn.steps ?? []), { step: event.step, detail: event.detail }],
+                }
+              : turn,
+          ),
+        )
+        return
+      }
       if (event.type === 'delta') {
         setAiTurns((turns) =>
           turns.map((turn) =>
             turn.id === event.requestId ? { ...turn, content: turn.content + event.delta, mode: event.mode } : turn,
           ),
         )
+        return
       }
-      if (event.type === 'done') setAiStreaming(false)
+      if (event.type === 'done') {
+        setAiStreaming(false)
+        setAiTurns((turns) =>
+          turns.map((turn) => (turn.id === event.requestId ? { ...turn, mode: event.mode } : turn)),
+        )
+        return
+      }
       if (event.type === 'error') {
         setAiStreaming(false)
         setAiTurns((turns) =>
@@ -313,6 +336,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const selectNode = (node: SchemaNode) => {
     setSelectedId(node.id)
     if (node.connectionId) setActiveConnectionId(node.connectionId)
+    if (node.kind === 'key' && node.redisKey) {
+      setAiOpen(true)
+      return
+    }
     if (node.kind !== 'table' || !node.tableName) return
     const title = node.displayName
     const existing = editorTabs.find((tab) => tab.title === title)
@@ -362,14 +389,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       pushToast('info', '先在左侧选择一个连接')
       return
     }
+    if (isKvDialect(activeConnection.dialect)) {
+      pushToast('info', 'Redis 请使用键浏览器，而不是 SQL 运行')
+      return
+    }
     setRunning(true)
     try {
       const statements = await api.sql.execute({ connectionId: activeConnection.id, sql: activeEditor.sql })
       const next = resultsFrom(statements)
       setResultMap((current) => ({ ...current, [activeEditor.id]: next }))
       const failed = statements.find((statement) => !statement.ok)
-      if (failed) pushToast('error', failed.error ?? '执行失败')
-      else pushToast('success', '执行完成')
+      if (failed) {
+        pushToast('error', failed.error ?? '执行失败')
+        void repairAi(failed.statement || activeEditor.sql, failed.error ?? '执行失败')
+      } else pushToast('success', '执行完成')
       if (statements.some((statement) => statement.ok && changesSchema(statement.statement))) {
         const rows = await api.connections.list()
         setConnections(rows)
@@ -387,17 +420,37 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (!prompt || aiStreaming) return
     const requestId = crypto.randomUUID()
     requestRef.current = requestId
+    setAiOpen(true)
     setAiStreaming(true)
     setAiTurns((turns) => [
       ...turns,
       { id: `${requestId}:user`, role: 'user', content: prompt },
-      { id: requestId, role: 'assistant', content: '', mode: settings?.hasKey ? 'model' : 'preview' },
+      { id: requestId, role: 'assistant', content: '', mode: settings?.hasKey ? 'model' : 'preview', steps: [] },
     ])
     try {
       await api.ai.start({ requestId, connectionId: activeConnectionId, prompt })
     } catch (error) {
       setAiStreaming(false)
       pushToast('error', error instanceof Error ? error.message : '助手没有完成这次起草')
+    }
+  }
+
+  const repairAi = async (sql: string, error: string) => {
+    if (aiStreaming) return
+    const requestId = crypto.randomUUID()
+    requestRef.current = requestId
+    setAiOpen(true)
+    setAiStreaming(true)
+    setAiTurns((turns) => [
+      ...turns,
+      { id: `${requestId}:user`, role: 'user', content: `修复失败 SQL：${error}` },
+      { id: requestId, role: 'assistant', content: '', mode: settings?.hasKey ? 'model' : 'preview', steps: [] },
+    ])
+    try {
+      await api.ai.repair({ requestId, connectionId: activeConnectionId, sql, error })
+    } catch (reason) {
+      setAiStreaming(false)
+      pushToast('error', reason instanceof Error ? reason.message : '助手没有完成修复')
     }
   }
 
@@ -481,6 +534,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     aiTurns,
     aiStreaming,
     sendAi,
+    repairAi,
     cancelAi,
     applySql,
     settings: settings ?? defaultSettings,
