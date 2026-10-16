@@ -39,7 +39,7 @@ describe('exportTable', () => {
   it('exports csv and json', () => {
     const columns = ['id', 'name']
     const rows = [{ id: 1, name: 'a,b' }, { id: 2, name: null }]
-    expect(rowsToCsv(columns, rows)).toContain('"a,b"')
+    expect(rowsToCsv(columns, rows, { bom: false })).toContain('"a,b"')
     expect(rowsToJson(columns, rows)).toContain('"id": 1')
   })
 })

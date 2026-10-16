@@ -122,7 +122,11 @@ export function ResultToolbar({
 
   const copyAll = async () => {
     await navigator.clipboard.writeText(rowsToCsv(exportColumns, copySource))
-    setCopyNote(selectionActive ? `已复制 CSV（${copySource.length} 行）` : '已复制 CSV')
+    setCopyNote(
+      selectionActive
+        ? `已复制 CSV（${copySource.length} 行 · UTF-8 BOM）`
+        : '已复制 CSV（UTF-8 BOM，Excel 可直接打开）',
+    )
   }
 
   const copyTsv = async () => {
@@ -277,7 +281,7 @@ export function ResultToolbar({
         type="button"
         className="btn btn-ghost tiny-btn"
         disabled={rows.length === 0}
-        title="选择列后导出 CSV（当前筛选结果）"
+        title="选择列后导出 CSV（UTF-8 带 BOM，Excel 中文不乱码）"
         onClick={() => setExportDialog('csv')}
       >
         导出 CSV
@@ -327,6 +331,7 @@ export function ResultToolbar({
         type="button"
         className="btn btn-ghost tiny-btn"
         disabled={copySource.length === 0}
+        title="复制 CSV（含 UTF-8 BOM，粘贴到 Excel 不乱码）"
         onClick={() => void copyAll()}
       >
         复制 CSV
@@ -633,7 +638,7 @@ export function ResultGrid({
     const selected = selectedRowsFromIndexes(displayRows, selectedIndexes)
     if (selected.length === 0) return
     await navigator.clipboard.writeText(rowsToCsv(displayColumns, selected))
-    setNote(`已复制选中 ${selected.length} 行为 CSV`)
+    setNote(`已复制选中 ${selected.length} 行为 CSV（UTF-8 BOM）`)
     setContextMenu(null)
   }
 

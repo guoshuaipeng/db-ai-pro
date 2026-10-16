@@ -2,6 +2,12 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 3.37.0 — M76 CSV UTF-8 BOM（Excel 友好）
+
+- 导出 / 复制 CSV 默认带 UTF-8 BOM，Windows Excel 直接打开中文不乱码
+- 可通过 `{ bom: false }` 关闭（内部测试与非 Excel 场景）
+- 工具栏「导出 CSV」「复制 CSV」提示说明 BOM；F1 快捷键说明同步
+
 ## 3.36.0 — M75 运行选中 SQL
 
 - 编辑器有非空选区时，「运行」/ Ctrl+Enter / F5 只执行选中语句（与 DataGrip / VS Code 一致）

@@ -3,6 +3,7 @@ import {
   capExportRows,
   EXPORT_ROW_CAP,
   rowsToCsv,
+  UTF8_BOM,
   rowsToHtml,
   rowsToMarkdown,
   rowsToTsv,
@@ -47,6 +48,22 @@ describe('rowsToTsv', () => {
   })
 
   it('csv still uses commas', () => {
-    expect(rowsToCsv(['id'], [{ id: 1 }])).toContain('id\n1')
+    expect(rowsToCsv(['id'], [{ id: 1 }], { bom: false })).toContain('id\n1')
   })
 })
+
+describe('rowsToCsv UTF-8 BOM', () => {
+  it('prefixes BOM by default for Excel', () => {
+    const csv = rowsToCsv(['名'], [{ '名': '测' }])
+    expect(csv.startsWith(UTF8_BOM)).toBe(true)
+    expect(csv).toContain('名')
+    expect(csv).toContain('测')
+  })
+
+  it('can omit BOM', () => {
+    const csv = rowsToCsv(['id'], [{ id: 1 }], { bom: false })
+    expect(csv.startsWith(UTF8_BOM)).toBe(false)
+    expect(csv.startsWith('id')).toBe(true)
+  })
+})
+

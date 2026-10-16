@@ -1,5 +1,8 @@
 /** Table export helpers (CSV / JSON / Markdown / HTML). */
 
+/** Leading BOM so Excel on Windows opens UTF-8 CSV without mojibake (M76). */
+export const UTF8_BOM = '\uFEFF'
+
 /** Soft cap for Excel / Markdown / HTML exports to keep files manageable. */
 export const EXPORT_ROW_CAP = 50_000
 
@@ -15,7 +18,16 @@ function cellText(value: unknown): string {
   return String(value)
 }
 
-export function rowsToCsv(columns: string[], rows: Record<string, unknown>[]): string {
+export type CsvExportOptions = {
+  /** Prepend UTF-8 BOM for Excel (default true). */
+  bom?: boolean
+}
+
+export function rowsToCsv(
+  columns: string[],
+  rows: Record<string, unknown>[],
+  options?: CsvExportOptions,
+): string {
   const escape = (value: unknown): string => {
     const text = cellText(value)
     if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`
@@ -25,7 +37,9 @@ export function rowsToCsv(columns: string[], rows: Record<string, unknown>[]): s
   for (const row of rows) {
     lines.push(columns.map((column) => escape(row[column])).join(','))
   }
-  return `${lines.join('\n')}\n`
+  const body = `${lines.join('\n')}\n`
+  const useBom = options?.bom !== false
+  return useBom ? `${UTF8_BOM}${body}` : body
 }
 
 export function rowsToTsv(columns: string[], rows: Record<string, unknown>[]): string {
