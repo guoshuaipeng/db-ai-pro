@@ -10,7 +10,8 @@ import { ALTER_PROMPTS, CREATE_PROMPTS } from '@shared/ddlDraft'
 import type { AiIntent } from '@shared/types'
 import { IconSend, IconSpark, IconStop } from './icons'
 import { EmptyState } from './EmptyState'
-import { emitDataai } from '../appEvents'
+import { emitDataai, onDataai } from '../appEvents'
+import { aiComposerPlaceholder } from '@shared/aiComposer'
 import { useWorkspace } from '../state/workspace'
 
 const INTENT_LABEL: Record<AiIntent, string> = {
@@ -32,6 +33,7 @@ export function AiPane() {
   const ws = useWorkspace()
   const [draft, setDraft] = useState('')
   const scroller = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
   const [stepsOpen, setStepsOpen] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
@@ -39,6 +41,17 @@ export function AiPane() {
     if (!el) return
     el.scrollTop = el.scrollHeight
   }, [ws.aiTurns, ws.aiStreaming])
+
+  useEffect(() => {
+    const id = window.setTimeout(() => composerRef.current?.focus(), 40)
+    return () => window.clearTimeout(id)
+  }, [])
+
+  useEffect(() => {
+    return onDataai('dataai:focus-ai-composer', () => {
+      composerRef.current?.focus()
+    })
+  }, [])
 
   const prompts =
     ws.aiIntent === 'create' ? CREATE_PROMPTS : ws.aiIntent === 'alter' ? ALTER_PROMPTS : ASSISTANT_PROMPTS
@@ -274,12 +287,12 @@ export function AiPane() {
         }}
       >
         <textarea
+          ref={composerRef}
           value={draft}
           rows={3}
-          placeholder={
-            ws.aiIntent === 'create' ? '描述新表…' : ws.aiIntent === 'alter' ? '描述改表…' : '描述想看的数据，Enter 发送'
-          }
+          placeholder={aiComposerPlaceholder(ws.aiIntent)}
           aria-label="向助手描述需求"
+          title="Enter 发送 · Shift+Enter 换行"
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {

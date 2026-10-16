@@ -264,8 +264,16 @@ export function App() {
         case 'view.toggleSidebar':
           ws.toggleSidebar()
           break
+        case 'view.focusAiComposer':
+          if (!ws.aiOpen) ws.toggleAi()
+          window.setTimeout(() => emitDataai('dataai:focus-ai-composer'), 50)
+          break
         case 'view.toggleAi':
-          ws.toggleAi()
+          {
+            const willOpen = !ws.aiOpen
+            ws.toggleAi()
+            if (willOpen) window.setTimeout(() => emitDataai('dataai:focus-ai-composer'), 50)
+          }
           break
         case 'connection.health':
           if (ws.activeConnection) void ws.checkConnectionHealth(ws.activeConnection.id, false)
@@ -505,7 +513,11 @@ export function App() {
       }
       if (meta && event.shiftKey && key === 'a') {
         event.preventDefault()
-        ws.toggleAi()
+        {
+          const willOpen = !ws.aiOpen
+          ws.toggleAi()
+          if (willOpen) window.setTimeout(() => emitDataai('dataai:focus-ai-composer'), 50)
+        }
         return
       }
       if (meta && !event.shiftKey && (key === '=' || key === '+')) {

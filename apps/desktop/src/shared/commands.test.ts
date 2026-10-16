@@ -39,6 +39,10 @@ describe('filterCommands', () => {
     expect(filterCommands('小地图').some((item) => item.id === 'view.toggleMinimap')).toBe(true)
   })
 
+  it('finds focus ai composer command', () => {
+    expect(filterCommands('聚焦助手').some((item) => item.id === 'view.focusAiComposer')).toBe(true)
+  })
+
   it('finds cycle editor tab commands', () => {
     expect(filterCommands('下一个').some((item) => item.id === 'view.nextEditorTab')).toBe(true)
     expect(filterCommands('上一个').some((item) => item.id === 'view.prevEditorTab')).toBe(true)

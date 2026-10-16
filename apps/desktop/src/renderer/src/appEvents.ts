@@ -9,6 +9,7 @@ export type DataaiEventMap = {
   'dataai:reveal-connection': { connectionId: string }
   'dataai:focus-editor': undefined
   'dataai:focus-result': undefined
+  'dataai:focus-ai-composer': undefined
   'dataai:format-sql': undefined
   'dataai:request-run': undefined
   /** SqlEditor responds with selected-or-full SQL for Run. */
