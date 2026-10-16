@@ -17,13 +17,27 @@ import { IconSend, IconSpark, IconStop } from './icons'
 import { EmptyState } from './EmptyState'
 import { emitDataai, onDataai } from '../appEvents'
 import { aiComposerPlaceholder } from '@shared/aiComposer'
+import {
+  aiIntentBlurb,
+  aiIntentLabel,
+  aiIntentTabsAria,
+  aiIntentTitle,
+  aiNoTablesBody,
+  aiNoTablesTitle,
+  aiReferenceAutoOption,
+  aiReferenceTableLabel,
+  aiTargetInferOption,
+  aiTargetTableLabel,
+  aiToolbarClearLabel,
+  aiToolbarClearTitle,
+  aiToolbarKicker,
+  aiToolbarModelPreviewLabel,
+  aiToolbarModelPreviewTitle,
+  aiToolbarModelReadyLabel,
+  aiToolbarModelReadyTitle,
+  aiToolbarTitle,
+} from '@shared/aiToolbarUi'
 import { useWorkspace } from '../state/workspace'
-
-const INTENT_LABEL: Record<AiIntent, string> = {
-  query: '查询',
-  create: '建表',
-  alter: '改表',
-}
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -77,26 +91,32 @@ export function AiPane() {
     <aside className="ai" aria-label="助手">
       <div className="ai-head">
         <div>
-          <p className="ai-kicker">助手</p>
-          <h2>{ws.aiIntent === 'create' ? 'AI 建表' : ws.aiIntent === 'alter' ? 'AI 改表' : '自然语言转 SQL'}</h2>
+          <p className="ai-kicker">{aiToolbarKicker()}</p>
+          <h2>{aiToolbarTitle(ws.aiIntent)}</h2>
         </div>
         <div className="ai-head-actions">
           {ws.aiTurns.length > 0 && (
-            <button type="button" className="tiny-btn btn btn-ghost" onClick={ws.clearAiMemory} title="清空会话记忆">
-              清空
+            <button
+              type="button"
+              className="tiny-btn btn btn-ghost"
+              onClick={ws.clearAiMemory}
+              title={aiToolbarClearTitle()}
+            >
+              {aiToolbarClearLabel()}
             </button>
           )}
           <button
             type="button"
             className={ws.settings?.hasKey ? 'pill is-ready' : 'pill'}
+            title={ws.settings?.hasKey ? aiToolbarModelReadyTitle() : aiToolbarModelPreviewTitle()}
             onClick={() => emitDataai('dataai:open-ai-settings')}
           >
-            {ws.settings?.hasKey ? '模型已就绪' : '本地预览'}
+            {ws.settings?.hasKey ? aiToolbarModelReadyLabel() : aiToolbarModelPreviewLabel()}
           </button>
         </div>
       </div>
 
-      <div className="intent-tabs" role="tablist" aria-label="助手模式">
+      <div className="intent-tabs" role="tablist" aria-label={aiIntentTabsAria()}>
         {(['query', 'create', 'alter'] as AiIntent[]).map((intent) => (
           <button
             key={intent}
@@ -105,18 +125,20 @@ export function AiPane() {
             aria-selected={ws.aiIntent === intent}
             className={ws.aiIntent === intent ? 'intent is-active' : 'intent'}
             disabled={ws.aiStreaming}
+            title={aiIntentTitle(intent)}
             onClick={() => ws.setAiIntent(intent)}
           >
-            {INTENT_LABEL[intent]}
+            {aiIntentLabel(intent)}
           </button>
         ))}
       </div>
+      <p className="ai-intent-blurb">{aiIntentBlurb(ws.aiIntent)}</p>
 
       {ws.aiIntent === 'create' && (
         <label className="ai-select">
-          <span>参考表风格</span>
+          <span>{aiReferenceTableLabel()}</span>
           <select value={ws.referenceTable} onChange={(event) => ws.setReferenceTable(event.target.value)}>
-            <option value="">自动推断</option>
+            <option value="">{aiReferenceAutoOption()}</option>
             {ws.tableNames.map((name) => (
               <option key={name} value={name}>
                 {name}
@@ -127,9 +149,9 @@ export function AiPane() {
       )}
       {ws.aiIntent === 'alter' && (
         <label className="ai-select">
-          <span>目标表</span>
+          <span>{aiTargetTableLabel()}</span>
           <select value={ws.targetTable} onChange={(event) => ws.setTargetTable(event.target.value)}>
-            <option value="">从描述推断</option>
+            <option value="">{aiTargetInferOption()}</option>
             {ws.tableNames.map((name) => (
               <option key={name} value={name}>
                 {name}
@@ -138,6 +160,16 @@ export function AiPane() {
           </select>
         </label>
       )}
+      {(ws.aiIntent === 'create' || ws.aiIntent === 'alter') && ws.tableNames.length === 0 ? (
+        <div className="ai-toolbar-empty">
+          <EmptyState
+            compact
+            kicker={aiToolbarKicker()}
+            title={aiNoTablesTitle()}
+            body={aiNoTablesBody(ws.aiIntent)}
+          />
+        </div>
+      ) : null}
 
       <div className="ai-scroll" ref={scroller}>
         {ws.aiTurns.length === 0 && (

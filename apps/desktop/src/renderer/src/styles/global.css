@@ -1772,6 +1772,19 @@ body.is-col-resizing .grid-col-resizer {
   background: rgba(110, 168, 255, 0.16);
   border-color: rgba(110, 168, 255, 0.4);
 }
+.ai-intent-blurb {
+  margin: 0 14px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #9aa3b5;
+}
+.ai-toolbar-empty {
+  padding: 0 10px 8px;
+}
+.ai-toolbar-empty .empty-state {
+  margin: 0;
+}
+
 .ai-select {
   display: grid;
   gap: 4px;
