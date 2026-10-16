@@ -18,6 +18,10 @@ import {
   replaceConnectionNode,
   seedExpanded,
 } from '@shared/schemaTreeRefresh'
+import {
+  clearResultTabsToast,
+  closeResultTabState,
+} from '@shared/resultTabs'
 import { changesSchema, quoteIdentIfNeeded, statementTitle } from '@shared/sql'
 import {
   DEFAULT_PAGE_SIZE,
@@ -229,6 +233,8 @@ type WorkspaceValue = {
   reorderEditorTabs: (fromId: string, insertBeforeIndex: number) => void
   results: ResultState | null
   setActiveResult: (id: string) => void
+  closeResultTab: (id: string) => void
+  clearResultTabs: () => void
   running: boolean
   lastRun: LastRunStats | null
   slowQueryMs: number
@@ -2428,6 +2434,34 @@ ${sql.trim()}
         if (!state) return current
         return { ...current, [activeEditor.id]: { ...state, activeId: id } }
       })
+    },
+    closeResultTab: (id) => {
+      if (!activeEditor) return
+      const editorId = activeEditor.id
+      setResultMap((current) => {
+        const state = current[editorId]
+        if (!state) return current
+        const next = closeResultTabState(state, id)
+        if (!next) {
+          const { [editorId]: _removed, ...rest } = current
+          return rest
+        }
+        return { ...current, [editorId]: next }
+      })
+    },
+    clearResultTabs: () => {
+      if (!activeEditor) return
+      const editorId = activeEditor.id
+      const count = resultMap[editorId]?.tabs.length ?? 0
+      if (count === 0) {
+        pushToast('info', clearResultTabsToast(0))
+        return
+      }
+      setResultMap((current) => {
+        const { [editorId]: _removed, ...rest } = current
+        return rest
+      })
+      pushToast('success', clearResultTabsToast(count))
     },
     running,
     lastRun,

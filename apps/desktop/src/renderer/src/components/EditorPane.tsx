@@ -689,7 +689,17 @@ export function ResultPane() {
           tabs={results.tabs.map((tab) => ({ id: tab.id, label: tab.title }))}
           activeId={results.activeId}
           onSelect={ws.setActiveResult}
-          trailing={undefined}
+          onClose={(id) => ws.closeResultTab(id)}
+          trailing={
+            <button
+              type="button"
+              className="btn btn-ghost tiny-btn"
+              title="清空当前查询的全部结果标签"
+              onClick={() => ws.clearResultTabs()}
+            >
+              清空
+            </button>
+          }
         />
       ) : (
         <div className="result-head">

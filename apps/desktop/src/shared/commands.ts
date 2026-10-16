@@ -190,6 +190,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'result.clearTabs',
+    title: '清空结果标签',
+    subtitle: '关闭当前查询下全部结果页',
+    keywords: 'clear results tabs close 清空 结果 标签',
+    shortcut: '结果栏「清空」',
+    category: 'query',
+  },
+  {
     id: 'result.copyJson',
     title: '复制结果为 JSON',
     subtitle: 'JSON 数组写入剪贴板（缩进格式）',
@@ -548,6 +556,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '拖拽调整标签顺序', keys: '标签栏拖拽（固定组内/未固定组内）' },
   { action: '在结果中查找', keys: '结果区 Ctrl+F · 工具栏「查找」' },
   { action: '复制结果列名', keys: '结果工具栏「复制列名」· Ctrl+K' },
+  { action: '清空结果标签', keys: '结果栏「清空」· 标签 × / 中键 · Ctrl+K' },
   { action: '列宽适应', keys: '工具栏「列宽适应」· Ctrl+K · 表头分隔线双击' },
   { action: '结果列筛选', keys: '表头「筛」· 右键「列筛选…」' },
   { action: '导出列选择', keys: '导出 CSV/JSON/MD/HTML/Excel 前勾选列' },

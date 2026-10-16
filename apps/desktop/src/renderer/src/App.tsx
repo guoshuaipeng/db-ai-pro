@@ -215,6 +215,9 @@ export function App() {
         case 'result.copyJson':
           emitDataai('dataai:result-copy-json')
           break
+        case 'result.clearTabs':
+          ws.clearResultTabs()
+          break
         case 'editor.replace':
           emitDataai('dataai:replace')
           break

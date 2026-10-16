@@ -95,6 +95,10 @@ describe('filterCommands', () => {
     expect(filterCommands('JSON').some((item) => item.id === 'result.copyJson')).toBe(true)
   })
 
+  it('finds clear result tabs command', () => {
+    expect(filterCommands('清空结果').some((item) => item.id === 'result.clearTabs')).toBe(true)
+  })
+
   it('finds query templates', () => {
     expect(filterCommands('模板').some((item) => item.id === 'query.templates')).toBe(true)
     expect(filterCommands('COUNT').some((item) => item.id === 'query.tpl.selectCount')).toBe(true)
