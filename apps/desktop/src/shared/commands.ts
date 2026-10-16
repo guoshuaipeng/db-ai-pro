@@ -380,7 +380,7 @@ export function filterCommands(query: string, catalog: CommandDef[] = COMMAND_CA
 
 export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '命令 / 对象搜索', keys: 'Ctrl+K · Ctrl+P' },
-  { action: '运行 SQL', keys: 'Ctrl+Enter · F5' },
+  { action: '运行 SQL（有选区则只跑选区）', keys: 'Ctrl+Enter · F5' },
   { action: '执行计划', keys: 'Ctrl+Shift+E' },
   { action: '格式化 SQL', keys: 'Shift+Alt+F' },
   { action: '切换行注释', keys: 'Ctrl+/' },

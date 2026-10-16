@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { emitDataai, onDataai } from '../appEvents'
+import { pickRunSql, type RunSqlPick } from '@shared/runSqlPick'
 import { suggestionsFromSchema } from '@shared/schemaSuggest'
 import { IconClock, IconPlay, IconPlus, IconStar, IconStop } from './icons'
 import { ScrollTabs, type TabContextAction } from './ScrollTabs'
@@ -49,6 +50,7 @@ export function EditorPane() {
   const [varValues, setVarValues] = useState<Record<string, string>>({})
   const [sessionParamValues, setSessionParamValues] = useState<Record<string, string>>({})
   const [paramDialog, setParamDialog] = useState<'run' | 'fill' | null>(null)
+  const runPickRef = useRef<RunSqlPick | null>(null)
   const [paramValues, setParamValues] = useState<Record<string, string>>({})
   const templatesRef = useRef<HTMLDivElement>(null)
 
@@ -102,11 +104,38 @@ export function EditorPane() {
     ws.insertFavoriteSql(expanded)
   }
 
-  const openParamDialog = (mode: 'run' | 'fill') => {
-    const sql = ws.activeEditor?.sql ?? ''
+
+  const peekRunSql = (): Promise<RunSqlPick> =>
+    new Promise((resolve) => {
+      let settled = false
+      const respond = (result: RunSqlPick) => {
+        if (settled) return
+        settled = true
+        resolve(result)
+      }
+      emitDataai('dataai:peek-run-sql', { respond })
+      // Fallback if editor not mounted
+      window.setTimeout(() => {
+        if (settled) return
+        settled = true
+        resolve(pickRunSql(ws.activeEditor?.sql ?? '', null))
+      }, 50)
+    })
+
+  const openParamDialog = async (mode: 'run' | 'fill') => {
+    const pick = mode === 'run' ? await peekRunSql() : pickRunSql(ws.activeEditor?.sql ?? '', null)
+    if (mode === 'run') runPickRef.current = pick
+    else runPickRef.current = null
+    const sql = pick.sql
+    if (!sql.trim()) {
+      ws.pushToast('info', '没有可运行的 SQL')
+      return
+    }
     if (!sqlNeedsQueryParams(sql)) {
-      if (mode === 'run') void ws.run()
-      else window.alert('当前 SQL 没有 {{name}} 占位符')
+      if (mode === 'run') {
+        await ws.runSqlText(sql)
+        if (pick.fromSelection) ws.pushToast('info', '已运行选中语句')
+      } else window.alert('当前 SQL 没有 {{name}} 占位符')
       return
     }
     setParamValues(
@@ -119,18 +148,25 @@ export function EditorPane() {
   }
 
   const requestRun = () => {
-    openParamDialog('run')
+    void openParamDialog('run')
   }
 
   const confirmParams = (values: Record<string, string>, writeBack: boolean) => {
-    const sql = ws.activeEditor?.sql ?? ''
+    const pick = runPickRef.current ?? pickRunSql(ws.activeEditor?.sql ?? '', null)
+    runPickRef.current = null
+    const sql = pick.sql
     const mode = paramDialog
     setParamDialog(null)
     if (!mode) return
     const expanded = expandSnippet(sql, values)
     setSessionParamValues((prev) => rememberQueryParamValues(prev, values))
-    if (writeBack) ws.updateSql(expanded)
-    if (mode === 'run') void ws.runSqlText(expanded)
+    // 选区运行时不写回整份编辑器，避免用选区覆盖全文
+    if (writeBack && !pick.fromSelection) ws.updateSql(expanded)
+    if (mode === 'run') {
+      void ws.runSqlText(expanded).then(() => {
+        if (pick.fromSelection) ws.pushToast('info', '已运行选中语句')
+      })
+    }
   }
 
   useEffect(
@@ -157,19 +193,9 @@ export function EditorPane() {
   useEffect(
     () =>
       onDataai('dataai:request-run', () => {
-        const sql = ws.activeEditor?.sql ?? ''
-        if (!sqlNeedsQueryParams(sql)) {
-          void ws.run()
-          return
-        }
-        setParamValues(
-          buildQueryParamDefaults(sql, sessionParamValues, {
-            table: ws.targetTable || null,
-            limit: '100',
-          }),
-        )
-        setParamDialog('run')
+        void openParamDialog('run')
       }),
+    // openParamDialog closes over sessionParamValues / ws
     [ws, sessionParamValues],
   )
 
@@ -381,7 +407,7 @@ export function EditorPane() {
               取消
             </button>
           ) : (
-            <button type="button" className="btn btn-primary run-btn" onClick={() => requestRun()}>
+            <button type="button" className="btn btn-primary run-btn" title="运行（有选区时只跑选中语句）" onClick={() => requestRun()}>
               <IconPlay />
               运行
             </button>

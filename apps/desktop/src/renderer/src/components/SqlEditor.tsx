@@ -4,6 +4,7 @@ import { conf, language } from 'monaco-editor/languages/definitions/sql/sql'
 import editorWorker from 'monaco-editor/editor/editor.worker?worker'
 import { filterSuggestions, type SchemaSuggestItem } from '@shared/schemaSuggest'
 import { onDataai } from '../appEvents'
+import { pickRunSql, selectionIsNonEmpty } from '@shared/runSqlPick'
 import { isSqlDragEvent, readSqlDragText } from '@shared/sqlDragDrop'
 import { formatSql } from '@shared/sqlFormat'
 import {
@@ -273,6 +274,31 @@ export function SqlEditor({
       },
     })
   }, [minimap, fontSize, wordWrap, bracketColorization])
+
+
+  useEffect(
+    () =>
+      onDataai('dataai:peek-run-sql', (detail) => {
+        const instance = instanceRef.current
+        const full = instance?.getValue() ?? value
+        const selection = instance?.getSelection()
+        let selected: string | null = null
+        if (
+          selection &&
+          selectionIsNonEmpty(
+            selection.startLineNumber,
+            selection.startColumn,
+            selection.endLineNumber,
+            selection.endColumn,
+          )
+        ) {
+          const model = instance?.getModel()
+          selected = model ? model.getValueInRange(selection) : null
+        }
+        detail.respond(pickRunSql(full, selected))
+      }),
+    [value],
+  )
 
   useEffect(() => onDataai('dataai:focus-editor', () => {
     instanceRef.current?.focus()

@@ -7,6 +7,10 @@ export type DataaiEventMap = {
   'dataai:focus-editor': undefined
   'dataai:format-sql': undefined
   'dataai:request-run': undefined
+  /** SqlEditor responds with selected-or-full SQL for Run. */
+  'dataai:peek-run-sql': {
+    respond: (result: { sql: string; fromSelection: boolean }) => void
+  }
   'dataai:fill-query-params': undefined
   'dataai:toggle-comment': undefined
   'dataai:find': undefined
