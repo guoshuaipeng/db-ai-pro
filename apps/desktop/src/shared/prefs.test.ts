@@ -86,3 +86,10 @@ describe('editor chrome prefs', () => {
     expect(editorLineHeight(13)).toBe(22)
   })
 })
+
+describe('welcome prefs', () => {
+  it('defaults welcomeDismissed off', () => {
+    expect(normalizePrefs(null).welcomeDismissed).toBe(false)
+    expect(normalizePrefs({ welcomeDismissed: true }).welcomeDismissed).toBe(true)
+  })
+})

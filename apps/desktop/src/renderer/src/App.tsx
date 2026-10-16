@@ -4,6 +4,7 @@ import type { CommandDef } from '@shared/commands'
 import { dialectInfo, isKvDialect } from '@shared/types'
 import { Mark } from './components/icons'
 import { TitleBar } from './components/TitleBar'
+import { WelcomePanel } from './components/WelcomePanel'
 import { NotificationDrawer } from './components/NotificationDrawer'
 import { ConnectionPane } from './components/ConnectionPane'
 import { EditorPane, ResultPane } from './components/EditorPane'
@@ -104,6 +105,11 @@ export function App() {
   const zoomReset = useCallback(() => {
     void applyZoom(1)
   }, [applyZoom])
+
+  const dismissWelcome = useCallback(async () => {
+    const next = await getApi().prefs.save({ welcomeDismissed: true })
+    setPrefs(next)
+  }, [])
 
   const runCommand = useCallback(
     (command: CommandDef) => {
@@ -341,6 +347,9 @@ export function App() {
       }${ws.lastRun.ok ? '' : ' · 失败'}`
     : null
 
+  const showWelcome = ws.connections.length === 0 && !prefs.welcomeDismissed
+
+
   return (
     <div className="app" data-density={prefs.density} data-contrast={prefs.highContrast ? 'high' : 'normal'}>
       <TitleBar
@@ -379,6 +388,19 @@ export function App() {
         }}
         onDismiss={ws.dismissNotification}
       />
+      {showWelcome ? (
+        <WelcomePanel
+          version={ws.meta?.version}
+          recentTables={ws.recentTables}
+          recentQueries={ws.recentQueries}
+          onNewConnection={ws.openCreate}
+          onRestoreSample={() => void ws.restoreSample()}
+          onImportConnections={() => void ws.importConnections()}
+          onOpenRecentTable={ws.openRecentTable}
+          onOpenRecentQuery={ws.openRecentQuery}
+          onDismiss={() => void dismissWelcome()}
+        />
+      ) : (
       <div className="workspace" style={{ gridTemplateColumns: columns }}>
         {ws.sidebarOpen && <ConnectionPane />}
         {ws.sidebarOpen && (
@@ -419,6 +441,7 @@ export function App() {
         )}
         {ws.aiOpen && <AiPane />}
       </div>
+      )}
       <footer className="statusbar">
         <span className="status-item">
           <span

@@ -60,6 +60,8 @@ export type AppPrefs = {
   editorMinimap: boolean
   /** Monaco editor font size (12–20). */
   editorFontSize: number
+  /** Hide full-workspace welcome when there are no connections. */
+  welcomeDismissed: boolean
 }
 
 export const DEFAULT_PREFS: AppPrefs = {
@@ -75,6 +77,7 @@ export const DEFAULT_PREFS: AppPrefs = {
   notifyOnSlowQuery: false,
   editorMinimap: false,
   editorFontSize: DEFAULT_EDITOR_FONT_SIZE,
+  welcomeDismissed: false,
 }
 
 const TIMEOUT_MIN = 0
@@ -110,5 +113,6 @@ export function normalizePrefs(value: unknown): AppPrefs {
     editorFontSize: clampEditorFontSize(
       row.editorFontSize === undefined ? DEFAULT_EDITOR_FONT_SIZE : row.editorFontSize,
     ),
+    welcomeDismissed: row.welcomeDismissed === true,
   }
 }
