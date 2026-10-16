@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { KeyCode, KeyMod, editor, languages, type IDisposable } from 'monaco-editor/editor/editor.api'
 import { conf, language } from 'monaco-editor/languages/definitions/sql/sql'
 import editorWorker from 'monaco-editor/editor/editor.worker?worker'
-import { filterSuggestions, type SchemaSuggestItem } from '@shared/schemaSuggest'
+import {
+  detectSqlSuggestContext,
+  filterSuggestions,
+  schemaSuggestObjectCount,
+  suggestEditorOverlayBody,
+  type SchemaSuggestItem,
+} from '@shared/schemaSuggest'
 import { emitDataai, onDataai } from '../appEvents'
 import { pickRunSql, selectionIsNonEmpty } from '@shared/runSqlPick'
 import { isSqlDragEvent, readSqlDragText } from '@shared/sqlDragDrop'
@@ -116,7 +122,8 @@ function ensureSql() {
               item.insertText.toLowerCase().startsWith(`${tableHint}.`)),
         )
       }
-      const filtered = filterSuggestions(pool, prefix)
+      const context = detectSqlSuggestContext(line)
+      const filtered = filterSuggestions(pool, prefix, 40, context)
       return {
         suggestions: filtered.map((item, index) => ({
           label: item.label,
@@ -554,7 +561,9 @@ export function SqlEditor({
         </div>
       )}
       {value.trim() === '' && !dragOver && (
-        <div className="editor-overlay">编写 SQL，按 F5 运行 · Ctrl+Space 补全表/列 · 可拖入收藏/历史/对象名或 .sql 文件</div>
+        <div className="editor-overlay">
+          {suggestEditorOverlayBody(schemaSuggestObjectCount(suggestions) > 0)}
+        </div>
       )}
     </div>
   )
