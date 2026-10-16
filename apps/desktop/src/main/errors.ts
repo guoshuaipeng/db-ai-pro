@@ -21,7 +21,8 @@ export function explainDbError(error: unknown): string {
   ) {
     return '连接已断开。请再试一次。'
   }
-  if (code === 'ER_ACCESS_DENIED_ERROR' || code === '28P01' || record.errno === 1045) return '账号或密码不正确。'
+  if (code === 'ER_ACCESS_DENIED_ERROR' || code === '28P01' || code === 'ELOGIN' || record.errno === 1045) return '账号或密码不正确。'
+  if (code === 'ESOCKET' && /Failed to connect/i.test(message)) return '无法连接：目标端口没有服务在监听。'
   if (code === 'ER_BAD_DB_ERROR' || code === '3D000' || record.errno === 1049) return '数据库不存在。'
   if (code === '28000') return '账号没有登录权限。'
   if (code === 'ER_DBACCESS_DENIED_ERROR' || record.errno === 1044) {

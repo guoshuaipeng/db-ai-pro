@@ -1,18 +1,49 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import ExcelJS from 'exceljs'
 import { getApi } from '../bridge'
 import { rowsToCsv, rowsToJson } from '@shared/exportTable'
 import { inferSqliteTable } from '@shared/sql'
 import { formatCell, isNumericColumn } from '../format'
 import { useWorkspace } from '../state/workspace'
 
-function downloadText(filename: string, text: string, mime: string): void {
-  const blob = new Blob([text], { type: mime })
+const ROW_HEIGHT = 32
+
+function downloadBlob(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
   anchor.download = filename
   anchor.click()
   URL.revokeObjectURL(url)
+}
+
+function downloadText(filename: string, text: string, mime: string): void {
+  downloadBlob(filename, new Blob([text], { type: mime }))
+}
+
+async function downloadExcel(columns: string[], rows: Record<string, unknown>[]): Promise<void> {
+  const book = new ExcelJS.Workbook()
+  book.creator = 'DataAI'
+  const sheet = book.addWorksheet('结果', { views: [{ state: 'frozen', ySplit: 1 }] })
+  sheet.addRow(columns)
+  sheet.getRow(1).font = { bold: true }
+  for (const row of rows) {
+    sheet.addRow(columns.map((column) => {
+      const value = row[column]
+      if (value == null) return null
+      if (typeof value === 'object') return JSON.stringify(value)
+      return value as string | number | boolean
+    }))
+  }
+  columns.forEach((_, index) => {
+    sheet.getColumn(index + 1).width = 16
+  })
+  const buffer = await book.xlsx.writeBuffer()
+  downloadBlob(
+    `dataai-result-${Date.now()}.xlsx`,
+    new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+  )
 }
 
 export function ResultToolbar({
@@ -22,9 +53,10 @@ export function ResultToolbar({
   columns: string[]
   rows: Record<string, unknown>[]
 }) {
+  const [busy, setBusy] = useState(false)
+
   const copyAll = async () => {
-    const text = rowsToCsv(columns, rows)
-    await navigator.clipboard.writeText(text)
+    await navigator.clipboard.writeText(rowsToCsv(columns, rows))
   }
 
   return (
@@ -45,6 +77,19 @@ export function ResultToolbar({
       >
         导出 JSON
       </button>
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true)
+          void downloadExcel(columns, rows)
+            .catch((error: unknown) => window.alert(error instanceof Error ? error.message : '导出 Excel 失败'))
+            .finally(() => setBusy(false))
+        }}
+      >
+        {busy ? '导出中…' : '导出 Excel'}
+      </button>
       <button type="button" className="btn btn-ghost tiny-btn" onClick={() => void copyAll()}>
         复制表格
       </button>
@@ -54,6 +99,7 @@ export function ResultToolbar({
 
 export function ResultGrid({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
   const ws = useWorkspace()
+  const parentRef = useRef<HTMLDivElement>(null)
   const numeric = Object.fromEntries(columns.map((column) => [column, isNumericColumn(rows, column)]))
   const [focus, setFocus] = useState({ row: 0, col: 0 })
   const [editing, setEditing] = useState<{ row: number; col: number; draft: string } | null>(null)
@@ -66,10 +112,23 @@ export function ResultGrid({ columns, rows }: { columns: string[]; rows: Record<
     return dialect === 'sqlite' && columns.includes('__rowid__') && Boolean(inferSqliteTable(sql))
   }, [columns, ws.activeConnection?.dialect, ws.activeEditor?.sql])
 
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 16,
+  })
+
   useEffect(() => {
     setFocus({ row: 0, col: 0 })
     setEditing(null)
+    setNote(rows.length > 500 ? `已虚拟滚动渲染 ${rows.length.toLocaleString('zh-CN')} 行` : '')
   }, [columns, rows])
+
+  useEffect(() => {
+    if (editing) return
+    virtualizer.scrollToIndex(focus.row, { align: 'auto' })
+  }, [focus.row, editing, virtualizer])
 
   const move = (rowDelta: number, colDelta: number) => {
     setFocus((current) => ({
@@ -111,7 +170,7 @@ export function ResultGrid({ columns, rows }: { columns: string[]; rows: Record<
     const value =
       editing.draft.trim() === ''
         ? null
-        : Number.isFinite(Number(editing.draft)) && editing.draft.trim() !== '' && /^-?\d+(\.\d+)?$/.test(editing.draft.trim())
+        : /^-?\d+(\.\d+)?$/.test(editing.draft.trim())
           ? Number(editing.draft.trim())
           : editing.draft
     try {
@@ -131,24 +190,25 @@ export function ResultGrid({ columns, rows }: { columns: string[]; rows: Record<
     }
   }
 
-  // Prefer workspace helpers if present; fallback via getApi in effects below is avoided by wiring in workspace.
-  const onCopyKey = (event: KeyboardEvent) => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && !editing) {
-      event.preventDefault()
-      void copyFocused()
-    }
-  }
+  const virtualRows = virtualizer.getVirtualItems()
+  const paddingTop = virtualRows[0]?.start ?? 0
+  const paddingBottom = Math.max(0, virtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 0))
 
   return (
     <div
       className="grid-wrap"
+      ref={parentRef}
       tabIndex={0}
       role="grid"
       aria-label="结果表格"
       aria-rowcount={rows.length}
       aria-colcount={visibleColumns.length + 1}
-      onKeyDown={(event) => {
-        onCopyKey(event)
+      onKeyDown={(event: KeyboardEvent) => {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && !editing) {
+          event.preventDefault()
+          void copyFocused()
+          return
+        }
         if (editing) return
         if (event.key === 'ArrowDown') {
           event.preventDefault()
@@ -171,12 +231,10 @@ export function ResultGrid({ columns, rows }: { columns: string[]; rows: Record<
         } else if (event.key === 'Enter' && canEditSqlite) {
           event.preventDefault()
           beginEdit(focus.row, focus.col)
-        } else if (event.key === 'c' && !event.ctrlKey && !event.metaKey) {
-          void copyFocused()
         }
       }}
     >
-      <table className="grid">
+      <table className="grid is-virtual">
         <thead>
           <tr role="row">
             <th className="row-index" scope="col" />
@@ -188,56 +246,76 @@ export function ResultGrid({ columns, rows }: { columns: string[]; rows: Record<
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, rowIndex) => (
-            <tr key={rowIndex} role="row" className={focus.row === rowIndex ? 'is-active' : undefined}>
-              <th className="row-index" scope="row">
-                {rowIndex + 1}
-              </th>
-              {visibleColumns.map((column, colIndex) => {
-                const value = row[column]
-                const text = formatCell(value)
-                const focused = focus.row === rowIndex && focus.col === colIndex
-                const isEditing = editing?.row === rowIndex && editing.col === colIndex
-                return (
-                  <td
-                    key={column}
-                    role="gridcell"
-                    title={canEditSqlite ? `${text}（双击编辑 / Ctrl+C 复制）` : `${text}（Ctrl+C 复制）`}
-                    className={[
-                      numeric[column] ? 'is-number' : '',
-                      value == null ? 'is-null' : '',
-                      focused ? 'is-focused' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                    onClick={() => setFocus({ row: rowIndex, col: colIndex })}
-                    onDoubleClick={() => beginEdit(rowIndex, colIndex)}
-                  >
-                    {isEditing ? (
-                      <input
-                        className="cell-editor"
-                        autoFocus
-                        value={editing.draft}
-                        onChange={(event) => setEditing({ ...editing, draft: event.target.value })}
-                        onBlur={() => void commitEdit()}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.preventDefault()
-                            void commitEdit()
-                          } else if (event.key === 'Escape') {
-                            event.preventDefault()
-                            setEditing(null)
-                          }
-                        }}
-                      />
-                    ) : (
-                      text
-                    )}
-                  </td>
-                )
-              })}
+          {paddingTop > 0 && (
+            <tr aria-hidden="true" className="virtual-pad">
+              <td colSpan={visibleColumns.length + 1} style={{ height: paddingTop, padding: 0, border: 'none' }} />
             </tr>
-          ))}
+          )}
+          {virtualRows.map((item) => {
+            const rowIndex = item.index
+            const row = rows[rowIndex] ?? {}
+            return (
+              <tr
+                key={item.key}
+                role="row"
+                data-index={rowIndex}
+                className={focus.row === rowIndex ? 'is-active' : undefined}
+                style={{ height: ROW_HEIGHT }}
+              >
+                <th className="row-index" scope="row">
+                  {rowIndex + 1}
+                </th>
+                {visibleColumns.map((column, colIndex) => {
+                  const value = row[column]
+                  const text = formatCell(value)
+                  const focused = focus.row === rowIndex && focus.col === colIndex
+                  const isEditing = editing?.row === rowIndex && editing.col === colIndex
+                  return (
+                    <td
+                      key={column}
+                      role="gridcell"
+                      title={canEditSqlite ? `${text}（双击编辑 / Ctrl+C 复制）` : `${text}（Ctrl+C 复制）`}
+                      className={[
+                        numeric[column] ? 'is-number' : '',
+                        value == null ? 'is-null' : '',
+                        focused ? 'is-focused' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      onClick={() => setFocus({ row: rowIndex, col: colIndex })}
+                      onDoubleClick={() => beginEdit(rowIndex, colIndex)}
+                    >
+                      {isEditing ? (
+                        <input
+                          className="cell-editor"
+                          autoFocus
+                          value={editing.draft}
+                          onChange={(event) => setEditing({ ...editing, draft: event.target.value })}
+                          onBlur={() => void commitEdit()}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault()
+                              void commitEdit()
+                            } else if (event.key === 'Escape') {
+                              event.preventDefault()
+                              setEditing(null)
+                            }
+                          }}
+                        />
+                      ) : (
+                        text
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            )
+          })}
+          {paddingBottom > 0 && (
+            <tr aria-hidden="true" className="virtual-pad">
+              <td colSpan={visibleColumns.length + 1} style={{ height: paddingBottom, padding: 0, border: 'none' }} />
+            </tr>
+          )}
         </tbody>
       </table>
       {note && <p className="result-footnote">{note}</p>}

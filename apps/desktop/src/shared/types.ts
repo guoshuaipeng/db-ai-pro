@@ -24,7 +24,7 @@ export const DIALECTS: DialectInfo[] = [
   { id: 'mariadb', label: 'MariaDB', defaultPort: 3306, executable: true },
   { id: 'postgresql', label: 'PostgreSQL', defaultPort: 5432, executable: true },
   { id: 'oracle', label: 'Oracle', defaultPort: 1521, executable: false },
-  { id: 'sqlserver', label: 'SQL Server', defaultPort: 1433, executable: false },
+  { id: 'sqlserver', label: 'SQL Server', defaultPort: 1433, executable: true },
   { id: 'hive', label: 'Hive', defaultPort: 10000, executable: false },
   { id: 'redis', label: 'Redis', defaultPort: 6379, executable: false, kv: true },
 ]
@@ -34,7 +34,7 @@ export function dialectInfo(id: Dialect): DialectInfo {
 }
 
 export function needsServerDatabase(dialect: Dialect): boolean {
-  return dialect === 'mysql' || dialect === 'mariadb' || dialect === 'postgresql'
+  return dialect === 'mysql' || dialect === 'mariadb' || dialect === 'postgresql' || dialect === 'sqlserver'
 }
 
 export function isKvDialect(dialect: Dialect): boolean {

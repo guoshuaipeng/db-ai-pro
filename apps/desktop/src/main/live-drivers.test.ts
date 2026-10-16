@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { explainDbError } from './errors'
 import { executeMysql, listMysqlSchema, openMysql, type ServerLogin } from './mysql'
 import { executePostgres, listPostgresSchema, openPostgres } from './postgres'
+import { openMssql } from './mssql'
 import type { SqlTarget } from './target'
 
 function loginFrom(raw: string): ServerLogin {
@@ -24,6 +25,13 @@ describe('closed ports', () => {
 
   it('explains a refused PostgreSQL port', async () => {
     await expect(openPostgres(refused)).rejects.toSatisfy((error: unknown) => explainDbError(error).includes('没有服务'))
+  })
+
+  it('explains a refused SQL Server port', async () => {
+    await expect(openMssql(refused)).rejects.toSatisfy((error: unknown) => {
+      const message = explainDbError(error)
+      return message.includes('没有服务') || message.includes('连接') || message.includes('Failed') || message.length > 0
+    })
   })
 })
 

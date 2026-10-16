@@ -1,25 +1,19 @@
 # DataAI Desktop (TypeScript)
 
-Electron + React + Vite。Milestone 4：
+Milestone 5：
 
-- AI 建表 / 改表（深色卡片多轮、参考表风格、一键执行、失败修复）
-- 结果表：CSV/JSON 导出、复制、SQLite 确认后单元格编辑
-- 保留 M3：助手工具链 + Redis 浏览器
-
-## 开发
-
-```bash
-cd apps/desktop
-npm install --ignore-scripts
-npm run dev
-```
+- 结果表虚拟滚动（@tanstack/react-virtual），保留粘性表头 / 导出 / 复制 / SQLite 编辑
+- SQL Server 真连接（mssql/tedious）；Oracle / Hive 仍为「未支持」占位
+- Excel 导出（exceljs）+ CSV / JSON
+- 版本 0.5.0
 
 ## Soft QA
 
 ```bash
+cd apps/desktop
+npm install --ignore-scripts
 npm test
 npm run typecheck
 npm run smoke
+npm run dev
 ```
-
-版本：0.4.0

@@ -4,6 +4,7 @@ import type { Connection } from 'mysql2/promise'
 import type { Client } from 'pg'
 import type Database from 'better-sqlite3'
 import { describeMysql, executeMysql, listMysqlSchema, openMysql, type ServerLogin } from './mysql'
+import { describeMssql, executeMssql, listMssqlSchema, openMssql } from './mssql'
 import { describePostgres, executePostgres, listPostgresSchema, openPostgres } from './postgres'
 import { closeRedis, listRedisSchema, probeRedis, scanRedisKeys } from './redis'
 import { databaseExists, describeSchema, executeScript, listSchema, openDatabase } from './sqlite'
@@ -14,6 +15,7 @@ type Live =
   | { kind: 'sqlite'; db: Database.Database; stamp: string }
   | { kind: 'mysql'; conn: Connection; stamp: string }
   | { kind: 'postgres'; client: Client; stamp: string }
+  | { kind: 'mssql'; pool: import('mssql').ConnectionPool; stamp: string }
 
 const live = new Map<string, Live>()
 
@@ -34,7 +36,7 @@ function loginOf(target: SqlTarget): ServerLogin {
   if (!target.database?.trim()) throw new Error('请填写数据库名')
   return {
     host: target.host.trim(),
-    port: target.port ?? (target.dialect === 'postgresql' ? 5432 : 3306),
+    port: target.port ?? (target.dialect === 'postgresql' ? 5432 : target.dialect === 'sqlserver' ? 1433 : 3306),
     user: target.username?.trim() ?? '',
     password: target.password ?? '',
     database: target.database.trim(),
@@ -45,7 +47,8 @@ async function release(row: Live): Promise<void> {
   try {
     if (row.kind === 'sqlite') row.db.close()
     else if (row.kind === 'mysql') await row.conn.end()
-    else await row.client.end()
+    else if (row.kind === 'postgres') await row.client.end()
+    else await row.pool.close()
   } catch {
     /* already closed */
   }
@@ -76,6 +79,9 @@ async function connect(target: SqlTarget): Promise<Live> {
   if (target.dialect === 'postgresql') {
     return { kind: 'postgres', client: await openPostgres(loginOf(target)), stamp }
   }
+  if (target.dialect === 'sqlserver') {
+    return { kind: 'mssql', pool: await openMssql(loginOf(target)), stamp }
+  }
   throw new Error('这个类型还不能查询')
 }
 
@@ -98,7 +104,8 @@ export async function probeTarget(target: SqlTarget): Promise<void> {
   try {
     if (created.kind === 'sqlite') created.db.prepare('SELECT 1').get()
     else if (created.kind === 'mysql') await created.conn.query('SELECT 1')
-    else await created.client.query('SELECT 1')
+    else if (created.kind === 'postgres') await created.client.query('SELECT 1')
+    else await created.pool.request().query('SELECT 1')
   } finally {
     await release(created)
   }
@@ -114,7 +121,8 @@ export async function schemaForSession(target: SqlTarget): Promise<SchemaNode> {
     return listSchema(target.id, target.name, target.filePath ?? '', session.db)
   }
   if (session.kind === 'mysql') return listMysqlSchema(session.conn, target)
-  return listPostgresSchema(session.client, target)
+  if (session.kind === 'postgres') return listPostgresSchema(session.client, target)
+  return listMssqlSchema(session.pool, target)
 }
 
 export async function executeSession(target: SqlTarget, sql: string): Promise<StatementResult[]> {
@@ -122,7 +130,8 @@ export async function executeSession(target: SqlTarget, sql: string): Promise<St
   const session = await openSession(target)
   if (session.kind === 'sqlite') return executeScript(session.db, sql)
   if (session.kind === 'mysql') return executeMysql(session.conn, sql)
-  return executePostgres(session.client, sql)
+  if (session.kind === 'postgres') return executePostgres(session.client, sql)
+  return executeMssql(session.pool, sql)
 }
 
 export async function describeSession(target: SqlTarget): Promise<string> {
@@ -130,5 +139,6 @@ export async function describeSession(target: SqlTarget): Promise<string> {
   const session = await openSession(target)
   if (session.kind === 'sqlite') return describeSchema(session.db)
   if (session.kind === 'mysql') return describeMysql(session.conn)
-  return describePostgres(session.client)
+  if (session.kind === 'postgres') return describePostgres(session.client)
+  return describeMssql(session.pool)
 }

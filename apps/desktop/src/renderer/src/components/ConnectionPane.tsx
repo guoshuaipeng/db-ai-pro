@@ -38,7 +38,7 @@ export function ConnectionPane() {
         <div className="empty">
           <IconDatabase />
           <p className="empty-title">还没有连接</p>
-          <p className="empty-copy">SQLite / MySQL / MariaDB / PostgreSQL 可查 SQL；Redis 可浏览键值。其他类型可以先保存。</p>
+          <p className="empty-copy">SQLite / MySQL / MariaDB / PostgreSQL / SQL Server 可查 SQL；Redis 可浏览键值。Oracle / Hive 可先保存。</p>
           <button type="button" className="btn btn-primary" onClick={ws.openCreate}>
             新建连接
           </button>

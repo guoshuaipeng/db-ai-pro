@@ -240,7 +240,8 @@ button:disabled { cursor: default; opacity: 0.45; }
 .badge-mysql, .badge-mariadb { color: #e7c27a; background: rgba(231, 194, 122, 0.1); border-color: rgba(231, 194, 122, 0.28); }
 .badge-postgresql { color: #9ec4e8; background: rgba(120, 168, 214, 0.12); border-color: rgba(120, 168, 214, 0.32); }
 .badge-redis { color: #f0a8a0; background: rgba(220, 100, 90, 0.14); border-color: rgba(220, 100, 90, 0.35); }
-.badge-oracle, .badge-sqlserver, .badge-hive, .badge-pending {
+.badge-sqlserver { color: #c9b6f0; background: rgba(170, 140, 230, 0.12); border-color: rgba(170, 140, 230, 0.35); }
+.badge-oracle, .badge-hive, .badge-pending {
   color: var(--ink-tertiary);
   background: transparent;
   border-color: var(--line);
@@ -951,4 +952,12 @@ button:disabled { cursor: default; opacity: 0.45; }
   border-radius: 6px;
   padding: 4px 6px;
   font: inherit;
+}
+
+
+.grid.is-virtual tbody tr {
+  height: 32px;
+}
+.grid.is-virtual .virtual-pad td {
+  background: transparent !important;
 }
