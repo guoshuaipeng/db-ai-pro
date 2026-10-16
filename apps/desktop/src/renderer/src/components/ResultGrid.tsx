@@ -26,6 +26,8 @@ import {
   selectedRowsFromIndexes,
   toggleRowIndex,
 } from '@shared/rowSelection'
+import { collectResultFindHits, stepFindIndex } from '@shared/resultFind'
+import { emitDataai, onDataai } from '../appEvents'
 
 const ROW_HEIGHT = 32
 
@@ -160,6 +162,15 @@ export function ResultToolbar({
           )}
         </label>
       )}
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
+        disabled={rows.length === 0}
+        title="在结果中查找（结果区 Ctrl+F）"
+        onClick={() => emitDataai('dataai:result-find')}
+      >
+        查找
+      </button>
       <button
         type="button"
         className="btn btn-ghost tiny-btn"
@@ -317,6 +328,11 @@ export function ResultGrid({
   } | null>(null)
   const [selectedIndexes, setSelectedIndexes] = useState<Set<number>>(() => new Set())
   const selectionAnchorRef = useRef<number | null>(null)
+  const findInputRef = useRef<HTMLInputElement>(null)
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [findCaseSensitive, setFindCaseSensitive] = useState(false)
+  const [findIndex, setFindIndex] = useState(0)
 
   const visibleColumns = useMemo(() => columns.filter((column) => column !== '__rowid__'), [columns])
   const displayColumns = useMemo(() => {
@@ -327,6 +343,16 @@ export function ResultGrid({
   }, [visibleColumns, pinned])
 
   const displayRows = useMemo(() => sortResultRows(rows, sort), [rows, sort])
+  const findHits = useMemo(
+    () =>
+      collectResultFindHits(displayRows, displayColumns, findQuery, {
+        caseSensitive: findCaseSensitive,
+      }),
+    [displayRows, displayColumns, findQuery, findCaseSensitive],
+  )
+  const findCurrent =
+    findHits.length > 0 ? findHits[Math.min(Math.max(0, findIndex), findHits.length - 1)]! : null
+
   useEffect(() => {
     onViewRowsChange?.(displayRows)
   }, [displayRows, onViewRowsChange])
@@ -369,6 +395,9 @@ export function ResultGrid({
     setSelectedIndexes(new Set())
     selectionAnchorRef.current = null
     setPinned((current) => current.filter((name) => columns.includes(name)))
+    setFindOpen(false)
+    setFindQuery('')
+    setFindIndex(0)
     setNote(rows.length > 500 ? `已虚拟滚动渲染 ${rows.length.toLocaleString('zh-CN')} 行` : '')
   }, [columns, rows])
 
@@ -378,6 +407,34 @@ export function ResultGrid({
     window.addEventListener('mousedown', close)
     return () => window.removeEventListener('mousedown', close)
   }, [contextMenu])
+
+  useEffect(() => {
+    return onDataai('dataai:result-find', () => {
+      setFindOpen(true)
+      queueMicrotask(() => findInputRef.current?.focus())
+    })
+  }, [])
+
+  useEffect(() => {
+    setFindIndex(0)
+  }, [findQuery, findCaseSensitive, displayRows, displayColumns])
+
+  useEffect(() => {
+    if (!findOpen || !findQuery.trim() || !findCurrent) return
+    setFocus({ row: findCurrent.row, col: findCurrent.col })
+    virtualizer.scrollToIndex(findCurrent.row, { align: 'center' })
+  }, [findOpen, findQuery, findCurrent?.row, findCurrent?.col, findIndex, virtualizer])
+
+  const closeFind = () => {
+    setFindOpen(false)
+    setFindQuery('')
+    setFindIndex(0)
+  }
+
+  const goFind = (delta: number) => {
+    if (findHits.length === 0) return
+    setFindIndex((current) => stepFindIndex(current, delta, findHits.length))
+  }
 
   useEffect(() => {
     onFocusColumn?.(displayColumns[focus.col] ?? null)
@@ -560,6 +617,67 @@ export function ResultGrid({
   const paddingBottom = Math.max(0, virtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 0))
 
   return (
+    <div className="result-grid-root">
+      {findOpen && (
+        <div className="result-find-bar" role="search" onMouseDown={(event) => event.stopPropagation()}>
+          <span className="result-find-label">在结果中查找</span>
+          <input
+            ref={findInputRef}
+            className="result-find-input"
+            value={findQuery}
+            placeholder="匹配单元格…"
+            aria-label="在结果中查找"
+            onChange={(event) => setFindQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault()
+                closeFind()
+                parentRef.current?.focus()
+              } else if (event.key === 'Enter') {
+                event.preventDefault()
+                goFind(event.shiftKey ? -1 : 1)
+              }
+            }}
+          />
+          <button
+            type="button"
+            className={findCaseSensitive ? 'btn btn-ghost tiny-btn is-active' : 'btn btn-ghost tiny-btn'}
+            aria-pressed={findCaseSensitive}
+            title="区分大小写"
+            onClick={() => setFindCaseSensitive((value) => !value)}
+          >
+            Aa
+          </button>
+          <span className="result-find-count" aria-live="polite">
+            {findQuery.trim()
+              ? findHits.length === 0
+                ? '无匹配'
+                : `${Math.min(findIndex, findHits.length - 1) + 1}/${findHits.length}`
+              : '—'}
+          </span>
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            disabled={findHits.length === 0}
+            title="上一个（Shift+Enter）"
+            onClick={() => goFind(-1)}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            disabled={findHits.length === 0}
+            title="下一个（Enter）"
+            onClick={() => goFind(1)}
+          >
+            ↓
+          </button>
+          <button type="button" className="btn btn-ghost tiny-btn" title="关闭（Esc）" onClick={closeFind}>
+            ×
+          </button>
+        </div>
+      )}
     <div
       className="grid-wrap"
       ref={parentRef}
@@ -569,6 +687,17 @@ export function ResultGrid({
       aria-rowcount={displayRows.length}
       aria-colcount={displayColumns.length + 1}
       onKeyDown={(event: KeyboardEvent) => {
+        if (event.key === 'Escape' && findOpen) {
+          event.preventDefault()
+          closeFind()
+          return
+        }
+        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'f' && !editing) {
+          event.preventDefault()
+          setFindOpen(true)
+          queueMicrotask(() => findInputRef.current?.focus())
+          return
+        }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && !editing) {
           event.preventDefault()
           if (selectedIndexes.size > 0) void copySelectedAsTsv()
@@ -734,6 +863,13 @@ export function ResultGrid({
                         value == null ? 'is-null' : '',
                         focused ? 'is-focused' : '',
                         pinnedAt >= 0 ? `is-pinned is-pinned-${pinnedAt}` : '',
+                        findOpen &&
+                        findQuery.trim() &&
+                        findHits.some((hit) => hit.row === rowIndex && hit.col === colIndex)
+                          ? findCurrent?.row === rowIndex && findCurrent.col === colIndex
+                            ? 'is-find-current'
+                            : 'is-find-hit'
+                          : '',
                       ]
                         .filter(Boolean)
                         .join(' ')}
@@ -836,6 +972,7 @@ export function ResultGrid({
         {sort ? ` 当前排序：${sort.column} ${sort.direction === 'asc' ? '升序' : '降序'}。` : ''}
       </p>
       {canEditSqlite && <p className="result-footnote">SQLite：双击单元格可编辑（需确认）。隐藏列 __rowid__ 用于定位行。</p>}
+    </div>
     </div>
   )
 }

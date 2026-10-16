@@ -111,6 +111,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'result.find',
+    title: '在结果中查找',
+    subtitle: '高亮匹配单元格并定位',
+    keywords: 'result find search grid 结果 查找',
+    shortcut: '结果区 Ctrl+F',
+    category: 'query',
+  },
+  {
     id: 'editor.replace',
     title: '在编辑器中替换',
     subtitle: 'Monaco 查找替换',
@@ -364,4 +372,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '复制查询标签', keys: 'Ctrl+Shift+D · 右键' },
   { action: '重新打开已关闭标签', keys: 'Ctrl+Shift+T' },
   { action: '拖拽调整标签顺序', keys: '标签栏拖拽（固定组内/未固定组内）' },
+  { action: '在结果中查找', keys: '结果区 Ctrl+F · 工具栏「查找」' },
 ]

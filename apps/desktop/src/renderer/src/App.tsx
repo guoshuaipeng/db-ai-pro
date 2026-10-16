@@ -157,6 +157,9 @@ export function App() {
         case 'editor.find':
           emitDataai('dataai:find')
           break
+        case 'result.find':
+          emitDataai('dataai:result-find')
+          break
         case 'editor.replace':
           emitDataai('dataai:replace')
           break

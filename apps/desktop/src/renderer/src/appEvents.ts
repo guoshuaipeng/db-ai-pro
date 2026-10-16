@@ -7,6 +7,7 @@ export type DataaiEventMap = {
   'dataai:format-sql': undefined
   'dataai:toggle-comment': undefined
   'dataai:find': undefined
+  'dataai:result-find': undefined
   'dataai:replace': undefined
   'dataai:open-templates': undefined
   'dataai:insert-template': { templateId: string }

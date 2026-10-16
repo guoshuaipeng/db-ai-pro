@@ -361,6 +361,23 @@ export function ResultPane() {
     if (!chartable && view === 'chart') setView('table')
   }, [chartable, view])
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey) return
+      if (event.key.toLowerCase() !== 'f') return
+      const target = event.target as HTMLElement | null
+      const active = document.activeElement as HTMLElement | null
+      const inResult =
+        Boolean(target?.closest('.result-pane')) || Boolean(active?.closest('.result-pane'))
+      if (!inResult) return
+      event.preventDefault()
+      event.stopPropagation()
+      emitDataai('dataai:result-find')
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
+
   const gridCount = results?.tabs.filter((tab) => tab.kind === 'grid').length ?? 0
 
   const filteredRows = useMemo(() => {
