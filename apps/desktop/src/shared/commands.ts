@@ -650,5 +650,6 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '慢查询历史', keys: '历史面板「仅慢查询」· Ctrl+K' },
   { action: '结果摘要条', keys: '结果区标签下方自动显示' },
   { action: '拖拽插入 SQL', keys: '收藏/历史/对象树 → 拖到编辑器' },
+  { action: '显示的库', keys: '连接菜单「显示的库」· 筛选 / 反选' },
   { action: '刷新对象树', keys: '侧栏刷新 · 连接/库/表菜单「刷新」' },
 ]

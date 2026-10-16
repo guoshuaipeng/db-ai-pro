@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { resolveVisibleDatabases, whitelistForSave } from './dbVisibility'
+import {
+  dbVisibilityEmptyBody,
+  filterDatabaseNames,
+  invertDatabaseChecked,
+  resolveVisibleDatabases,
+  whitelistForSave,
+} from './dbVisibility'
 
 describe('resolveVisibleDatabases', () => {
   const all = ['a', 'b', 'c']
@@ -23,3 +29,26 @@ describe('whitelistForSave', () => {
     expect(whitelistForSave(['a', 'b', 'c'], ['c'])).toEqual(['c'])
   })
 })
+
+describe('filterDatabaseNames', () => {
+  const all = ['orders', 'OrderArchive', 'users', 'sys']
+  it('filters case-insensitively', () => {
+    expect(filterDatabaseNames(all, 'order')).toEqual(['orders', 'OrderArchive'])
+    expect(filterDatabaseNames(all, '  ')).toEqual(all)
+  })
+})
+
+describe('invertDatabaseChecked', () => {
+  it('toggles only the universe and preserves others', () => {
+    const checked = new Set(['orders', 'sys'])
+    const next = invertDatabaseChecked(['orders', 'users'], checked)
+    expect([...next].sort()).toEqual(['sys', 'users'])
+  })
+})
+
+describe('dbVisibilityEmptyBody', () => {
+  it('returns Chinese guidance', () => {
+    expect(dbVisibilityEmptyBody()).toContain('没有可显示的库')
+  })
+})
+

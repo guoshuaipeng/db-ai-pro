@@ -1,11 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { DIALECTS, dialectInfo, needsServerDatabase } from '@shared/types'
 import { CONN_COLOR_TAGS } from '@shared/connGroups'
 import type { ConnectionInput, ConnectionPublic, Dialect } from '@shared/types'
 import type { ImportPlanItem } from '@shared/connectionTransfer'
 import { getApi } from '../bridge'
 import { useWorkspace } from '../state/workspace'
-import { whitelistForSave } from '@shared/dbVisibility'
+import {
+  dbVisibilityEmptyBody,
+  filterDatabaseNames,
+  invertDatabaseChecked,
+  whitelistForSave,
+} from '@shared/dbVisibility'
+import { EmptyState } from './EmptyState'
 
 export function Dialogs() {
   const ws = useWorkspace()
@@ -445,6 +451,8 @@ function DbVisibilityDialog({ connection }: { connection: ConnectionPublic }) {
   const [allDbs, setAllDbs] = useState<string[]>([])
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
+  const [filterQuery, setFilterQuery] = useState('')
+  const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -478,7 +486,12 @@ function DbVisibilityDialog({ connection }: { connection: ConnectionPublic }) {
     return () => {
       cancelled = true
     }
-  }, [connection.id, connection.visibleDatabases])
+  }, [connection.id, connection.visibleDatabases, reloadToken])
+
+  const filteredDbs = useMemo(
+    () => filterDatabaseNames(allDbs, filterQuery),
+    [allDbs, filterQuery],
+  )
 
   const toggle = (name: string) => {
     setChecked((prev) => {
@@ -491,6 +504,13 @@ function DbVisibilityDialog({ connection }: { connection: ConnectionPublic }) {
 
   const selectAll = () => setChecked(new Set(allDbs))
   const selectNone = () => setChecked(new Set())
+  const invertVisible = () =>
+    setChecked((prev) => invertDatabaseChecked(filteredDbs, prev))
+
+  const reload = () => {
+    setFilterQuery('')
+    setReloadToken((n) => n + 1)
+  }
 
   const save = async () => {
     setSaving(true)
@@ -520,11 +540,44 @@ function DbVisibilityDialog({ connection }: { connection: ConnectionPublic }) {
         {loading ? (
           <p className="dialog-meta">正在列出数据库…</p>
         ) : error ? (
-          <p className="field-error">{error}</p>
+          <EmptyState
+            compact
+            title="无法列出数据库"
+            body={error}
+            actions={
+              <button type="button" className="btn btn-primary" onClick={reload}>
+                重试
+              </button>
+            }
+          />
         ) : allDbs.length === 0 ? (
-          <p className="dialog-meta">没有可显示的库（或当前账号无权列出）。</p>
+          <EmptyState
+            compact
+            title="没有可显示的库"
+            body={dbVisibilityEmptyBody()}
+            actions={
+              <button type="button" className="btn btn-ghost" onClick={reload}>
+                重新加载
+              </button>
+            }
+          />
         ) : (
           <>
+            <label className="db-vis-filter">
+              <span className="db-vis-filter-label">筛选</span>
+              <input
+                className="db-vis-filter-input"
+                value={filterQuery}
+                onChange={(event) => setFilterQuery(event.target.value)}
+                placeholder="按库名过滤…"
+                aria-label="按库名过滤"
+              />
+              {filterQuery.trim() && (
+                <span className="dialog-meta">
+                  {filteredDbs.length}/{allDbs.length}
+                </span>
+              )}
+            </label>
             <div className="db-vis-toolbar">
               <button type="button" className="btn btn-ghost" onClick={selectAll}>
                 全选
@@ -532,22 +585,52 @@ function DbVisibilityDialog({ connection }: { connection: ConnectionPublic }) {
               <button type="button" className="btn btn-ghost" onClick={selectNone}>
                 全不选
               </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                title={
+                  filterQuery.trim()
+                    ? '反选当前筛选结果中的库'
+                    : '反选全部库'
+                }
+                disabled={filteredDbs.length === 0}
+                onClick={invertVisible}
+              >
+                反选
+              </button>
               <span className="dialog-meta">
                 已选 {checked.size} / {allDbs.length}
               </span>
             </div>
-            <div className="db-vis-list" role="group" aria-label="数据库列表">
-              {allDbs.map((name) => (
-                <label key={name} className="checkline db-vis-item">
-                  <input
-                    type="checkbox"
-                    checked={checked.has(name)}
-                    onChange={() => toggle(name)}
-                  />
-                  <span>{name}</span>
-                </label>
-              ))}
-            </div>
+            {filteredDbs.length === 0 ? (
+              <EmptyState
+                compact
+                title="没有匹配的库"
+                body="试试更短的关键字，或清除筛选后查看全部。"
+                actions={
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setFilterQuery('')}
+                  >
+                    清除筛选
+                  </button>
+                }
+              />
+            ) : (
+              <div className="db-vis-list" role="group" aria-label="数据库列表">
+                {filteredDbs.map((name) => (
+                  <label key={name} className="checkline db-vis-item">
+                    <input
+                      type="checkbox"
+                      checked={checked.has(name)}
+                      onChange={() => toggle(name)}
+                    />
+                    <span>{name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
           </>
         )}
         <div className="dialog-actions">
@@ -557,7 +640,7 @@ function DbVisibilityDialog({ connection }: { connection: ConnectionPublic }) {
           <button
             type="button"
             className="btn btn-primary"
-            disabled={loading || !!error || saving}
+            disabled={loading || !!error || saving || allDbs.length === 0}
             onClick={() => void save()}
           >
             {saving ? '保存中…' : '保存'}
@@ -567,4 +650,5 @@ function DbVisibilityDialog({ connection }: { connection: ConnectionPublic }) {
     </div>
   )
 }
+
 
