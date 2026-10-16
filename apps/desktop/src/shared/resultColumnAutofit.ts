@@ -3,6 +3,10 @@
 export const AUTOFIT_SAMPLE_ROWS = 200
 export const AUTOFIT_MIN_PX = 56
 export const AUTOFIT_MAX_PX = 480
+/** Default width when a column has not been sized yet. */
+export const DEFAULT_COLUMN_WIDTH_PX = 140
+/** Manual drag-resize may go wider than autofit. */
+export const MANUAL_COLUMN_MAX_PX = 720
 /** Cell horizontal padding (12+12) + small slack. */
 export const AUTOFIT_PAD_PX = 28
 /** Header pin / sort controls beside the title. */
@@ -50,6 +54,17 @@ export type AutofitOptions = {
 
 function clampWidth(raw: number, minPx: number, maxPx: number): number {
   return Math.min(maxPx, Math.max(minPx, Math.ceil(raw)))
+}
+
+/** Clamp a dragged / typed column width for the result grid. */
+export function clampColumnWidthPx(
+  raw: number,
+  options?: { minPx?: number; maxPx?: number },
+): number {
+  const minPx = options?.minPx ?? AUTOFIT_MIN_PX
+  const maxPx = options?.maxPx ?? MANUAL_COLUMN_MAX_PX
+  if (!Number.isFinite(raw)) return minPx
+  return clampWidth(raw, minPx, maxPx)
 }
 
 /** Width for one column from header + up to sampleRows cells. */

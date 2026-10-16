@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import ExcelJS from 'exceljs'
 import { getApi } from '../bridge'
@@ -45,7 +45,12 @@ import {
   toggleRowIndex,
 } from '@shared/rowSelection'
 import { collectResultFindHits, stepFindIndex } from '@shared/resultFind'
-import { estimateAllColumnWidths, estimateColumnWidthPx } from '@shared/resultColumnAutofit'
+import {
+  DEFAULT_COLUMN_WIDTH_PX,
+  clampColumnWidthPx,
+  estimateAllColumnWidths,
+  estimateColumnWidthPx,
+} from '@shared/resultColumnAutofit'
 import {
   applyColumnFilters,
   COLUMN_FILTER_MODE_LABELS,
@@ -905,7 +910,7 @@ export function ResultGrid({
     for (let i = 0; i < idx; i += 1) {
       const name = pinnedCols[i]
       if (!name) continue
-      left += colWidths?.[name] ?? 140
+      left += colWidths?.[name] ?? DEFAULT_COLUMN_WIDTH_PX
     }
     return left
   }
@@ -934,6 +939,42 @@ export function ResultGrid({
     setColWidths((current) => ({ ...(current ?? {}), [column]: width }))
     setNote(`已适应列「${column}」→ ${width}px`)
     setContextMenu(null)
+  }
+
+  const beginColumnResize = (event: ReactPointerEvent<HTMLSpanElement>, column: string) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    const handle = event.currentTarget
+    const th = handle.closest('th')
+    const startX = event.clientX
+    const measured = th?.getBoundingClientRect().width
+    const startW =
+      colWidths?.[column] ??
+      (measured != null && measured > 0 ? measured : DEFAULT_COLUMN_WIDTH_PX)
+    handle.setPointerCapture(event.pointerId)
+    document.body.classList.add('is-col-resizing')
+
+    const onMove = (ev: PointerEvent) => {
+      const next = clampColumnWidthPx(startW + (ev.clientX - startX))
+      setColWidths((current) => ({ ...(current ?? {}), [column]: next }))
+    }
+    const onUp = (ev: PointerEvent) => {
+      try {
+        handle.releasePointerCapture(ev.pointerId)
+      } catch {
+        /* already released */
+      }
+      document.body.classList.remove('is-col-resizing')
+      handle.removeEventListener('pointermove', onMove)
+      handle.removeEventListener('pointerup', onUp)
+      handle.removeEventListener('pointercancel', onUp)
+      const finalW = clampColumnWidthPx(startW + (ev.clientX - startX))
+      setNote(`列宽「${column}」→ ${finalW}px`)
+    }
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onUp)
+    handle.addEventListener('pointercancel', onUp)
   }
 
 
@@ -1390,7 +1431,11 @@ export function ResultGrid({
                   </button>
                   <span
                     className="grid-col-resizer"
-                    title="双击：列宽适应"
+                    title="拖拽调整列宽 · 双击适应"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label={`调整列宽 ${column}`}
+                    onPointerDown={(event) => beginColumnResize(event, column)}
                     onDoubleClick={(event) => {
                       event.preventDefault()
                       event.stopPropagation()
@@ -1634,7 +1679,7 @@ export function ResultGrid({
       />
       {note && <p className="result-footnote">{note}</p>}
       <p className="result-footnote">
-        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；「列宽适应」或表头分隔线双击估算列宽；表头「筛」可按列筛选（与上方筛选框叠加）；「显示列」/ 右键「仅显示此列」可隐藏列；双击查看单元格全文，Shift+双击复制单元格；NULL 与空字符串 "" 分别显示。
+        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；表头分隔线拖拽调列宽（双击适应）；表头「筛」可按列筛选（与上方筛选框叠加）；「显示列」/ 右键「仅显示此列」可隐藏列；双击查看单元格全文，Shift+双击复制单元格；NULL 与空字符串 "" 分别显示。
         {sort ? ` 当前排序：${sort.column} ${sort.direction === 'asc' ? '升序' : '降序'}。` : ''}
       </p>
       {canEditSqlite && <p className="result-footnote">SQLite：双击查看 · Shift+双击复制；Enter 进入编辑（需确认）。隐藏列 __rowid__ 用于定位行。</p>}

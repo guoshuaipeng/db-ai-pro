@@ -927,6 +927,11 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   height: 100%;
   cursor: col-resize;
   z-index: 5;
+  touch-action: none;
+}
+.grid-col-resizer:hover,
+body.is-col-resizing .grid-col-resizer {
+  background: color-mix(in srgb, var(--accent, #3b82f6) 35%, transparent);
 }
 
 .grid-col-filter-btn {

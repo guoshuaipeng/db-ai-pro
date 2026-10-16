@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   AUTOFIT_MAX_PX,
   AUTOFIT_MIN_PX,
+  MANUAL_COLUMN_MAX_PX,
   cellTextForAutofit,
+  clampColumnWidthPx,
   estimateAllColumnWidths,
   estimateColumnWidthPx,
   measureTextWidthPx,
@@ -46,4 +48,12 @@ describe('resultColumnAutofit', () => {
     expect(Object.keys(widths)).toEqual(['a', 'b'])
     expect(widths.b!).toBeGreaterThan(widths.a!)
   })
+
+  it('clamps manual column drag widths', () => {
+    expect(clampColumnWidthPx(10)).toBe(AUTOFIT_MIN_PX)
+    expect(clampColumnWidthPx(9999)).toBe(MANUAL_COLUMN_MAX_PX)
+    expect(clampColumnWidthPx(200)).toBe(200)
+    expect(clampColumnWidthPx(Number.NaN)).toBe(AUTOFIT_MIN_PX)
+  })
+
 })

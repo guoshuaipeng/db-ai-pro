@@ -636,7 +636,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '复制结果为 INSERT', keys: '结果工具栏「复制 INSERT」' },
   { action: '清空结果标签', keys: '结果栏「清空」· 标签 × / 中键 · Ctrl+K' },
   { action: '关闭其他 / 右侧结果标签', keys: '结果标签右键菜单' },
-  { action: '列宽适应', keys: '工具栏「列宽适应」· Ctrl+K · 表头分隔线双击' },
+  { action: '调整列宽', keys: '表头分隔线拖拽 · 双击适应 · 工具栏「列宽适应」' },
   { action: '结果列筛选', keys: '表头「筛」· 右键「列筛选…」' },
   { action: '导出列选择', keys: '导出 CSV/JSON/MD/HTML/Excel 前勾选列' },
   { action: '导出选中行', keys: '有选中行时导出对话框默认「仅选中行」' },
