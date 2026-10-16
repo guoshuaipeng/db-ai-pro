@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { emitDataai, onDataai } from './appEvents'
 import type { CommandDef } from '@shared/commands'
 import { templateIdFromCommand } from '@shared/queryTemplates'
-import { dialectInfo, isKvDialect } from '@shared/types'
+import { isKvDialect } from '@shared/types'
 import { Mark } from './components/icons'
 import { TitleBar } from './components/TitleBar'
 import { resolveTabConnectionColor } from '@shared/tabConnectionColor'
@@ -20,6 +20,7 @@ import { SchemaDiffPanel } from './components/SchemaDiffPanel'
 import { CommandPalette } from './components/CommandPalette'
 import type { SqlFavorite } from '@shared/types'
 import { ShortcutsHelp } from './components/ShortcutsHelp'
+import { StatusBar } from './components/StatusBar'
 import { SettingsCenter, type SettingsTab } from './components/SettingsCenter'
 import {
   DEFAULT_PREFS,
@@ -486,78 +487,30 @@ export function App() {
         {ws.aiOpen && <AiPane />}
       </div>
       )}
-      <footer className="statusbar">
-        <span className="status-item">
-          <span
-            className={
-              ws.schema.some((node) => node.id === ws.activeConnection?.id && node.status === 'error')
-                ? 'status-dot is-bad'
-                : ws.activeConnection
-                  ? 'status-dot is-on'
-                  : 'status-dot'
-            }
-          />
-          {ws.activeConnection ? (
-            <>
-              <span
-                className={`badge badge-${ws.activeConnection.dialect}${
-                  dialectInfo(ws.activeConnection.dialect).executable || dialectInfo(ws.activeConnection.dialect).kv
-                    ? ''
-                    : ' badge-pending'
-                }`}
-              >
-                {dialectInfo(ws.activeConnection.dialect).label}
-              </span>
-              {ws.activeConnection.name}
-            </>
-          ) : (
-            '未连接'
-          )}
-        </span>
-        <span className="status-item">
-          行 {ws.cursor.line} · 列 {ws.cursor.column}
-        </span>
-        {ws.readOnlyActive ? (
-          <span
-            className="status-item is-readonly"
-            aria-live="polite"
-            title={ws.globalReadOnly ? '全局只读已开启' : '当前连接为只读'}
-          >
-            只读
-          </span>
-        ) : null}
-        {ws.txnOpen ? (
-          <span className="status-item is-txn" aria-live="polite" title="当前连接处于手动事务中">
-            事务中
-          </span>
-        ) : null}
-        {ws.running ? (
-          <span className="status-item is-running" aria-live="polite">
-            <span className="status-pulse" />
-            执行中…
-          </span>
-        ) : lastRunLabel ? (
-          <span
-            className={
-              ws.lastRun?.ok === false
-                ? 'status-item is-warn'
-                : lastRunSlow
-                  ? 'status-item is-slow'
-                  : 'status-item'
-            }
-          >
-            {lastRunLabel}
-          </span>
-        ) : null}
-        <span className="status-spacer" />
-        {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
-        <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
-        <span className="status-item status-muted status-zoom" title="界面缩放">
-          {formatZoomPercent(prefs.zoomFactor)}
-        </span>
-        <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '2.8.0'}</span>
-      </footer>
+      <StatusBar
+        activeConnection={ws.activeConnection}
+        schemaError={ws.schema.some((node) => node.id === ws.activeConnection?.id && node.status === 'error')}
+        health={ws.activeConnection ? ws.healthById[ws.activeConnection.id] : undefined}
+        cursorLine={ws.cursor.line}
+        cursorColumn={ws.cursor.column}
+        readOnlyActive={ws.readOnlyActive}
+        globalReadOnly={ws.globalReadOnly}
+        txnOpen={ws.txnOpen}
+        running={ws.running}
+        lastRunLabel={lastRunLabel}
+        lastRunOk={ws.lastRun ? ws.lastRun.ok : null}
+        lastRunSlow={lastRunSlow}
+        encryptionLabel={encryptionLabel}
+        modeLabel={ws.meta?.mode === 'preview' ? '界面预览' : '本机'}
+        zoomLabel={formatZoomPercent(prefs.zoomFactor)}
+        version={ws.meta?.version ?? '3.30.0'}
+        onProbeHealth={() => {
+          if (ws.activeConnection) void ws.checkConnectionHealth(ws.activeConnection.id, false)
+        }}
+        onOpenPalette={() => setPaletteOpen(true)}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
+        onZoomReset={zoomReset}
+      />
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (
           <button key={toast.id} type="button" className={`toast is-${toast.tone}`} onClick={() => ws.dismissToast(toast.id)}>

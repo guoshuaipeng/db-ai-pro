@@ -1288,6 +1288,40 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   user-select: none;
 }
 .status-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+
+.status-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0 6px;
+  margin: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  height: 100%;
+}
+.status-btn:hover {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--ink);
+}
+.status-conn-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status-latency {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-tertiary);
+  font-size: 11.5px;
+}
+.status-latency.is-good { color: var(--good); }
+.status-latency.is-warn { color: var(--warn); }
+.status-latency.is-bad { color: var(--danger); }
+.status-latency.is-idle,
+.status-latency.is-unsupported { color: var(--ink-tertiary); }
+.status-dot.is-warn { background: var(--warn); }
+
 .status-spacer { flex: 1; }
 .status-dot { width: 6px; height: 6px; border-radius: 99px; background: #5c6578; }
 .status-dot.is-on { background: var(--good); }
