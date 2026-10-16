@@ -6,6 +6,8 @@ import { filterSuggestions, type SchemaSuggestItem } from '@shared/schemaSuggest
 import { onDataai } from '../appEvents'
 import { pickRunSql, selectionIsNonEmpty } from '@shared/runSqlPick'
 import { isSqlDragEvent, readSqlDragText } from '@shared/sqlDragDrop'
+import { isOsFileDrag } from '@shared/sqlFileDrop'
+import { readDroppedSqlFiles } from '../sqlFileDropRead'
 import { formatSql } from '@shared/sqlFormat'
 import { clampGotoLineTarget } from '@shared/gotoLine'
 import {
@@ -139,6 +141,8 @@ type SqlEditorProps = {
   wordWrap?: boolean
   /** Bracket pair colorization + guides. Default on. */
   bracketColorization?: boolean
+  /** OS .sql/.txt file drops → open as tabs. */
+  onOpenDroppedFiles?: (items: { name: string; content: string }[]) => void
 }
 
 export function SqlEditor({
@@ -150,6 +154,7 @@ export function SqlEditor({
   fontSize = DEFAULT_EDITOR_FONT_SIZE,
   wordWrap = false,
   bracketColorization = true,
+  onOpenDroppedFiles,
 }: SqlEditorProps) {
   const host = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<editor.IStandaloneCodeEditor | null>(null)
@@ -451,12 +456,14 @@ export function SqlEditor({
     <div
       className={dragOver ? 'editor-wrap is-drop-target' : 'editor-wrap'}
       onDragEnter={(event) => {
-        if (!isSqlDragEvent(event.dataTransfer.types)) return
+        const types = event.dataTransfer.types
+        if (!isOsFileDrag(types) && !isSqlDragEvent(types)) return
         event.preventDefault()
         setDragOver(true)
       }}
       onDragOver={(event) => {
-        if (!isSqlDragEvent(event.dataTransfer.types)) return
+        const types = event.dataTransfer.types
+        if (!isOsFileDrag(types) && !isSqlDragEvent(types)) return
         event.preventDefault()
         event.dataTransfer.dropEffect = 'copy'
         setDragOver(true)
@@ -466,7 +473,17 @@ export function SqlEditor({
         setDragOver(false)
       }}
       onDrop={(event) => {
-        if (!isSqlDragEvent(event.dataTransfer.types)) return
+        const types = event.dataTransfer.types
+        if (isOsFileDrag(types) && onOpenDroppedFiles) {
+          event.preventDefault()
+          setDragOver(false)
+          void readDroppedSqlFiles(event.dataTransfer.files).then((items) => {
+            if (items.length === 0) return
+            onOpenDroppedFiles(items)
+          })
+          return
+        }
+        if (!isSqlDragEvent(types)) return
         event.preventDefault()
         setDragOver(false)
         const text = readSqlDragText(event.dataTransfer)
@@ -477,11 +494,11 @@ export function SqlEditor({
       <div ref={host} className="monaco-host" />
       {dragOver && (
         <div className="editor-drop-hint" aria-hidden="true">
-          放到此处插入 SQL
+          放到此处：插入片段，或打开 .sql / .txt 文件
         </div>
       )}
       {value.trim() === '' && !dragOver && (
-        <div className="editor-overlay">编写 SQL，按 F5 运行 · Ctrl+Space 补全表/列 · 可拖入收藏/历史/对象名</div>
+        <div className="editor-overlay">编写 SQL，按 F5 运行 · Ctrl+Space 补全表/列 · 可拖入收藏/历史/对象名或 .sql 文件</div>
       )}
     </div>
   )

@@ -205,6 +205,7 @@ type WorkspaceValue = {
   updateSql: (sql: string) => void
   saveEditorSqlToFile: () => Promise<void>
   openSqlFile: () => Promise<void>
+  openSqlTabsFromTexts: (items: { title: string; sql: string }[]) => void
   newTab: () => void
   closeTab: (id: string) => void
   isEditorDirty: (id: string) => boolean
@@ -1148,6 +1149,40 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const openSqlTabsFromTexts = (items: { title: string; sql: string }[]) => {
+    const cleaned = items
+      .map((item) => ({
+        title: tabTitleFromSqlPath(item.title),
+        sql: item.sql,
+      }))
+      .filter((item) => item.title.length > 0)
+    if (cleaned.length === 0) {
+      pushToast('info', '没有可打开的 .sql / .txt 文件')
+      return
+    }
+    const created = cleaned.map((item) => ({
+      id: crypto.randomUUID(),
+      title: item.title,
+      sql: item.sql,
+    }))
+    setEditorTabs((tabs) => [
+      ...tabs,
+      ...created.map((item) =>
+        withCleanBaseline({
+          id: item.id,
+          title: item.title,
+          sql: item.sql,
+          connectionId: activeConnectionId,
+        }),
+      ),
+    ])
+    setActiveEditorId(created[created.length - 1].id)
+    pushToast(
+      'success',
+      cleaned.length === 1 ? `已打开 ${cleaned[0].title}` : `已打开 ${cleaned.length} 个 SQL 文件`,
+    )
+  }
+
   const openSqlFile = async () => {
     try {
       const result = await api.app.openTextFile({ title: '打开 SQL' })
@@ -1159,19 +1194,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         pushToast('error', result.error)
         return
       }
-      const id = crypto.randomUUID()
-      const title = tabTitleFromSqlPath(result.path)
-      setEditorTabs((tabs) => [
-        ...tabs,
-        withCleanBaseline({
-          id,
-          title,
-          sql: result.content,
-          connectionId: activeConnectionId,
-        }),
-      ])
-      setActiveEditorId(id)
-      pushToast('success', `已打开 ${result.path.replace(/^.*[/\\]/, '')}`)
+      openSqlTabsFromTexts([{ title: result.path, sql: result.content }])
     } catch (error) {
       pushToast('error', error instanceof Error ? error.message : '打开失败')
     }
@@ -2340,6 +2363,7 @@ ${sql.trim()}
     updateSql,
     saveEditorSqlToFile,
     openSqlFile,
+    openSqlTabsFromTexts,
     newTab,
     closeTab,
     isEditorDirty,

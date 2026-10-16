@@ -441,6 +441,9 @@ export function EditorPane() {
             fontSize={ws.editorFontSize}
             wordWrap={ws.editorWordWrap}
             bracketColorization={ws.editorBracketColorization}
+            onOpenDroppedFiles={(items) =>
+              ws.openSqlTabsFromTexts(items.map((item) => ({ title: item.name, sql: item.content })))
+            }
           />
         )}
         <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} slowOnlyDefault={historySlowOnly} />
