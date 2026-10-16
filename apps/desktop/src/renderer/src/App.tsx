@@ -497,6 +497,7 @@ export function App() {
         globalReadOnly={ws.globalReadOnly}
         txnOpen={ws.txnOpen}
         running={ws.running}
+        runningSince={ws.runningSince}
         lastRunLabel={lastRunLabel}
         lastRunOk={ws.lastRun ? ws.lastRun.ok : null}
         lastRunSlow={lastRunSlow}

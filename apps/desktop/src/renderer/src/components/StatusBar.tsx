@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { dialectInfo } from '@shared/types'
+import { formatElapsedMs } from '@shared/slowQuery'
 import { statusHealthView } from '@shared/statusBar'
 import type { ConnHealth } from '@shared/connHealth'
 import type { ConnectionPublic } from '@shared/types'
@@ -13,6 +15,7 @@ type StatusBarProps = {
   globalReadOnly: boolean
   txnOpen: boolean
   running: boolean
+  runningSince: number | null
   lastRunLabel: string | null
   lastRunOk: boolean | null
   lastRunSlow: boolean
@@ -36,6 +39,7 @@ export function StatusBar({
   globalReadOnly,
   txnOpen,
   running,
+  runningSince,
   lastRunLabel,
   lastRunOk,
   lastRunSlow,
@@ -108,10 +112,7 @@ export function StatusBar({
         </span>
       ) : null}
       {running ? (
-        <span className="status-item is-running" aria-live="polite">
-          <span className="status-pulse" />
-          执行中…
-        </span>
+        <RunningElapsed since={runningSince} />
       ) : lastRunLabel ? (
         <span
           className={
@@ -150,5 +151,20 @@ export function StatusBar({
       </button>
       <span className="status-item">{version}</span>
     </footer>
+  )
+}
+
+function RunningElapsed({ since }: { since: number | null }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 100)
+    return () => window.clearInterval(id)
+  }, [])
+  const elapsed = since != null ? Math.max(0, now - since) : 0
+  return (
+    <span className="status-item is-running" aria-live="polite" title="查询执行中">
+      <span className="status-pulse" />
+      执行中 · {formatElapsedMs(elapsed)}
+    </span>
   )
 }

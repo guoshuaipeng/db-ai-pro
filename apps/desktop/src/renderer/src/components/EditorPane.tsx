@@ -4,6 +4,7 @@ import { suggestionsFromSchema } from '@shared/schemaSuggest'
 import { IconClock, IconPlay, IconPlus, IconStar, IconStop } from './icons'
 import { ScrollTabs, type TabContextAction } from './ScrollTabs'
 import { ToolbarOverflow } from './ToolbarOverflow'
+import { TabConnectionSelect } from './TabConnectionSelect'
 import { SqlEditor } from './SqlEditor'
 import { ResultGrid, ResultToolbar } from './ResultGrid'
 import { ResultSummaryBar } from './ResultSummaryBar'
@@ -257,9 +258,11 @@ export function EditorPane() {
           </div>
         }
       />
-      <ToolbarOverflow
-        className="editor-toolbar"
-        secondary={
+      <div className="editor-toolbar-row">
+        <TabConnectionSelect />
+        <ToolbarOverflow
+          className="editor-toolbar-actions"
+          secondary={
           <>
             {ws.txnSupported && (
               <>
@@ -385,6 +388,7 @@ export function EditorPane() {
           )
         }
       />
+      </div>
       <div className="editor-body">
         {ws.activeEditor && (
           <SqlEditor

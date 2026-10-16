@@ -104,6 +104,7 @@ export type ColumnStatsTarget =
     }
 import type { ImportPlanItem } from '@shared/connectionTransfer'
 import { connectionColorPatch } from '@shared/connColorQuick'
+import { resolveTabConnectionId } from '@shared/tabConnection'
 import type { AiIntent } from '@shared/types'
 import type {
   AiSettingsPublic,
@@ -192,6 +193,9 @@ type WorkspaceValue = {
   editorTabs: EditorTabState[]
   activeEditor: EditorTabState | null
   setActiveEditor: (id: string) => void
+  setActiveTabConnection: (connectionId: string | null) => void
+  /** Epoch ms when current run started; null when idle. */
+  runningSince: number | null
   tabDisconnected: (tab: EditorTabState) => boolean
   updateSql: (sql: string) => void
   newTab: () => void
@@ -419,6 +423,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [closedStackLen, setClosedStackLen] = useState(0)
   const [resultMap, setResultMap] = useState<Record<string, ResultState>>({})
   const [running, setRunning] = useState(false)
+  const [runningSince, setRunningSince] = useState<number | null>(null)
   const [txnOpen, setTxnOpen] = useState(false)
   const [txnSupported, setTxnSupported] = useState(false)
   const [lastRun, setLastRun] = useState<LastRunStats | null>(null)
@@ -1431,9 +1436,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     opts?: { connectionId?: string; editorId?: string; quiet?: boolean; database?: string },
   ) => {
     if (running) return
-    const connectionId = opts?.connectionId ?? activeConnection?.id
-    const connection = connections.find((item) => item.id === connectionId) ?? activeConnection
     const editorId = opts?.editorId ?? activeEditor?.id
+    const editor = editorTabs.find((item) => item.id === editorId) ?? activeEditor
+    const connectionId =
+      opts?.connectionId ??
+      resolveTabConnectionId(editor, activeConnectionId) ??
+      activeConnection?.id
+    const connection = connections.find((item) => item.id === connectionId) ?? activeConnection
     const quiet = opts?.quiet === true
     if (!connection) {
       pushToast('info', '先在左侧选择一个连接')
@@ -1456,6 +1465,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const requestId = crypto.randomUUID()
     sqlRequestRef.current = requestId
     setRunning(true)
+      setRunningSince(Date.now())
     try {
       const prefs = await api.prefs.get()
       const timeoutMs = prefs.queryTimeoutSec > 0 ? prefs.queryTimeoutSec * 1000 : 0
@@ -1541,6 +1551,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     } finally {
       if (sqlRequestRef.current === requestId) sqlRequestRef.current = null
       setRunning(false)
+      setRunningSince(null)
     }
   }
 
@@ -1681,6 +1692,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const requestId = crypto.randomUUID()
     sqlRequestRef.current = requestId
     setRunning(true)
+      setRunningSince(Date.now())
     try {
       const prefs = await api.prefs.get()
       const timeoutMs = prefs.queryTimeoutSec > 0 ? prefs.queryTimeoutSec * 1000 : 0
@@ -1758,6 +1770,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     } finally {
       if (sqlRequestRef.current === requestId) sqlRequestRef.current = null
       setRunning(false)
+      setRunningSince(null)
     }
   }
 
@@ -1774,6 +1787,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const requestId = crypto.randomUUID()
     sqlRequestRef.current = requestId
     setRunning(true)
+      setRunningSince(Date.now())
     try {
       const prefs = await api.prefs.get()
       const timeoutMs = prefs.queryTimeoutSec > 0 ? prefs.queryTimeoutSec * 1000 : 0
@@ -1840,6 +1854,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     } finally {
       if (sqlRequestRef.current === requestId) sqlRequestRef.current = null
       setRunning(false)
+      setRunningSince(null)
     }
   }
 
@@ -1960,6 +1975,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const requestId = crypto.randomUUID()
     sqlRequestRef.current = requestId
     setRunning(true)
+      setRunningSince(Date.now())
     try {
       const prefs = await api.prefs.get()
       const timeoutMs = prefs.queryTimeoutSec > 0 ? prefs.queryTimeoutSec * 1000 : 0
@@ -1990,6 +2006,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     } finally {
       if (sqlRequestRef.current === requestId) sqlRequestRef.current = null
       setRunning(false)
+      setRunningSince(null)
     }
   }
 
@@ -2123,6 +2140,7 @@ ${sql.trim()}
     const requestId = crypto.randomUUID()
     sqlRequestRef.current = requestId
     setRunning(true)
+      setRunningSince(Date.now())
     try {
       const prefs = await api.prefs.get()
       const timeoutMs = prefs.queryTimeoutSec > 0 ? prefs.queryTimeoutSec * 1000 : 0
@@ -2153,6 +2171,7 @@ ${sql.trim()}
     } finally {
       if (sqlRequestRef.current === requestId) sqlRequestRef.current = null
       setRunning(false)
+      setRunningSince(null)
     }
   }
 
@@ -2248,6 +2267,28 @@ ${sql.trim()}
     void checkConnectionHealth(activeConnectionId, true)
   }, [ready, activeConnectionId])
 
+  const setActiveTabConnection = (connectionId: string | null) => {
+    const tab = activeEditor
+    if (!tab) {
+      pushToast('info', '没有活动的查询标签')
+      return
+    }
+    const nextId = connectionId?.trim() || null
+    if (nextId && !connections.some((row) => row.id === nextId)) {
+      pushToast('info', '连接不存在')
+      return
+    }
+    setEditorTabs((tabs) =>
+      tabs.map((row) => (row.id === tab.id ? { ...row, connectionId: nextId } : row)),
+    )
+    if (nextId) {
+      setActiveConnectionId(nextId)
+      void checkConnectionHealth(nextId, true)
+    }
+    const name = nextId ? connections.find((row) => row.id === nextId)?.name : null
+    pushToast('success', name ? `当前标签已绑定「${name}」` : '已清除标签连接绑定')
+  }
+
   const value: WorkspaceValue = {
     ready,
     meta,
@@ -2272,6 +2313,8 @@ ${sql.trim()}
     selectNode,
     editorTabs,
     activeEditor,
+    setActiveTabConnection,
+    runningSince,
     setActiveEditor: (id: string) => {
       setActiveEditorId(id)
       const tab = editorTabs.find((row) => row.id === id)
