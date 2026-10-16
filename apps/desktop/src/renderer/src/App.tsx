@@ -673,6 +673,7 @@ export function App() {
         onOpenRecentTable={ws.openRecentTable}
         onOpenRecentQuery={ws.openRecentQuery}
         onClearRecent={() => void ws.clearRecent()}
+        onToast={ws.pushToast}
       />
       <NotificationDrawer
         open={notifOpen}

@@ -135,3 +135,47 @@ export function filterRecentQueries(list: RecentQueryItem[], query: string): Rec
       row.connectionName.toLowerCase().includes(q),
   )
 }
+
+
+export type RecentKindFilter = 'all' | 'table' | 'query'
+
+export const RECENT_KIND_FILTERS: readonly { id: RecentKindFilter; label: string }[] = [
+  { id: 'all', label: '全部' },
+  { id: 'table', label: '表' },
+  { id: 'query', label: '查询' },
+]
+
+export function formatRecentTableClipboard(item: RecentTableItem): string {
+  const table = item.tableName.trim()
+  const conn = item.connectionName.trim()
+  if (conn && table) return `${conn} / ${table}`
+  return table || conn
+}
+
+export function formatRecentQueryClipboard(item: RecentQueryItem): string {
+  return item.sql.trim()
+}
+
+export function recentTableCopiedToast(item: RecentTableItem): string {
+  const name = item.tableName.trim() || '表'
+  const clipped = name.length > 28 ? `${name.slice(0, 27)}…` : name
+  return `已复制「${clipped}」`
+}
+
+export function recentQueryCopiedToast(): string {
+  return '已复制 SQL 到剪贴板'
+}
+
+export function recentMenuEmptyBody(kind: RecentKindFilter, hasQuery: boolean): string {
+  if (hasQuery && kind !== 'all') {
+    return '没有匹配的最近项。试试更短的关键字，或切换到「全部」。'
+  }
+  if (hasQuery) return '没有匹配的最近表或查询。试试表名、连接名或 SQL 关键字。'
+  if (kind === 'table') return '暂无最近表。在对象树打开表后会出现在这里。'
+  if (kind === 'query') return '暂无最近查询。运行 SQL 后会出现在这里。'
+  return '暂无最近项。打开表或运行 SQL 后会出现在这里。'
+}
+
+export function recentMenuMatchCount(tables: number, queries: number): string {
+  return `${tables} 表 · ${queries} 查询`
+}

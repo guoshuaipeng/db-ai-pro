@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  filterRecentQueries,
+  filterRecentTables,
+  formatRecentQueryClipboard,
+  formatRecentTableClipboard,
   normalizeRecentItems,
   pushRecentQuery,
   pushRecentTable,
   RECENT_ITEMS_LIMIT,
+  recentMenuEmptyBody,
+  recentMenuMatchCount,
 } from './recentItems'
 
 describe('recentItems', () => {
@@ -32,5 +38,23 @@ describe('recentItems', () => {
     }))
     const state = normalizeRecentItems({ version: 1, tables: many, queries: [] })
     expect(state.tables).toHaveLength(RECENT_ITEMS_LIMIT)
+  })
+})
+
+
+describe('recent menu polish', () => {
+  it('filters and formats clipboard', () => {
+    const tables = [
+      { kind: 'table' as const, connectionId: 'c', connectionName: '华东', tableName: 'orders', at: 't' },
+    ]
+    const queries = [
+      { kind: 'query' as const, connectionId: 'c', connectionName: '华东', sql: 'SELECT 1', at: 't' },
+    ]
+    expect(filterRecentTables(tables, 'order')).toHaveLength(1)
+    expect(filterRecentQueries(queries, 'select')).toHaveLength(1)
+    expect(formatRecentTableClipboard(tables[0])).toBe('华东 / orders')
+    expect(formatRecentQueryClipboard(queries[0])).toBe('SELECT 1')
+    expect(recentMenuEmptyBody('all', true)).toContain('没有匹配')
+    expect(recentMenuMatchCount(1, 2)).toBe('1 表 · 2 查询')
   })
 })

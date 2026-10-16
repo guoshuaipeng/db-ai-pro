@@ -3225,6 +3225,58 @@ body.is-col-resizing .grid-col-resizer {
   background: var(--bg-elevated, #12161f);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
 }
+
+.recent-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--hairline);
+}
+.recent-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.recent-kind {
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--muted, #8b95a8);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.recent-kind:hover {
+  color: var(--ink);
+  background: rgba(255,255,255,0.04);
+}
+.recent-kind.is-active {
+  color: var(--ink);
+  border-color: var(--accent, #5b8def);
+  background: rgba(91, 141, 239, 0.12);
+}
+.recent-filter {
+  width: 100%;
+}
+.recent-row-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+.recent-row-wrap .recent-row {
+  flex: 1;
+  min-width: 0;
+}
+.recent-copy {
+  flex-shrink: 0;
+  align-self: center;
+  margin-right: 4px;
+}
+.recent-popover .empty-state {
+  margin: 10px 8px;
+}
+
 .recent-empty {
   margin: 8px;
   color: var(--ink-tertiary);
