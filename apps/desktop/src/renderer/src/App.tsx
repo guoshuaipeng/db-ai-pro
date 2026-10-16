@@ -187,6 +187,12 @@ export function App() {
         case 'ai.clear':
           ws.clearAiMemory()
           break
+        case 'view.toggleMinimap':
+          void ws.toggleEditorMinimap()
+          break
+        case 'view.editorFont':
+          openSettings('appearance')
+          break
         case 'view.alwaysOnTop':
           void toggleAlwaysOnTop()
           break

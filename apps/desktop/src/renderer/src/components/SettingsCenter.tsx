@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import type { AppPrefs, UiDensity } from '@shared/prefs'
+import {
+  EDITOR_FONT_MAX,
+  EDITOR_FONT_MIN,
+  clampEditorFontSize,
+  type AppPrefs,
+  type UiDensity,
+} from '@shared/prefs'
 import { Mark } from './icons'
 import { useWorkspace } from '../state/workspace'
 import { getApi } from '../bridge'
@@ -325,6 +331,28 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
     }
   }
 
+  const setEditorMinimap = async (editorMinimap: boolean) => {
+    setBusy(true)
+    try {
+      await ws.setEditorMinimap(editorMinimap)
+      const next = await api.prefs.get()
+      onPrefs(next)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const setEditorFontSize = async (editorFontSize: number) => {
+    setBusy(true)
+    try {
+      await ws.setEditorFontSize(clampEditorFontSize(editorFontSize))
+      const next = await api.prefs.get()
+      onPrefs(next)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="settings-card">
       <p className="settings-lead">界面保持深色一体壳。可调节信息密度与对比度，适配 1366×768 与更宽屏。侧栏 / 编辑器 / 助手分隔比例会自动记住。</p>
@@ -444,6 +472,41 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
         >
           {prefs.notifyOnSlowQuery ? '已开启' : '已关闭'}
         </button>
+      </div>
+      <div className="contrast-block">
+        <div className="contrast-copy">
+          <strong>编辑器小地图</strong>
+          <span>Monaco 右侧缩略图。默认可关；也可 Ctrl+K 搜索「小地图」。</span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={prefs.editorMinimap}
+          className={prefs.editorMinimap ? 'contrast-switch is-on' : 'contrast-switch'}
+          disabled={busy}
+          onClick={() => void setEditorMinimap(!prefs.editorMinimap)}
+        >
+          {prefs.editorMinimap ? '已开启' : '已关闭'}
+        </button>
+      </div>
+      <div className="contrast-block">
+        <div className="contrast-copy">
+          <strong>编辑器字号</strong>
+          <span>SQL 编辑器字体大小（12–20），即时生效并记住。</span>
+        </div>
+        <label className="editor-font-size">
+          <span className="editor-font-size-value">{prefs.editorFontSize}</span>
+          <input
+            type="range"
+            min={EDITOR_FONT_MIN}
+            max={EDITOR_FONT_MAX}
+            step={1}
+            value={prefs.editorFontSize}
+            disabled={busy}
+            aria-label="编辑器字号"
+            onChange={(event) => void setEditorFontSize(Number(event.target.value))}
+          />
+        </label>
       </div>
     </div>
   )

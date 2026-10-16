@@ -48,6 +48,10 @@ import { analyzeDestructiveSql } from '@shared/destructiveSql'
 import { analyzeReadOnlySql, isReadOnlyEffective } from '@shared/readOnlySql'
 import { DEFAULT_SLOW_QUERY_MS, isSlowQuery } from '@shared/slowQuery'
 import {
+  DEFAULT_EDITOR_FONT_SIZE,
+  clampEditorFontSize,
+} from '@shared/prefs'
+import {
   createNotification,
   markAllNotificationsRead,
   prependNotification,
@@ -166,6 +170,11 @@ type WorkspaceValue = {
   lastRun: LastRunStats | null
   slowQueryMs: number
   setSlowQueryMs: (ms: number) => Promise<void>
+  editorMinimap: boolean
+  editorFontSize: number
+  setEditorMinimap: (value: boolean) => Promise<void>
+  setEditorFontSize: (value: number) => Promise<void>
+  toggleEditorMinimap: () => Promise<void>
   txnOpen: boolean
   txnSupported: boolean
   readOnlyActive: boolean
@@ -386,6 +395,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [])
   const [globalReadOnly, setGlobalReadOnlyState] = useState(false)
   const [slowQueryMs, setSlowQueryMsState] = useState(DEFAULT_SLOW_QUERY_MS)
+  const [editorMinimap, setEditorMinimapState] = useState(false)
+  const [editorFontSize, setEditorFontSizeState] = useState(DEFAULT_EDITOR_FONT_SIZE)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [aiOpen, setAiOpen] = useState(true)
   const requestRef = useRef<string | null>(null)
@@ -500,6 +511,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         applyRecentState(recent)
         setGlobalReadOnlyState(Boolean(prefs.globalReadOnly))
         setSlowQueryMsState(prefs.slowQueryMs ?? DEFAULT_SLOW_QUERY_MS)
+        setEditorMinimapState(prefs.editorMinimap === true)
+        setEditorFontSizeState(clampEditorFontSize(prefs.editorFontSize))
         setNotifyOnErrorOnlyState(prefs.notifyOnErrorOnly === true)
         setNotifyOnSlowQueryState(prefs.notifyOnSlowQuery === true)
         const connectionIds = new Set(rows.map((row) => row.id))
@@ -1043,6 +1056,28 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const next = await api.prefs.save({ slowQueryMs: ms })
       setSlowQueryMsState(next.slowQueryMs)
       pushToast('success', `慢查询阈值已设为 ${next.slowQueryMs} ms`)
+    },
+    [api, pushToast],
+  )
+
+  const setEditorMinimap = useCallback(
+    async (value: boolean) => {
+      const next = await api.prefs.save({ editorMinimap: value })
+      setEditorMinimapState(next.editorMinimap === true)
+      pushToast('success', next.editorMinimap ? '已开启编辑器小地图' : '已关闭编辑器小地图')
+    },
+    [api, pushToast],
+  )
+
+  const toggleEditorMinimap = useCallback(async () => {
+    await setEditorMinimap(!editorMinimap)
+  }, [editorMinimap, setEditorMinimap])
+
+  const setEditorFontSize = useCallback(
+    async (value: number) => {
+      const next = await api.prefs.save({ editorFontSize: clampEditorFontSize(value) })
+      setEditorFontSizeState(next.editorFontSize)
+      pushToast('success', `编辑器字号 ${next.editorFontSize}`)
     },
     [api, pushToast],
   )
@@ -1850,6 +1885,11 @@ ${sql.trim()}
     lastRun,
     slowQueryMs,
     setSlowQueryMs,
+    editorMinimap,
+    editorFontSize,
+    setEditorMinimap,
+    setEditorFontSize,
+    toggleEditorMinimap,
     txnOpen,
     txnSupported,
     readOnlyActive,

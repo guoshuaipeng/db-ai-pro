@@ -2923,3 +2923,22 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   line-height: 1.4;
   word-break: break-word;
 }
+
+
+/* M39 editor font size */
+.editor-font-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 140px;
+}
+.editor-font-size-value {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--ink, #eef2fa);
+  min-width: 1.5em;
+}
+.editor-font-size input[type='range'] {
+  width: 120px;
+  accent-color: var(--accent, #9eb4ff);
+}

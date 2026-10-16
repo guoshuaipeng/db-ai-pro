@@ -197,6 +197,20 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'connection',
   },
   {
+    id: 'view.toggleMinimap',
+    title: '切换编辑器小地图',
+    subtitle: 'Monaco minimap 开 / 关',
+    keywords: 'minimap map 小地图 缩略',
+    category: 'view',
+  },
+  {
+    id: 'view.editorFont',
+    title: '编辑器字号…',
+    subtitle: '在设置中调节 12–20',
+    keywords: 'font size 字号 字体 monaco',
+    category: 'view',
+  },
+  {
     id: 'view.alwaysOnTop',
     title: '切换窗口置顶',
     subtitle: '始终显示在其他窗口之上',

@@ -29,4 +29,8 @@ describe('filterCommands', () => {
     expect(filterCommands('置顶').some((item) => item.id === 'view.alwaysOnTop')).toBe(true)
     expect(filterCommands('zoom').some((item) => item.id === 'view.zoomIn')).toBe(true)
   })
+
+  it('finds minimap command', () => {
+    expect(filterCommands('小地图').some((item) => item.id === 'view.toggleMinimap')).toBe(true)
+  })
 })

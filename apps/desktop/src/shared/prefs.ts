@@ -20,6 +20,20 @@ export function stepZoomFactor(factor: number, direction: 1 | -1): number {
   return clampZoomFactor(factor + direction * ZOOM_STEP)
 }
 
+export const DEFAULT_EDITOR_FONT_SIZE = 13
+export const EDITOR_FONT_MIN = 12
+export const EDITOR_FONT_MAX = 20
+
+export function clampEditorFontSize(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return DEFAULT_EDITOR_FONT_SIZE
+  return Math.min(EDITOR_FONT_MAX, Math.max(EDITOR_FONT_MIN, Math.round(n)))
+}
+
+export function editorLineHeight(fontSize: number): number {
+  return Math.round(clampEditorFontSize(fontSize) * 1.7)
+}
+
 export type UiDensity = 'comfortable' | 'compact'
 
 export type AppPrefs = {
@@ -42,6 +56,10 @@ export type AppPrefs = {
   notifyOnErrorOnly: boolean
   /** Record a notification when a run exceeds slowQueryMs. */
   notifyOnSlowQuery: boolean
+  /** Monaco minimap. Default off for SQL editing focus. */
+  editorMinimap: boolean
+  /** Monaco editor font size (12–20). */
+  editorFontSize: number
 }
 
 export const DEFAULT_PREFS: AppPrefs = {
@@ -55,6 +73,8 @@ export const DEFAULT_PREFS: AppPrefs = {
   zoomFactor: DEFAULT_ZOOM_FACTOR,
   notifyOnErrorOnly: false,
   notifyOnSlowQuery: false,
+  editorMinimap: false,
+  editorFontSize: DEFAULT_EDITOR_FONT_SIZE,
 }
 
 const TIMEOUT_MIN = 0
@@ -86,5 +106,9 @@ export function normalizePrefs(value: unknown): AppPrefs {
     ),
     notifyOnErrorOnly: row.notifyOnErrorOnly === true,
     notifyOnSlowQuery: row.notifyOnSlowQuery === true,
+    editorMinimap: row.editorMinimap === true,
+    editorFontSize: clampEditorFontSize(
+      row.editorFontSize === undefined ? DEFAULT_EDITOR_FONT_SIZE : row.editorFontSize,
+    ),
   }
 }

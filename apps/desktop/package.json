@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "2.9.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — in-app notification center",
+  "description": "DataAI TypeScript desktop — editor minimap + font size",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

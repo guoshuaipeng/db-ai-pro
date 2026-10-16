@@ -157,6 +157,8 @@ export function EditorPane() {
             onChange={ws.updateSql}
             onCursor={ws.setCursor}
             suggestions={suggestions}
+            minimap={ws.editorMinimap}
+            fontSize={ws.editorFontSize}
           />
         )}
         <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} />

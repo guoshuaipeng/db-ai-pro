@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   clampQueryTimeoutSec,
+  clampEditorFontSize,
   clampZoomFactor,
+  editorLineHeight,
   formatZoomPercent,
   normalizePrefs,
   stepZoomFactor,
@@ -67,5 +69,20 @@ describe('notification prefs', () => {
       true,
     )
     expect(normalizePrefs({ notifyOnSlowQuery: true }).notifyOnSlowQuery).toBe(true)
+  })
+})
+
+describe('editor chrome prefs', () => {
+  it('defaults minimap off and font 13', () => {
+    expect(normalizePrefs(null).editorMinimap).toBe(false)
+    expect(normalizePrefs({ editorMinimap: true }).editorMinimap).toBe(true)
+    expect(normalizePrefs(null).editorFontSize).toBe(13)
+    expect(normalizePrefs({ editorFontSize: 16 }).editorFontSize).toBe(16)
+  })
+
+  it('clamps editor font size 12–20', () => {
+    expect(clampEditorFontSize(11)).toBe(12)
+    expect(clampEditorFontSize(21)).toBe(20)
+    expect(editorLineHeight(13)).toBe(22)
   })
 })

@@ -5,6 +5,11 @@ import editorWorker from 'monaco-editor/editor/editor.worker?worker'
 import { filterSuggestions, type SchemaSuggestItem } from '@shared/schemaSuggest'
 import { onDataai } from '../appEvents'
 import { formatSql } from '@shared/sqlFormat'
+import {
+  DEFAULT_EDITOR_FONT_SIZE,
+  clampEditorFontSize,
+  editorLineHeight,
+} from '@shared/prefs'
 
 globalThis.MonacoEnvironment = {
   getWorker() {
@@ -106,9 +111,18 @@ type SqlEditorProps = {
   onChange: (value: string) => void
   onCursor: (cursor: { line: number; column: number }) => void
   suggestions?: SchemaSuggestItem[]
+  minimap?: boolean
+  fontSize?: number
 }
 
-export function SqlEditor({ value, onChange, onCursor, suggestions = [] }: SqlEditorProps) {
+export function SqlEditor({
+  value,
+  onChange,
+  onCursor,
+  suggestions = [],
+  minimap = false,
+  fontSize = DEFAULT_EDITOR_FONT_SIZE,
+}: SqlEditorProps) {
   const host = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const onChangeRef = useRef(onChange)
@@ -130,10 +144,10 @@ export function SqlEditor({ value, onChange, onCursor, suggestions = [] }: SqlEd
       language: 'sql',
       theme: 'dataai-dark',
       fontFamily: '"JetBrains Mono", "Noto Sans SC", ui-monospace, monospace',
-      fontSize: 13,
-      lineHeight: 22,
+      fontSize: clampEditorFontSize(fontSize),
+      lineHeight: editorLineHeight(fontSize),
       fontLigatures: true,
-      minimap: { enabled: false },
+      minimap: { enabled: minimap === true },
       scrollBeyondLastLine: false,
       padding: { top: 14, bottom: 14 },
       renderLineHighlight: 'line',
@@ -187,6 +201,17 @@ export function SqlEditor({ value, onChange, onCursor, suggestions = [] }: SqlEd
     if (!instance) return
     if (instance.getValue() !== value) instance.setValue(value)
   }, [value])
+
+  useEffect(() => {
+    const instance = instanceRef.current
+    if (!instance) return
+    const size = clampEditorFontSize(fontSize)
+    instance.updateOptions({
+      minimap: { enabled: minimap === true },
+      fontSize: size,
+      lineHeight: editorLineHeight(size),
+    })
+  }, [minimap, fontSize])
 
   useEffect(() => onDataai('dataai:focus-editor', () => {
     instanceRef.current?.focus()

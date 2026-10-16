@@ -272,6 +272,14 @@ export function createPreviewApi(): DesktopApi {
             input.notifyOnSlowQuery === undefined
               ? memory.prefs.notifyOnSlowQuery
               : input.notifyOnSlowQuery === true,
+          editorMinimap:
+            input.editorMinimap === undefined
+              ? memory.prefs.editorMinimap
+              : input.editorMinimap === true,
+          editorFontSize:
+            typeof input.editorFontSize === 'number' && Number.isFinite(input.editorFontSize)
+              ? Math.min(20, Math.max(12, Math.round(input.editorFontSize)))
+              : memory.prefs.editorFontSize,
         }
         return { ...memory.prefs }
       },
