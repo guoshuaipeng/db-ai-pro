@@ -10,6 +10,7 @@ export type DataaiEventMap = {
   'dataai:replace': undefined
   'dataai:open-templates': undefined
   'dataai:insert-template': { templateId: string }
+  'dataai:insert-at-cursor': { text: string }
 }
 
 export function emitDataai<K extends keyof DataaiEventMap>(

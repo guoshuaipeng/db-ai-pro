@@ -276,6 +276,23 @@ export function SqlEditor({
 
   useEffect(
     () =>
+      onDataai('dataai:insert-at-cursor', (detail) => {
+        const instance = instanceRef.current
+        const text = detail?.text
+        if (!instance || text == null || text === '') return
+        const selection = instance.getSelection()
+        if (selection) {
+          instance.executeEdits('dataai-insert-ident', [
+            { range: selection, text, forceMoveMarkers: true },
+          ])
+        }
+        instance.focus()
+      }),
+    [],
+  )
+
+  useEffect(
+    () =>
       onDataai('dataai:find', () => {
         const instance = instanceRef.current
         if (!instance) return

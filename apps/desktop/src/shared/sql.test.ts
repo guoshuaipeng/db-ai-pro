@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { draftLocalAnswer, INITIAL_TABS } from '@shared/session'
-import { changesSchema, extractSql, identStyle, parseBlocks, quoteIdent, selectAll, splitSql, statementTitle } from '@shared/sql'
+import {
+  changesSchema,
+  extractSql,
+  identStyle,
+  parseBlocks,
+  quoteIdent,
+  quoteIdentIfNeeded,
+  selectAll,
+  splitSql,
+  statementTitle,
+} from '@shared/sql'
 import { filterNodes } from '@shared/tree'
 import type { SchemaNode } from '@shared/types'
 
@@ -59,6 +69,12 @@ describe('identifiers', () => {
     expect(quoteIdent('a`b', 'mysql')).toBe('`a``b`')
     expect(quoteIdent('a"b')).toBe('"a""b"')
     expect(selectAll('orders', 'mysql')).toBe('SELECT *\nFROM `orders`\nLIMIT 200;')
+  })
+
+  it('quotes identifiers only when needed', () => {
+    expect(quoteIdentIfNeeded('orders', 'mysql')).toBe('orders')
+    expect(quoteIdentIfNeeded('order detail', 'mysql')).toBe('`order detail`')
+    expect(quoteIdentIfNeeded('a"b', 'postgresql')).toBe('"a""b"')
   })
 
   it('notices statements that change the object tree', () => {

@@ -2,6 +2,12 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 3.5.0 — M44 插入对象名到编辑器
+
+- 对象树表/列：上下文菜单「插入表名 / 插入列名」；Alt 或 Ctrl（Mac：⌘）+ 单击亦可插入
+- 表结构面板：表头「插入表名」、列行「插入」；列名 Alt/Ctrl+单击
+- 按当前连接方言按需加引号（MySQL/MariaDB 反引号，其余 ANSI 双引号；普通标识符不引）
+
 ## 3.4.0 — M43 快速查询模板
 
 - 工具栏「模板」与 Ctrl+K：内置 SELECT / COUNT / WHERE、各引擎表结构、INSERT/UPDATE/DELETE 骨架（约 9 条）

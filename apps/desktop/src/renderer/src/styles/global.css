@@ -1953,6 +1953,28 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   font-family: var(--font-mono, ui-monospace, monospace);
   color: #e2e8f0;
 }
+
+.structure-ident-hit {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.structure-ident-hit:hover code {
+  color: #7dd3fc;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.structure-col-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
 .structure-index-list {
   list-style: none;
   margin: 0;

@@ -291,8 +291,22 @@ function TreeNode({
   const hasChildren = (node.children?.length ?? 0) > 0
   const selected = ws.selectedId === node.id || (node.kind === 'connection' && ws.activeConnection?.id === node.id && !ws.selectedId)
   const connection = ws.connections.find((item) => item.id === node.id)
+  const nodeConn = node.connectionId
+    ? ws.connections.find((item) => item.id === node.connectionId)
+    : undefined
+  const dialect = node.dialect || nodeConn?.dialect || connection?.dialect
   const failed = node.status === 'error'
   const rowClass = ['tree-row', selected ? 'is-selected' : '', failed ? 'is-error' : ''].filter(Boolean).join(' ')
+  const insertable =
+    (node.kind === 'table' && !!(node.tableName || node.name)) ||
+    ((node.kind === 'column' || node.kind === 'key') && !!node.name)
+  const insertName = () => {
+    if (node.kind === 'table') {
+      ws.insertObjectIdent(node.tableName || node.name, dialect)
+    } else if (node.kind === 'column' || node.kind === 'key') {
+      ws.insertObjectIdent(node.name, dialect)
+    }
+  }
 
   return (
     <div className="tree-branch">
@@ -312,13 +326,26 @@ function TreeNode({
         <button
           type="button"
           className="tree-hit"
-          onClick={() => ws.selectNode(node)}
+          onClick={(event) => {
+            if (insertable && (event.altKey || event.ctrlKey || event.metaKey)) {
+              event.preventDefault()
+              insertName()
+              return
+            }
+            ws.selectNode(node)
+          }}
           onDoubleClick={() => {
             if (node.kind === 'table' && node.connectionId && node.tableName) {
               ws.openTableStructure(node.connectionId, node.tableName)
             }
           }}
-          title={node.kind === 'table' ? '单击打开查询 · 双击查看结构' : undefined}
+          title={
+            node.kind === 'table'
+              ? '单击打开查询 · 双击查看结构 · Alt/Ctrl+单击插入表名'
+              : insertable
+                ? 'Alt/Ctrl+单击插入名称到编辑器'
+                : undefined
+          }
         >
           {node.kind === 'connection' && connection?.colorTag && colorForTag(connection.colorTag) && (
             <span
@@ -361,6 +388,17 @@ function TreeNode({
             <IconMore />
           </button>
         )}
+        {(node.kind === 'column' || node.kind === 'key') && (
+          <button
+            type="button"
+            className="icon-btn tiny"
+            aria-label={`${node.displayName}的操作`}
+            aria-expanded={menuId === node.id}
+            onClick={() => onMenu(menuId === node.id ? null : node.id)}
+          >
+            <IconMore />
+          </button>
+        )}
         {menuId === node.id && connection && (
           <div className="menu" role="menu">
             <button
@@ -383,6 +421,16 @@ function TreeNode({
         )}
         {menuId === node.id && node.kind === 'table' && node.connectionId && node.tableName && (
           <div className="menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onMenu(null)
+                insertName()
+              }}
+            >
+              插入表名
+            </button>
             <button
               type="button"
               role="menuitem"
@@ -412,6 +460,20 @@ function TreeNode({
               }}
             >
               导入 CSV/Excel
+            </button>
+          </div>
+        )}
+        {menuId === node.id && (node.kind === 'column' || node.kind === 'key') && (
+          <div className="menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onMenu(null)
+                insertName()
+              }}
+            >
+              插入列名
             </button>
           </div>
         )}

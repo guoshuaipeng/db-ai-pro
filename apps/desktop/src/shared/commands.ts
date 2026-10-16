@@ -341,4 +341,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '编辑器小地图', keys: '设置 · Ctrl+K「小地图」' },
   { action: '编辑器字号', keys: '设置 → 外观' },
   { action: '快速查询模板', keys: '工具栏「模板」· Ctrl+K' },
+  { action: '插入表名 / 列名', keys: '对象树菜单 · Alt/Ctrl+单击' },
 ]

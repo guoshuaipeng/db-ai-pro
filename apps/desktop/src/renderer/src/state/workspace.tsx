@@ -9,8 +9,9 @@ import {
   type ReactNode,
 } from 'react'
 import { getApi } from '../bridge'
+import { emitDataai } from '../appEvents'
 import { connectionErrorNode } from '@shared/schema'
-import { changesSchema, statementTitle } from '@shared/sql'
+import { changesSchema, quoteIdentIfNeeded, statementTitle } from '@shared/sql'
 import {
   DEFAULT_PAGE_SIZE,
   buildBrowseSql,
@@ -230,6 +231,8 @@ type WorkspaceValue = {
   repairAi: (sql: string, error: string) => Promise<void>
   cancelAi: () => void
   applySql: (sql: string) => void
+  /** Insert dialect-quoted table/column ident at Monaco cursor. */
+  insertObjectIdent: (name: string, dialect?: string | null) => void
   settings: AiSettingsPublic | null
   saveSettings: (input: { baseUrl: string; model: string; apiKey?: string }) => Promise<void>
   toasts: Toast[]
@@ -1675,6 +1678,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     pushToast('success', '语句已写入编辑器')
   }
 
+  const insertObjectIdent = (name: string, dialect?: string | null) => {
+    const raw = name.trim()
+    if (!raw) return
+    const dial = dialect || activeConnection?.dialect || 'sqlite'
+    const text = quoteIdentIfNeeded(raw, dial)
+    emitDataai('dataai:insert-at-cursor', { text })
+    pushToast('success', `已插入 ${text}`)
+  }
+
 
 
   const listFavorites = async () => api.favorites.list()
@@ -1939,6 +1951,7 @@ ${sql.trim()}
     repairAi,
     cancelAi,
     applySql,
+    insertObjectIdent,
     settings: settings ?? defaultSettings,
     saveSettings: async (input) => {
       const next = await api.ai.saveSettings(input)

@@ -110,6 +110,18 @@ export function TableStructurePanel() {
             <button
               type="button"
               className="btn btn-ghost tiny-btn"
+              disabled={!structure}
+              title="插入方言正确引用的表名到编辑器光标处"
+              onClick={() => {
+                if (!structure) return
+                ws.insertObjectIdent(structure.tableName, structure.dialect)
+              }}
+            >
+              插入表名
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost tiny-btn"
               onClick={() => {
                 ws.openTableQuery(target.connectionId, target.tableName)
                 ws.closeTableStructure()
@@ -165,13 +177,33 @@ export function TableStructurePanel() {
                     <tr key={column.name}>
                       <td className="is-num">{column.ordinal}</td>
                       <td>
-                        <code>{column.name}</code>
+                        <button
+                          type="button"
+                          className="structure-ident-hit"
+                          title="Alt/Ctrl+单击插入列名"
+                          onClick={(event) => {
+                            if (event.altKey || event.ctrlKey || event.metaKey) {
+                              event.preventDefault()
+                              ws.insertObjectIdent(column.name, structure.dialect)
+                            }
+                          }}
+                        >
+                          <code>{column.name}</code>
+                        </button>
                       </td>
                       <td className="is-type">{column.dataType || '—'}</td>
                       <td>{column.nullable ? 'YES' : 'NO'}</td>
                       <td className="is-default">{column.defaultValue ?? '—'}</td>
                       <td>{column.primaryKey ? 'PK' : ''}</td>
-                      <td>
+                      <td className="structure-col-actions">
+                        <button
+                          type="button"
+                          className="btn btn-ghost tiny-btn"
+                          title="插入方言正确引用的列名到编辑器"
+                          onClick={() => ws.insertObjectIdent(column.name, structure.dialect)}
+                        >
+                          插入
+                        </button>
                         <button
                           type="button"
                           className="btn btn-ghost tiny-btn"

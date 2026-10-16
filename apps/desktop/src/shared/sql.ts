@@ -77,6 +77,23 @@ export function quoteIdent(name: string, style: IdentStyle = 'ansi'): string {
   return `"${name.replace(/"/g, '""')}"`
 }
 
+/** Unquoted when already a plain SQL identifier; otherwise dialect-quoted. */
+export function needsIdentQuotes(name: string): boolean {
+  return !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)
+}
+
+export function quoteIdentIfNeeded(
+  name: string,
+  dialectOrStyle: string | IdentStyle = 'ansi',
+): string {
+  const style: IdentStyle =
+    dialectOrStyle === 'ansi' || dialectOrStyle === 'mysql'
+      ? dialectOrStyle
+      : identStyle(dialectOrStyle)
+  if (!needsIdentQuotes(name)) return name
+  return quoteIdent(name, style)
+}
+
 export function selectAll(table: string, style: IdentStyle = 'ansi'): string {
   return `SELECT *\nFROM ${quoteIdent(table, style)}\nLIMIT 200;`
 }
