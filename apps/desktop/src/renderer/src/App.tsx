@@ -380,6 +380,7 @@ export function App() {
         }}
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenSettings={() => openSettings('model')}
+        onCloseWindow={ws.requestCloseWindow}
         recentTables={ws.recentTables}
         recentQueries={ws.recentQueries}
         onOpenRecentTable={ws.openRecentTable}

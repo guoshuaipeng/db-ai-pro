@@ -18,6 +18,7 @@ type TitleBarProps = {
   onOpenNotifications?: () => void
   onOpenPalette: () => void
   onOpenSettings: () => void
+  onCloseWindow?: () => void
   recentTables?: RecentTableItem[]
   recentQueries?: RecentQueryItem[]
   onOpenRecentTable?: (item: RecentTableItem) => void
@@ -40,6 +41,7 @@ export function TitleBar({
   onOpenNotifications,
   onOpenPalette,
   onOpenSettings,
+  onCloseWindow,
   recentTables = [],
   recentQueries = [],
   onOpenRecentTable,
@@ -81,7 +83,13 @@ export function TitleBar({
       .maximize()
       .then((result) => setMaximized(Boolean(result?.maximized)))
       .catch(() => undefined)
-  const close = () => void api.window.close().catch(() => undefined)
+  const close = () => {
+    if (onCloseWindow) {
+      onCloseWindow()
+      return
+    }
+    void api.window.close().catch(() => undefined)
+  }
 
   const hasRecent = recentTables.length > 0 || recentQueries.length > 0
 

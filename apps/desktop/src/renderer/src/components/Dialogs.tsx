@@ -8,6 +8,31 @@ import { useWorkspace } from '../state/workspace'
 export function Dialogs() {
   const ws = useWorkspace()
   if (!ws.dialog) return null
+  if (ws.dialog.type === 'unsaved') {
+    const { title, detail, onDecide } = ws.dialog
+    return (
+      <div className="overlay" role="presentation" onMouseDown={() => onDecide('keep')}>
+        <div
+          className="dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="unsaved-title"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <h2 id="unsaved-title">{title}</h2>
+          <p className="dialog-copy">{detail}</p>
+          <div className="dialog-actions">
+            <button type="button" className="btn btn-ghost" onClick={() => onDecide('keep')}>
+              继续编辑
+            </button>
+            <button type="button" className="btn btn-danger" onClick={() => onDecide('discard')}>
+              丢弃更改
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
   if (ws.dialog.type === 'destructive') {
     const { reasons, preview, onDecide } = ws.dialog
     return (

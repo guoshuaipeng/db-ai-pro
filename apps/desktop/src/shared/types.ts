@@ -153,6 +153,11 @@ export type EditorTabState = {
   connectionId?: string | null
   /** Table browse paging meta; absent for free SQL tabs. */
   browse?: import('./tablePaging').TableBrowseState
+  /**
+   * In-memory clean baseline for dirty detection. Omitted from session persist;
+   * restored / newly opened content is stamped clean via withCleanBaseline.
+   */
+  baselineSql?: string
 }
 
 export type AiTurnState = {

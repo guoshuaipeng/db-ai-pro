@@ -27,6 +27,7 @@ import {
   formatPageInfo,
   type PageSize,
 } from '@shared/tablePaging'
+import { isTabDirty, tabTitleWithDirty } from '@shared/tabDirty'
 
 export function EditorPane() {
   const ws = useWorkspace()
@@ -113,7 +114,7 @@ export function EditorPane() {
         label="查询标签"
         tabs={ws.editorTabs.map((tab) => ({
           id: tab.id,
-          label: tab.title,
+          label: tabTitleWithDirty(tab.title, isTabDirty(tab)),
           badge: ws.tabDisconnected(tab) ? '断开' : undefined,
           tone: ws.tabDisconnected(tab) ? ('warn' as const) : undefined,
         }))}

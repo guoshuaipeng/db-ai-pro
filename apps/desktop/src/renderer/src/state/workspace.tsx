@@ -23,6 +23,7 @@ import {
   type TableBrowseState,
 } from '@shared/tablePaging'
 import { INITIAL_TABS } from '@shared/session'
+import { isTabDirty, withCleanBaseline } from '@shared/tabDirty'
 import { countTreeNodes, extrasFromConnections, filterNodes } from '@shared/tree'
 import { dialectInfo, isKvDialect } from '@shared/types'
 import { buildConnHealth, type ConnHealth } from '@shared/connHealth'
@@ -126,6 +127,8 @@ export type LastRunStats = {
 
 type DestructiveDecision = 'run' | 'skip-session' | 'cancel'
 
+type UnsavedDecision = 'discard' | 'keep'
+
 type DialogState =
   | null
   | { type: 'connection'; connection?: ConnectionPublic }
@@ -136,6 +139,13 @@ type DialogState =
       reasons: string[]
       preview: string
       onDecide: (decision: DestructiveDecision) => void
+    }
+  | {
+      type: 'unsaved'
+      scope: 'tab' | 'window'
+      title: string
+      detail: string
+      onDecide: (decision: UnsavedDecision) => void
     }
 
 type WorkspaceValue = {
@@ -165,6 +175,8 @@ type WorkspaceValue = {
   updateSql: (sql: string) => void
   newTab: () => void
   closeTab: (id: string) => void
+  isEditorDirty: (id: string) => boolean
+  requestCloseWindow: () => void
   results: ResultState | null
   setActiveResult: (id: string) => void
   running: boolean
@@ -293,12 +305,14 @@ type WorkspaceValue = {
 const WorkspaceContext = createContext<WorkspaceValue | null>(null)
 
 function seedTabs(): EditorTabState[] {
-  return INITIAL_TABS.map((tab, index) => ({
-    id: `query-${index + 1}`,
-    title: tab.title,
-    sql: tab.sql,
-    connectionId: null,
-  }))
+  return INITIAL_TABS.map((tab, index) =>
+    withCleanBaseline({
+      id: `query-${index + 1}`,
+      title: tab.title,
+      sql: tab.sql,
+      connectionId: null,
+    }),
+  )
 }
 
 function resultsFrom(statements: StatementResult[]): ResultState {
@@ -531,7 +545,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             setAiOpen(layout.aiOpen)
           }
           if (prefs.restoreTabsOnLaunch !== false && workspace.editorTabs.length > 0) {
-            const tabs = normalizeSessionTabs(workspace.editorTabs, SESSION_TAB_CAP)
+            const tabs = normalizeSessionTabs(workspace.editorTabs, SESSION_TAB_CAP).map(withCleanBaseline)
             setEditorTabs(tabs.length ? tabs : seedTabs())
             setActiveEditorId(pickActiveEditorId(tabs.length ? tabs : seedTabs(), workspace.activeEditorId))
             const activeTab = tabs.find((tab) => tab.id === pickActiveEditorId(tabs, workspace.activeEditorId))
@@ -738,7 +752,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setEditorTabs((tabs) =>
       tabs.map((tab) =>
         tab.id === tabId
-          ? { ...tab, sql, connectionId: nextBrowse.connectionId, browse: nextBrowse }
+          ? withCleanBaseline({
+              ...tab,
+              sql,
+              connectionId: nextBrowse.connectionId,
+              browse: nextBrowse,
+            })
           : tab,
       ),
     )
@@ -770,7 +789,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
     const id = crypto.randomUUID()
     const sql = buildBrowseSql(dialect, tableName, 0, pageSize)
-    setEditorTabs((tabs) => [...tabs, { id, title, sql, connectionId, browse }])
+    setEditorTabs((tabs) => [
+      ...tabs,
+      withCleanBaseline({ id, title, sql, connectionId, browse }),
+    ])
     setActiveEditorId(id)
     setTargetTable(tableName)
     void loadBrowsePage(id, browse, dialect, { refreshCount: true, quiet: true })
@@ -896,7 +918,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const id = crypto.randomUUID()
     setEditorTabs((tabs) => [
       ...tabs,
-      { id, title, sql, connectionId: activeConnectionId },
+      withCleanBaseline({ id, title, sql, connectionId: activeConnectionId }),
     ])
     setActiveEditorId(id)
   }
@@ -992,15 +1014,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const count = editorTabs.length + 1
     setEditorTabs((tabs) => [
       ...tabs,
-      { id, title: `查询 ${count}`, sql: '', connectionId: activeConnectionId },
+      withCleanBaseline({ id, title: `查询 ${count}`, sql: '', connectionId: activeConnectionId }),
     ])
     setActiveEditorId(id)
   }
 
-  const closeTab = (id: string) => {
+  const closeTabNow = (id: string) => {
     const remaining = editorTabs.filter((tab) => tab.id !== id)
     if (remaining.length === 0) {
-      setEditorTabs([{ id: editorTabs[0]?.id ?? id, title: '查询 1', sql: '' }])
+      setEditorTabs([
+        withCleanBaseline({ id: editorTabs[0]?.id ?? id, title: '查询 1', sql: '' }),
+      ])
+      setResultMap((current) => {
+        const next = { ...current }
+        delete next[id]
+        return next
+      })
       return
     }
     setEditorTabs(remaining)
@@ -1012,6 +1041,53 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const next = { ...current }
       delete next[id]
       return next
+    })
+  }
+
+  const closeTab = (id: string) => {
+    const tab = editorTabs.find((row) => row.id === id)
+    if (!tab) return
+    if (!isTabDirty(tab)) {
+      closeTabNow(id)
+      return
+    }
+    setDialog({
+      type: 'unsaved',
+      scope: 'tab',
+      title: '关闭未保存的标签？',
+      detail: `「${tab.title}」的 SQL 已修改，关闭后将丢弃这些更改。`,
+      onDecide: (decision) => {
+        setDialog(null)
+        if (decision === 'discard') closeTabNow(id)
+      },
+    })
+  }
+
+  const isEditorDirty = (id: string) => {
+    const tab = editorTabs.find((row) => row.id === id)
+    return tab ? isTabDirty(tab) : false
+  }
+
+  const requestCloseWindow = () => {
+    const dirty = editorTabs.filter(isTabDirty)
+    if (dirty.length === 0) {
+      void api.window.close().catch(() => undefined)
+      return
+    }
+    const names = dirty
+      .slice(0, 4)
+      .map((tab) => tab.title)
+      .join('、')
+    const more = dirty.length > 4 ? ` 等 ${dirty.length} 个` : ''
+    setDialog({
+      type: 'unsaved',
+      scope: 'window',
+      title: '有未保存的查询标签',
+      detail: `以下标签的 SQL 已修改：${names}${more}。关闭前请确认是否丢弃这些编辑。`,
+      onDecide: (decision) => {
+        setDialog(null)
+        if (decision === 'discard') void api.window.close().catch(() => undefined)
+      },
     })
   }
 
@@ -1713,7 +1789,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const id = crypto.randomUUID()
       setEditorTabs((tabs) => [
         ...tabs,
-        { id, title: `查询 ${tabs.length + 1}`, sql, connectionId: activeConnectionId },
+        withCleanBaseline({ id, title: `查询 ${tabs.length + 1}`, sql, connectionId: activeConnectionId }),
       ])
       setActiveEditorId(id)
     } else {
@@ -1742,7 +1818,7 @@ ${sql.trim()}
     const id = crypto.randomUUID()
     setEditorTabs((tabs) => [
       ...tabs,
-      { id, title: `历史 ${tabs.length + 1}`, sql, connectionId: activeConnectionId },
+      withCleanBaseline({ id, title: `历史 ${tabs.length + 1}`, sql, connectionId: activeConnectionId }),
     ])
     setActiveEditorId(id)
     pushToast('success', '已打开历史语句')
@@ -1760,7 +1836,7 @@ ${sql.trim()}
     const id = crypto.randomUUID()
     setEditorTabs((tabs) => [
       ...tabs,
-      { id, title: `历史 ${tabs.length + 1}`, sql, connectionId: activeConnectionId },
+      withCleanBaseline({ id, title: `历史 ${tabs.length + 1}`, sql, connectionId: activeConnectionId }),
     ])
     setActiveEditorId(id)
     if (!(await confirmIfDestructive(sql))) {
@@ -1884,6 +1960,8 @@ ${sql.trim()}
     updateSql,
     newTab,
     closeTab,
+    isEditorDirty,
+    requestCloseWindow,
     results: activeEditor ? (resultMap[activeEditor.id] ?? null) : null,
     setActiveResult: (id) => {
       if (!activeEditor) return
