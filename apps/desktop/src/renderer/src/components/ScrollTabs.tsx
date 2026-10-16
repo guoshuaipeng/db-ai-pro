@@ -10,6 +10,8 @@ type TabItem = {
   badge?: string
   tone?: 'warn' | 'muted'
   pinned?: boolean
+  /** Connection colorTag hex (left stripe); omit/null = neutral. */
+  color?: string | null
 }
 
 export type TabContextAction = 'pin' | 'unpin' | 'rename' | 'duplicate' | 'close' | 'close-others' | 'close-right'
@@ -193,6 +195,7 @@ export function ScrollTabs({
             draggingId === tab.id ? 'is-dragging' : '',
             dropBeforeIndex === index ? 'is-drop-before' : '',
             dropBeforeIndex === index + 1 && index === tabs.length - 1 ? 'is-drop-after' : '',
+            tab.color ? 'has-conn-color' : '',
           ]
             .filter(Boolean)
             .join(' ')
@@ -246,6 +249,14 @@ export function ScrollTabs({
                 setMenu({ id: tab.id, x: event.clientX, y: event.clientY })
               }}
             >
+              {tab.color ? (
+                <span
+                  className="tab-conn-stripe"
+                  style={{ background: tab.color }}
+                  title="连接颜色"
+                  aria-hidden="true"
+                />
+              ) : null}
               {renaming ? (
                 <div className="tab-main is-editing" role="tab" aria-selected={selected} data-tab={tab.id}>
                   {tab.pinned && (

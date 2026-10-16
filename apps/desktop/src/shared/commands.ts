@@ -404,4 +404,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '显示 / 隐藏结果列', keys: '工具栏「显示列」· 右键「隐藏此列」' },
   { action: '单元格全文预览', keys: '双击单元格 · 工具栏「查看单元格」' },
   { action: '填写查询参数', keys: '工具栏「填写参数」· Ctrl+K · 运行时自动' },
+  { action: '查询标签连接色', keys: '连接颜色标记 → 标签左侧色条' },
 ]

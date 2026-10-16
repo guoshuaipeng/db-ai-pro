@@ -5,6 +5,8 @@ import { IconSidebar, IconSpark, Mark } from './icons'
 
 type TitleBarProps = {
   crumb: string
+  /** Active connection colorTag hex for crumb dot. */
+  crumbColor?: string | null
   version?: string
   sidebarOpen: boolean
   aiOpen: boolean
@@ -28,6 +30,7 @@ type TitleBarProps = {
 
 export function TitleBar({
   crumb,
+  crumbColor,
   version,
   sidebarOpen,
   aiOpen,
@@ -102,6 +105,9 @@ export function TitleBar({
           {version && <span className="title-version">{version}</span>}
         </div>
         <p className="crumb" title={crumb}>
+          {crumbColor ? (
+            <span className="crumb-conn-dot" style={{ background: crumbColor }} aria-hidden="true" />
+          ) : null}
           {crumb}
         </p>
       </div>

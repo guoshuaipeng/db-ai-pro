@@ -34,6 +34,7 @@ import {
   type PageSize,
 } from '@shared/tablePaging'
 import { isTabDirty, tabTitleWithDirty } from '@shared/tabDirty'
+import { resolveTabConnectionColor } from '@shared/tabConnectionColor'
 
 export function EditorPane() {
   const ws = useWorkspace()
@@ -197,6 +198,7 @@ export function EditorPane() {
           badge: ws.tabDisconnected(tab) ? '断开' : undefined,
           tone: ws.tabDisconnected(tab) ? ('warn' as const) : undefined,
           pinned: tab.pinned === true,
+          color: resolveTabConnectionColor(tab.connectionId, ws.connections),
         }))}
         activeId={ws.activeEditor?.id ?? ''}
         onSelect={ws.setActiveEditor}

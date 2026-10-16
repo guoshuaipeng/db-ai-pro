@@ -5,6 +5,7 @@ import { templateIdFromCommand } from '@shared/queryTemplates'
 import { dialectInfo, isKvDialect } from '@shared/types'
 import { Mark } from './components/icons'
 import { TitleBar } from './components/TitleBar'
+import { resolveTabConnectionColor } from '@shared/tabConnectionColor'
 import { WelcomePanel } from './components/WelcomePanel'
 import { NotificationDrawer } from './components/NotificationDrawer'
 import { ConnectionPane } from './components/ConnectionPane'
@@ -389,6 +390,7 @@ export function App() {
     <div className="app" data-density={prefs.density} data-contrast={prefs.highContrast ? 'high' : 'normal'}>
       <TitleBar
         crumb={ws.breadcrumb}
+        crumbColor={resolveTabConnectionColor(ws.activeConnection?.id, ws.connections)}
         version={ws.meta?.version}
         sidebarOpen={ws.sidebarOpen}
         aiOpen={ws.aiOpen}
