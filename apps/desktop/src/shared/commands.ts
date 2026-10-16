@@ -639,6 +639,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '列宽适应', keys: '工具栏「列宽适应」· Ctrl+K · 表头分隔线双击' },
   { action: '结果列筛选', keys: '表头「筛」· 右键「列筛选…」' },
   { action: '导出列选择', keys: '导出 CSV/JSON/MD/HTML/Excel 前勾选列' },
+  { action: '导出选中行', keys: '有选中行时导出对话框默认「仅选中行」' },
   { action: 'CSV UTF-8 BOM', keys: '导出/复制 CSV 默认带 BOM，Excel 中文不乱码' },
   { action: 'NULL 与空字符串', keys: '结果格 NULL / "" 区分显示' },
   { action: '显示 / 隐藏结果列', keys: '工具栏「显示列」· 右键「隐藏此列」' },

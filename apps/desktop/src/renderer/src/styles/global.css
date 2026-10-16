@@ -4279,3 +4279,14 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   font-variant-numeric: tabular-nums;
   font-family: "JetBrains Mono", "Noto Sans SC", ui-monospace, monospace;
 }
+
+.export-row-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.export-row-scope .btn.is-active {
+  border-color: var(--accent, #3b82f6);
+  background: color-mix(in srgb, var(--accent, #3b82f6) 18%, transparent);
+}

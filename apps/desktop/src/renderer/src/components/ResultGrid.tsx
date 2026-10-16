@@ -59,7 +59,11 @@ import {
 import { emitDataai, onDataai } from '../appEvents'
 import { ExportColumnDialog } from './ExportColumnDialog'
 import { CellValuePreviewDialog } from './CellValuePreviewDialog'
-import { type ExportFormat } from '@shared/exportColumnPick'
+import {
+  resolveExportRows,
+  type ExportFormat,
+  type ExportRowScope,
+} from '@shared/exportColumnPick'
 import {
   baseResultColumns,
   canHideColumn,
@@ -270,23 +274,31 @@ export function ResultToolbar({
     return capped
   }
 
-  const runExportWithColumns = (format: ExportFormat, pickedColumns: string[]) => {
-    if (pickedColumns.length === 0) return
+  const runExportWithColumns = (
+    format: ExportFormat,
+    pickedColumns: string[],
+    sourceRows: Record<string, unknown>[],
+  ) => {
+    if (pickedColumns.length === 0 || sourceRows.length === 0) return
     setExportDialog(null)
     if (format === 'csv') {
-      downloadText(`dataai-result-${Date.now()}.csv`, rowsToCsv(pickedColumns, rows), 'text/csv;charset=utf-8')
+      downloadText(
+        `dataai-result-${Date.now()}.csv`,
+        rowsToCsv(pickedColumns, sourceRows),
+        'text/csv;charset=utf-8',
+      )
       return
     }
     if (format === 'json') {
       downloadText(
         `dataai-result-${Date.now()}.json`,
-        rowsToJson(pickedColumns, rows),
+        rowsToJson(pickedColumns, sourceRows),
         'application/json;charset=utf-8',
       )
       return
     }
     if (format === 'markdown') {
-      const capped = exportCapped('markdown', rows)
+      const capped = exportCapped('markdown', sourceRows)
       downloadText(
         `dataai-result-${Date.now()}.md`,
         rowsToMarkdown(pickedColumns, capped),
@@ -295,7 +307,7 @@ export function ResultToolbar({
       return
     }
     if (format === 'html') {
-      const capped = exportCapped('html', rows)
+      const capped = exportCapped('html', sourceRows)
       downloadText(
         `dataai-result-${Date.now()}.html`,
         rowsToHtml(pickedColumns, capped),
@@ -304,7 +316,7 @@ export function ResultToolbar({
       return
     }
     setBusy(true)
-    const capped = exportCapped('excel', rows)
+    const capped = exportCapped('excel', sourceRows)
     void downloadExcel(pickedColumns, capped)
       .catch((error: unknown) => window.alert(error instanceof Error ? error.message : '导出 Excel 失败'))
       .finally(() => setBusy(false))
@@ -381,7 +393,7 @@ export function ResultToolbar({
         type="button"
         className="btn btn-ghost tiny-btn"
         disabled={rows.length === 0}
-        title="选择列后导出 CSV（UTF-8 带 BOM，Excel 中文不乱码）"
+        title="选择列后导出 CSV（UTF-8 带 BOM；有选中行时可只导出选中）"
         onClick={() => setExportDialog('csv')}
       >
         导出 CSV
@@ -390,7 +402,7 @@ export function ResultToolbar({
         type="button"
         className="btn btn-ghost tiny-btn"
         disabled={rows.length === 0}
-        title="选择列后导出 JSON（当前筛选结果）"
+        title="选择列后导出 JSON（有选中行时可只导出选中）"
         onClick={() => setExportDialog('json')}
       >
         导出 JSON
@@ -399,7 +411,7 @@ export function ResultToolbar({
         type="button"
         className="btn btn-ghost tiny-btn"
         disabled={rows.length === 0}
-        title="选择列后导出 Markdown（当前筛选结果）"
+        title="选择列后导出 Markdown（有选中行时可只导出选中）"
         onClick={() => setExportDialog('markdown')}
       >
         导出 MD
@@ -408,7 +420,7 @@ export function ResultToolbar({
         type="button"
         className="btn btn-ghost tiny-btn"
         disabled={rows.length === 0}
-        title="选择列后导出 HTML（当前筛选结果）"
+        title="选择列后导出 HTML（有选中行时可只导出选中）"
         onClick={() => setExportDialog('html')}
       >
         导出 HTML
@@ -417,13 +429,13 @@ export function ResultToolbar({
         type="button"
         className="btn btn-ghost tiny-btn"
         disabled={busy || rows.length === 0}
-        title="选择列后导出 Excel（当前筛选结果）"
+        title="选择列后导出 Excel（有选中行时可只导出选中）"
         onClick={() => setExportDialog('excel')}
       >
         {busy ? '导出中…' : '导出 Excel'}
       </button>
       {selectionActive && (
-        <span className="result-copy-note" title="复制操作作用于选中行">
+        <span className="result-copy-note" title="复制与导出均可作用于选中行">
           {selectionLabel}
         </span>
       )}
@@ -510,9 +522,12 @@ export function ResultToolbar({
         format={exportDialog ?? 'csv'}
         columns={exportColumns}
         rowCount={rows.length}
+        selectedRowCount={selectionActive ? copySource.length : 0}
         onCancel={() => setExportDialog(null)}
-        onConfirm={(picked) => {
-          if (exportDialog) runExportWithColumns(exportDialog, picked)
+        onConfirm={(picked, rowScope: ExportRowScope) => {
+          if (!exportDialog) return
+          const sourceRows = resolveExportRows(rows, selectedRows, rowScope)
+          runExportWithColumns(exportDialog, picked, sourceRows)
         }}
       />
     </div>

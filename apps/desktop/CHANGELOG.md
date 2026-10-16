@@ -2,6 +2,12 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 3.73.0 — M112 导出支持仅选中行
+
+- 结果导出对话框（CSV / JSON / MD / HTML / Excel）：有行选中时可选「仅选中行」或「全部筛选结果」，默认仅选中行
+- 与复制 CSV/TSV/INSERT 等行为对齐；无选中时仍导出当前筛选结果
+- 不改动复制 INSERT、格式化 toast、Alt+Page 切结果标签等近期能力
+
 ## 3.72.0 — M111 复制结果为 INSERT 语句
 
 - 结果工具栏「复制 INSERT」：生成 `INSERT INTO … (列) VALUES …;` 到剪贴板（选中行优先；浏览表名优先，否则 `my_table`）

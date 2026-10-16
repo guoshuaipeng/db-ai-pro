@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   EXPORT_FORMAT_LABELS,
   defaultExportColumns,
+  defaultExportRowScope,
+  exportRowScopeOptionLabel,
+  exportRowScopeSummary,
   normalizePickedColumns,
   selectAllExportColumns,
   selectNoneExportColumns,
   togglePickedColumn,
   type ExportFormat,
+  type ExportRowScope,
 } from '@shared/exportColumnPick'
 
 export function ExportColumnDialog({
@@ -14,23 +18,29 @@ export function ExportColumnDialog({
   format,
   columns,
   rowCount,
+  selectedRowCount = 0,
   onCancel,
   onConfirm,
 }: {
   open: boolean
   format: ExportFormat
   columns: string[]
+  /** Filtered visible row count (all scope). */
   rowCount: number
+  /** When > 0, offer selected-vs-all scope (defaults to selected). */
+  selectedRowCount?: number
   onCancel: () => void
-  onConfirm: (picked: string[]) => void
+  onConfirm: (picked: string[], rowScope: ExportRowScope) => void
 }) {
   const available = useMemo(() => defaultExportColumns(columns), [columns])
   const [picked, setPicked] = useState<string[]>(() => available)
+  const [rowScope, setRowScope] = useState<ExportRowScope>(() => defaultExportRowScope(selectedRowCount))
 
   useEffect(() => {
     if (!open) return
     setPicked(selectAllExportColumns(columns))
-  }, [open, columns])
+    setRowScope(defaultExportRowScope(selectedRowCount))
+  }, [open, columns, selectedRowCount])
 
   useEffect(() => {
     if (!open) return
@@ -48,6 +58,10 @@ export function ExportColumnDialog({
 
   const selectedCount = normalizePickedColumns(columns, picked).length
   const label = EXPORT_FORMAT_LABELS[format]
+  const hasSelection = selectedRowCount > 0
+  const effectiveScope: ExportRowScope = hasSelection ? rowScope : 'all'
+  const exportRowCount =
+    effectiveScope === 'selected' && hasSelection ? selectedRowCount : rowCount
 
   return (
     <div className="overlay export-column-overlay" role="presentation" onMouseDown={onCancel}>
@@ -60,8 +74,36 @@ export function ExportColumnDialog({
       >
         <h2 id="export-column-title">导出 {label} · 选择列</h2>
         <p className="dialog-copy">
-          将导出当前表格中的 {rowCount.toLocaleString('zh-CN')} 行（已应用筛选与列筛选）。默认全选可见列。
+          {exportRowScopeSummary(effectiveScope, rowCount, selectedRowCount)}
         </p>
+        {hasSelection && (
+          <div className="export-row-scope" role="radiogroup" aria-label="导出行范围">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={rowScope === 'selected'}
+              className={
+                rowScope === 'selected'
+                  ? 'btn btn-ghost tiny-btn is-active'
+                  : 'btn btn-ghost tiny-btn'
+              }
+              onClick={() => setRowScope('selected')}
+            >
+              {exportRowScopeOptionLabel('selected', rowCount, selectedRowCount)}
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={rowScope === 'all'}
+              className={
+                rowScope === 'all' ? 'btn btn-ghost tiny-btn is-active' : 'btn btn-ghost tiny-btn'
+              }
+              onClick={() => setRowScope('all')}
+            >
+              {exportRowScopeOptionLabel('all', rowCount, selectedRowCount)}
+            </button>
+          </div>
+        )}
         <div className="export-column-toolbar">
           <button
             type="button"
@@ -78,7 +120,7 @@ export function ExportColumnDialog({
             全不选
           </button>
           <span className="export-column-count">
-            已选 {selectedCount}/{available.length}
+            已选 {selectedCount}/{available.length} 列 · {exportRowCount.toLocaleString('zh-CN')} 行
           </span>
         </div>
         <ul className="export-column-list" role="listbox" aria-label="导出列" aria-multiselectable="true">
@@ -107,8 +149,8 @@ export function ExportColumnDialog({
           <button
             type="button"
             className="btn btn-primary"
-            disabled={selectedCount === 0}
-            onClick={() => onConfirm(normalizePickedColumns(columns, picked))}
+            disabled={selectedCount === 0 || exportRowCount === 0}
+            onClick={() => onConfirm(normalizePickedColumns(columns, picked), effectiveScope)}
           >
             导出 {label}
           </button>
