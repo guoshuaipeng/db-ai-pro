@@ -757,6 +757,26 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   color: #93c5fd;
   background: #1e293b;
 }
+
+.grid th.has-autofit,
+.grid td.has-autofit {
+  max-width: none;
+  box-sizing: border-box;
+}
+.grid.has-col-widths {
+  table-layout: fixed;
+  width: max-content;
+  min-width: 100%;
+}
+.grid-col-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+}
 .grid td.is-number, .grid th.is-number { text-align: right; font-family: var(--mono); font-size: 12px; }
 .grid td.is-null { color: var(--ink-tertiary); }
 .grid tbody tr:hover td { background: rgba(255, 255, 255, 0.025); }

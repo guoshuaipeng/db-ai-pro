@@ -119,6 +119,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'result.autofitColumns',
+    title: '列宽适应',
+    subtitle: '按表头与采样行估算结果列宽',
+    keywords: 'autofit column width 列宽 适应 结果表格',
+    shortcut: '工具栏「列宽适应」',
+    category: 'query',
+  },
+  {
     id: 'editor.replace',
     title: '在编辑器中替换',
     subtitle: 'Monaco 查找替换',
@@ -382,4 +390,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '重新打开已关闭标签', keys: 'Ctrl+Shift+T' },
   { action: '拖拽调整标签顺序', keys: '标签栏拖拽（固定组内/未固定组内）' },
   { action: '在结果中查找', keys: '结果区 Ctrl+F · 工具栏「查找」' },
+  { action: '列宽适应', keys: '工具栏「列宽适应」· Ctrl+K · 表头分隔线双击' },
 ]

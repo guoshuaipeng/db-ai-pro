@@ -27,6 +27,7 @@ import {
   toggleRowIndex,
 } from '@shared/rowSelection'
 import { collectResultFindHits, stepFindIndex } from '@shared/resultFind'
+import { estimateAllColumnWidths, estimateColumnWidthPx } from '@shared/resultColumnAutofit'
 import { emitDataai, onDataai } from '../appEvents'
 
 const ROW_HEIGHT = 32
@@ -170,6 +171,15 @@ export function ResultToolbar({
         onClick={() => emitDataai('dataai:result-find')}
       >
         查找
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
+        disabled={rows.length === 0}
+        title="按表头与采样行估算列宽（命令面板「列宽适应」）"
+        onClick={() => emitDataai('dataai:result-autofit-columns')}
+      >
+        列宽适应
       </button>
       <button
         type="button"
@@ -333,6 +343,8 @@ export function ResultGrid({
   const [findQuery, setFindQuery] = useState('')
   const [findCaseSensitive, setFindCaseSensitive] = useState(false)
   const [findIndex, setFindIndex] = useState(0)
+  /** One-shot autofit widths; null = CSS defaults. */
+  const [colWidths, setColWidths] = useState<Record<string, number> | null>(null)
 
   const visibleColumns = useMemo(() => columns.filter((column) => column !== '__rowid__'), [columns])
   const displayColumns = useMemo(() => {
@@ -398,6 +410,7 @@ export function ResultGrid({
     setFindOpen(false)
     setFindQuery('')
     setFindIndex(0)
+    setColWidths(null)
     setNote(rows.length > 500 ? `已虚拟滚动渲染 ${rows.length.toLocaleString('zh-CN')} 行` : '')
   }, [columns, rows])
 
@@ -567,8 +580,40 @@ export function ResultGrid({
   const pinLeft = (column: string) => {
     const idx = pinIndex(column)
     if (idx < 0) return undefined
-    // row gutter 48px + prior pinned ~140px
-    return 48 + idx * 140
+    let left = 48
+    const pinnedCols = pinned.filter((name) => displayColumns.includes(name)).slice(0, 2)
+    for (let i = 0; i < idx; i += 1) {
+      const name = pinnedCols[i]
+      if (!name) continue
+      left += colWidths?.[name] ?? 140
+    }
+    return left
+  }
+
+  const columnBoxStyle = (column: string, pinnedAt: number) => {
+    const width = colWidths?.[column]
+    const left = pinnedAt >= 0 ? pinLeft(column) : undefined
+    if (width == null && left == null) return undefined
+    return {
+      ...(width != null ? { width, minWidth: width, maxWidth: width } : {}),
+      ...(left != null ? { left } : {}),
+    }
+  }
+
+  const autofitAllColumns = () => {
+    if (displayColumns.length === 0) return
+    const widths = estimateAllColumnWidths(displayColumns, displayRows)
+    setColWidths(widths)
+    setNote(`已适应 ${displayColumns.length} 列宽（采样 ${Math.min(displayRows.length, 200)} 行）`)
+    setContextMenu(null)
+  }
+
+  const autofitOneColumn = (column: string) => {
+    if (!displayColumns.includes(column)) return
+    const width = estimateColumnWidthPx(column, displayRows)
+    setColWidths((current) => ({ ...(current ?? {}), [column]: width }))
+    setNote(`已适应列「${column}」→ ${width}px`)
+    setContextMenu(null)
   }
 
   const commitEdit = async () => {
@@ -743,7 +788,15 @@ export function ResultGrid({
         }
       }}
     >
-      <table className="grid is-virtual">
+      <table className={colWidths ? "grid is-virtual has-col-widths" : "grid is-virtual"}>
+        {colWidths && (
+          <colgroup>
+            <col className="row-index-col" style={{ width: 48 }} />
+            {displayColumns.map((column) => (
+              <col key={column} style={{ width: colWidths[column] }} />
+            ))}
+          </colgroup>
+        )}
         <thead>
           <tr role="row">
             <th className="row-index" scope="col" title="行号">
@@ -773,10 +826,11 @@ export function ResultGrid({
                     numeric[column] ? 'is-number' : '',
                     pinnedAt >= 0 ? `is-pinned is-pinned-${pinnedAt}` : '',
                     sort?.column === column ? 'is-sorted' : '',
+                    colWidths?.[column] != null ? 'has-autofit' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
-                  style={pinnedAt >= 0 ? { left: pinLeft(column) } : undefined}
+                  style={columnBoxStyle(column, pinnedAt)}
                 >
                   <button
                     type="button"
@@ -798,6 +852,15 @@ export function ResultGrid({
                   >
                     钉
                   </button>
+                  <span
+                    className="grid-col-resizer"
+                    title="双击：列宽适应"
+                    onDoubleClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      autofitOneColumn(column)
+                    }}
+                  />
                 </th>
               )
             })}
@@ -863,6 +926,7 @@ export function ResultGrid({
                         value == null ? 'is-null' : '',
                         focused ? 'is-focused' : '',
                         pinnedAt >= 0 ? `is-pinned is-pinned-${pinnedAt}` : '',
+                        colWidths?.[column] != null ? 'has-autofit' : '',
                         findOpen &&
                         findQuery.trim() &&
                         findHits.some((hit) => hit.row === rowIndex && hit.col === colIndex)
@@ -873,7 +937,7 @@ export function ResultGrid({
                       ]
                         .filter(Boolean)
                         .join(' ')}
-                      style={pinnedAt >= 0 ? { left: pinLeft(column) } : undefined}
+                      style={columnBoxStyle(column, pinnedAt)}
                       onClick={(event) => {
                         selectRow(rowIndex, event)
                         setFocus({ row: rowIndex, col: colIndex })
@@ -920,6 +984,16 @@ export function ResultGrid({
           role="menu"
           onMouseDown={(event) => event.stopPropagation()}
         >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => autofitOneColumn(contextMenu.column)}
+          >
+            列宽适应（本列）
+          </button>
+          <button type="button" role="menuitem" onClick={() => autofitAllColumns()}>
+            列宽适应（全部）
+          </button>
           <button type="button" role="menuitem" onClick={() => void copyColumnAsIn(contextMenu.column)}>
             复制列 IN (...)
           </button>
@@ -968,7 +1042,7 @@ export function ResultGrid({
       )}
       {note && <p className="result-footnote">{note}</p>}
       <p className="result-footnote">
-        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列。
+        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；「列宽适应」或表头分隔线双击估算列宽。
         {sort ? ` 当前排序：${sort.column} ${sort.direction === 'asc' ? '升序' : '降序'}。` : ''}
       </p>
       {canEditSqlite && <p className="result-footnote">SQLite：双击单元格可编辑（需确认）。隐藏列 __rowid__ 用于定位行。</p>}

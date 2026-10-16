@@ -160,6 +160,9 @@ export function App() {
         case 'result.find':
           emitDataai('dataai:result-find')
           break
+        case 'result.autofitColumns':
+          emitDataai('dataai:result-autofit-columns')
+          break
         case 'editor.replace':
           emitDataai('dataai:replace')
           break
