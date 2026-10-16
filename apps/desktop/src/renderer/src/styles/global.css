@@ -564,6 +564,22 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
 .tab.is-renaming {
   min-width: 96px;
 }
+
+.tab.is-dragging {
+  opacity: 0.45;
+}
+.tab.is-drop-before {
+  box-shadow: inset 2px 0 0 #818cf8;
+}
+.tab.is-drop-after {
+  box-shadow: inset -2px 0 0 #818cf8;
+}
+.tab[draggable="true"] {
+  cursor: grab;
+}
+.tab[draggable="true"]:active {
+  cursor: grabbing;
+}
 .tab-main.is-editing {
   display: inline-flex;
   align-items: center;

@@ -124,6 +124,7 @@ export function EditorPane() {
         onSelect={ws.setActiveEditor}
         onClose={ws.closeTab}
         onRename={ws.renameTab}
+        onReorder={ws.reorderEditorTabs}
         onContextAction={(id, action: TabContextAction) => {
           if (action === 'pin' || action === 'unpin') ws.togglePinTab(id)
           else if (action === 'duplicate') ws.duplicateTab(id)

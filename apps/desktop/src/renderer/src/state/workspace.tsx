@@ -27,6 +27,7 @@ import { isTabDirty, withCleanBaseline } from '@shared/tabDirty'
 import {
   closeOthersTargets,
   closeToRightTargets,
+  moveTabToIndex,
   sortPinnedFirst,
   togglePinnedFlag,
 } from '@shared/tabPin'
@@ -197,6 +198,7 @@ type WorkspaceValue = {
   duplicateTab: (id: string) => void
   reopenClosedTab: () => void
   canReopenClosedTab: boolean
+  reorderEditorTabs: (fromId: string, insertBeforeIndex: number) => void
   results: ResultState | null
   setActiveResult: (id: string) => void
   running: boolean
@@ -1209,6 +1211,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
 
+  const reorderEditorTabs = (fromId: string, insertBeforeIndex: number) => {
+    setEditorTabs((tabs) => moveTabToIndex(tabs, fromId, insertBeforeIndex))
+  }
+
   const reopenClosedTab = () => {
     const { stack, item } = popClosedTab(closedStackRef.current)
     if (!item) {
@@ -2114,6 +2120,7 @@ ${sql.trim()}
     duplicateTab,
     reopenClosedTab,
     canReopenClosedTab: closedStackLen > 0,
+    reorderEditorTabs,
     results: activeEditor ? (resultMap[activeEditor.id] ?? null) : null,
     setActiveResult: (id) => {
       if (!activeEditor) return

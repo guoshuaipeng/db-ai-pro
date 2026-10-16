@@ -3,6 +3,7 @@ import {
   closeOthersTargets,
   closeToRightTargets,
   isTabPinned,
+  moveTabToIndex,
   sortPinnedFirst,
   togglePinnedFlag,
 } from './tabPin'
@@ -45,3 +46,27 @@ describe('tabPin', () => {
     expect(closeToRightTargets(tabs, 'a').map((t) => t.id)).toEqual(['b', 'c'])
   })
 })
+
+  it('reorders within unpinned and clamps away from pins', () => {
+    const tabs = [
+      { id: 'p1', pinned: true },
+      { id: 'p2', pinned: true },
+      { id: 'a' },
+      { id: 'b' },
+      { id: 'c' },
+    ]
+    expect(moveTabToIndex(tabs, 'c', 2).map((t) => t.id)).toEqual(['p1', 'p2', 'c', 'a', 'b'])
+    // trying to drop unpinned before pins clamps to start of unpinned
+    expect(moveTabToIndex(tabs, 'c', 0).map((t) => t.id)).toEqual(['p1', 'p2', 'c', 'a', 'b'])
+  })
+
+  it('reorders within pinned group only', () => {
+    const tabs = [
+      { id: 'p1', pinned: true },
+      { id: 'p2', pinned: true },
+      { id: 'a' },
+    ]
+    expect(moveTabToIndex(tabs, 'p1', 2).map((t) => t.id)).toEqual(['p2', 'p1', 'a'])
+    expect(moveTabToIndex(tabs, 'p1', 3).map((t) => t.id)).toEqual(['p2', 'p1', 'a'])
+  })
+

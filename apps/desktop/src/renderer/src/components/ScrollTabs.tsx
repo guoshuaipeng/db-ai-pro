@@ -22,6 +22,8 @@ type ScrollTabsProps = {
   onClose?: (id: string) => void
   onContextAction?: (id: string, action: TabContextAction) => void
   onRename?: (id: string, title: string) => void
+  /** Move tab to insert-before index (clamped by pin group in workspace). */
+  onReorder?: (fromId: string, insertBeforeIndex: number) => void
   trailing?: ReactNode
 }
 
@@ -35,6 +37,7 @@ export function ScrollTabs({
   onClose,
   onContextAction,
   onRename,
+  onReorder,
   trailing,
 }: ScrollTabsProps) {
   const scroller = useRef<HTMLDivElement>(null)
@@ -44,6 +47,8 @@ export function ScrollTabs({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const skipBlurCommit = useRef(false)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dropBeforeIndex, setDropBeforeIndex] = useState<number | null>(null)
 
   const measure = () => {
     const el = scroller.current
@@ -124,6 +129,8 @@ export function ScrollTabs({
   const beginRename = (tab: TabItem) => {
     if (!onRename) return
     setMenu(null)
+    setDraggingId(null)
+    setDropBeforeIndex(null)
     onSelect(tab.id)
     setDraft(tab.editTitle ?? tab.label)
     setEditingId(tab.id)
@@ -175,7 +182,7 @@ export function ScrollTabs({
         data-fade-left={overflow.left}
         data-fade-right={overflow.right}
       >
-        {tabs.map((tab) => {
+        {tabs.map((tab, index) => {
           const selected = tab.id === activeId
           const renaming = editingId === tab.id
           const tabClass = [
@@ -183,6 +190,9 @@ export function ScrollTabs({
             selected ? 'is-active' : '',
             tab.pinned ? 'is-pinned' : '',
             renaming ? 'is-renaming' : '',
+            draggingId === tab.id ? 'is-dragging' : '',
+            dropBeforeIndex === index ? 'is-drop-before' : '',
+            dropBeforeIndex === index + 1 && index === tabs.length - 1 ? 'is-drop-after' : '',
           ]
             .filter(Boolean)
             .join(' ')
@@ -191,6 +201,43 @@ export function ScrollTabs({
               key={tab.id}
               className={tabClass}
               role="presentation"
+              draggable={Boolean(onReorder) && !renaming}
+              onDragStart={(event) => {
+                if (!onReorder || renaming) {
+                  event.preventDefault()
+                  return
+                }
+                const target = event.target as HTMLElement
+                if (target.closest('.tab-close, .tab-rename-input, .tab-context-menu')) {
+                  event.preventDefault()
+                  return
+                }
+                event.dataTransfer.setData('text/plain', tab.id)
+                event.dataTransfer.effectAllowed = 'move'
+                setDraggingId(tab.id)
+                setMenu(null)
+              }}
+              onDragEnd={() => {
+                setDraggingId(null)
+                setDropBeforeIndex(null)
+              }}
+              onDragOver={(event) => {
+                if (!onReorder || !draggingId) return
+                event.preventDefault()
+                event.dataTransfer.dropEffect = 'move'
+                const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+                const before = event.clientX < rect.left + rect.width / 2
+                setDropBeforeIndex(before ? index : index + 1)
+              }}
+              onDrop={(event) => {
+                if (!onReorder) return
+                event.preventDefault()
+                const fromId = event.dataTransfer.getData('text/plain') || draggingId
+                const insertAt = dropBeforeIndex ?? index
+                if (fromId) onReorder(fromId, insertAt)
+                setDraggingId(null)
+                setDropBeforeIndex(null)
+              }}
               onContextMenu={(event) => {
                 if (!onContextAction && !onRename) return
                 event.preventDefault()

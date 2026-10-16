@@ -363,4 +363,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '重命名查询标签', keys: '右键 / 双击 / F2' },
   { action: '复制查询标签', keys: 'Ctrl+Shift+D · 右键' },
   { action: '重新打开已关闭标签', keys: 'Ctrl+Shift+T' },
+  { action: '拖拽调整标签顺序', keys: '标签栏拖拽（固定组内/未固定组内）' },
 ]
