@@ -4373,3 +4373,7 @@ body.is-col-resizing .grid-col-resizer {
   border-color: var(--accent, #3b82f6);
   background: color-mix(in srgb, var(--accent, #3b82f6) 18%, transparent);
 }
+
+.connection-dialect-help {
+  margin: 8px 0 0;
+}

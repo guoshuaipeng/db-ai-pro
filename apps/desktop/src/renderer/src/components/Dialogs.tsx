@@ -11,6 +11,11 @@ import {
   invertDatabaseChecked,
   whitelistForSave,
 } from '@shared/dbVisibility'
+import {
+  connectionDialectHelp,
+  connectionNamePlaceholder,
+  validateConnectionDraft,
+} from '@shared/connectionDraft'
 import { EmptyState } from './EmptyState'
 
 export function Dialogs() {
@@ -247,9 +252,22 @@ function ConnectionDialog() {
     return input
   }
 
+  const draftFields = () => ({
+    name,
+    dialect,
+    filePath,
+    host,
+    port,
+  })
+
   const submit = async () => {
-    setError('')
     setProbe('')
+    const invalid = validateConnectionDraft(draftFields())
+    if (invalid) {
+      setError(invalid)
+      return
+    }
+    setError('')
     try {
       await ws.saveConnection(buildInput())
     } catch (reason) {
@@ -258,6 +276,12 @@ function ConnectionDialog() {
   }
 
   const test = async () => {
+    const invalid = validateConnectionDraft(draftFields())
+    if (invalid) {
+      setError(invalid)
+      setProbe('')
+      return
+    }
     setProbing(true)
     setError('')
     setProbe('')
@@ -272,6 +296,11 @@ function ConnectionDialog() {
     }
   }
 
+  const useSampleInstead = () => {
+    ws.closeDialog()
+    void ws.restoreSample()
+  }
+
   return (
     <div className="overlay" role="presentation" onMouseDown={ws.closeDialog}>
       <div
@@ -284,7 +313,13 @@ function ConnectionDialog() {
         <h2 id="connection-title">{existing ? '编辑连接' : '新建连接'}</h2>
         <label className="field">
           <span>名称</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} autoFocus placeholder="例如：订单库" />
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            autoFocus
+            placeholder={connectionNamePlaceholder(dialect)}
+            aria-invalid={Boolean(error && !name.trim())}
+          />
         </label>
         <div className="field">
           <span>类型</span>
@@ -312,6 +347,7 @@ function ConnectionDialog() {
               </button>
             ))}
           </div>
+          <p className="field-hint connection-dialect-help">{connectionDialectHelp(dialect)}</p>
         </div>
         {dialect === 'sqlite' ? (
           <>
@@ -431,6 +467,16 @@ function ConnectionDialog() {
           <button type="button" className="btn btn-ghost" onClick={ws.closeDialog}>
             取消
           </button>
+          {!existing && (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              title="关闭对话框并恢复内置示例业务库"
+              onClick={useSampleInstead}
+            >
+              改用示例库
+            </button>
+          )}
           <button type="button" className="btn btn-ghost" disabled={probing} onClick={() => void test()}>
             {probing ? '测试中' : '测试'}
           </button>
