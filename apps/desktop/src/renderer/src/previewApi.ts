@@ -284,6 +284,10 @@ export function createPreviewApi(): DesktopApi {
             input.editorWordWrap === undefined
               ? memory.prefs.editorWordWrap
               : input.editorWordWrap === true,
+          editorBracketColorization:
+            input.editorBracketColorization === undefined
+              ? memory.prefs.editorBracketColorization
+              : input.editorBracketColorization !== false,
           welcomeDismissed:
             input.welcomeDismissed === undefined
               ? memory.prefs.welcomeDismissed

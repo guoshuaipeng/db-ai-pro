@@ -261,6 +261,13 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'view',
   },
   {
+    id: 'view.toggleBracketColorization',
+    title: '切换括号配对着色',
+    subtitle: '彩色括号与配对引导线',
+    keywords: 'bracket colorization 括号 配对 着色 guide',
+    category: 'view',
+  },
+  {
     id: 'view.editorFont',
     title: '编辑器字号…',
     subtitle: '在设置中调节 12–20',
@@ -405,4 +412,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '单元格全文预览', keys: '双击单元格 · 工具栏「查看单元格」' },
   { action: '填写查询参数', keys: '工具栏「填写参数」· Ctrl+K · 运行时自动' },
   { action: '查询标签连接色', keys: '连接颜色标记 → 标签左侧色条' },
+  { action: '括号配对着色', keys: '设置 → 外观 · Ctrl+K「括号」' },
 ]

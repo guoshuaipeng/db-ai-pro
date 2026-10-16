@@ -342,6 +342,17 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
     }
   }
 
+  const setEditorBracketColorization = async (editorBracketColorization: boolean) => {
+    setBusy(true)
+    try {
+      await ws.setEditorBracketColorization(editorBracketColorization)
+      const next = await api.prefs.get()
+      onPrefs(next)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const setEditorWordWrap = async (editorWordWrap: boolean) => {
     setBusy(true)
     try {
@@ -514,6 +525,22 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
           onClick={() => void setEditorWordWrap(!prefs.editorWordWrap)}
         >
           {prefs.editorWordWrap ? '已开启' : '已关闭'}
+        </button>
+      </div>
+      <div className="contrast-block">
+        <div className="contrast-copy">
+          <strong>括号配对着色</strong>
+          <span>彩色括号与配对引导线，便于嵌套 SQL。默认开启；Ctrl+K「括号」可切换。</span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={prefs.editorBracketColorization}
+          className={prefs.editorBracketColorization ? 'contrast-switch is-on' : 'contrast-switch'}
+          disabled={busy}
+          onClick={() => void setEditorBracketColorization(!prefs.editorBracketColorization)}
+        >
+          {prefs.editorBracketColorization ? '已开启' : '已关闭'}
         </button>
       </div>
       <div className="contrast-block">

@@ -222,6 +222,9 @@ export function App() {
         case 'view.toggleWordWrap':
           void ws.toggleEditorWordWrap()
           break
+        case 'view.toggleBracketColorization':
+          void ws.toggleEditorBracketColorization()
+          break
         case 'view.editorFont':
           openSettings('appearance')
           break

@@ -63,6 +63,26 @@ function ensureSql() {
       'input.background': '#0c0e13',
       'input.foreground': '#E8EDF7',
       'input.border': '#2A3142',
+      'editorBracketHighlight.foreground1': '#9EB4FF',
+      'editorBracketHighlight.foreground2': '#4FD1C5',
+      'editorBracketHighlight.foreground3': '#E6C35C',
+      'editorBracketHighlight.foreground4': '#C792EA',
+      'editorBracketHighlight.foreground5': '#7DDEA2',
+      'editorBracketHighlight.foreground6': '#FF9E64',
+      'editorBracketMatch.background': '#2A3A6655',
+      'editorBracketMatch.border': '#9EB4FF',
+      'editorBracketPairGuide.background1': '#9EB4FF33',
+      'editorBracketPairGuide.background2': '#4FD1C533',
+      'editorBracketPairGuide.background3': '#E6C35C33',
+      'editorBracketPairGuide.background4': '#C792EA33',
+      'editorBracketPairGuide.background5': '#7DDEA233',
+      'editorBracketPairGuide.background6': '#FF9E6433',
+      'editorBracketPairGuide.activeBackground1': '#9EB4FF88',
+      'editorBracketPairGuide.activeBackground2': '#4FD1C588',
+      'editorBracketPairGuide.activeBackground3': '#E6C35C88',
+      'editorBracketPairGuide.activeBackground4': '#C792EA88',
+      'editorBracketPairGuide.activeBackground5': '#7DDEA288',
+      'editorBracketPairGuide.activeBackground6': '#FF9E6488',
     },
   })
 
@@ -114,6 +134,8 @@ type SqlEditorProps = {
   minimap?: boolean
   fontSize?: number
   wordWrap?: boolean
+  /** Bracket pair colorization + guides. Default on. */
+  bracketColorization?: boolean
 }
 
 export function SqlEditor({
@@ -124,6 +146,7 @@ export function SqlEditor({
   minimap = false,
   fontSize = DEFAULT_EDITOR_FONT_SIZE,
   wordWrap = false,
+  bracketColorization = true,
 }: SqlEditorProps) {
   const host = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<editor.IStandaloneCodeEditor | null>(null)
@@ -157,11 +180,21 @@ export function SqlEditor({
       smoothScrolling: true,
       tabSize: 2,
       wordWrap: wordWrap ? 'on' : 'off',
+      matchBrackets: bracketColorization ? 'always' : 'near',
+      bracketPairColorization: {
+        enabled: bracketColorization === true,
+        independentColorPoolPerBracketType: true,
+      },
       automaticLayout: true,
       overviewRulerLanes: 0,
       hideCursorInOverviewRuler: true,
       scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
-      guides: { indentation: false },
+      guides: {
+        indentation: false,
+        bracketPairs: bracketColorization === true,
+        bracketPairsHorizontal: bracketColorization === true ? 'active' : false,
+        highlightActiveBracketPair: bracketColorization === true,
+      },
       occurrencesHighlight: 'off',
       renderWhitespace: 'none',
       stickyScroll: { enabled: false },
@@ -225,8 +258,19 @@ export function SqlEditor({
       fontSize: size,
       wordWrap: wordWrap ? 'on' : 'off',
       lineHeight: editorLineHeight(size),
+      matchBrackets: bracketColorization ? 'always' : 'near',
+      bracketPairColorization: {
+        enabled: bracketColorization === true,
+        independentColorPoolPerBracketType: true,
+      },
+      guides: {
+        indentation: false,
+        bracketPairs: bracketColorization === true,
+        bracketPairsHorizontal: bracketColorization === true ? 'active' : false,
+        highlightActiveBracketPair: bracketColorization === true,
+      },
     })
-  }, [minimap, fontSize, wordWrap])
+  }, [minimap, fontSize, wordWrap, bracketColorization])
 
   useEffect(() => onDataai('dataai:focus-editor', () => {
     instanceRef.current?.focus()

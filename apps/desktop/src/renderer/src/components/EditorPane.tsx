@@ -373,6 +373,7 @@ export function EditorPane() {
             minimap={ws.editorMinimap}
             fontSize={ws.editorFontSize}
             wordWrap={ws.editorWordWrap}
+            bracketColorization={ws.editorBracketColorization}
           />
         )}
         <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} />

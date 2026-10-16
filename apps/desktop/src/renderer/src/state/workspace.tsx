@@ -208,11 +208,14 @@ type WorkspaceValue = {
   editorMinimap: boolean
   editorFontSize: number
   editorWordWrap: boolean
+  editorBracketColorization: boolean
   setEditorMinimap: (value: boolean) => Promise<void>
   setEditorFontSize: (value: number) => Promise<void>
   setEditorWordWrap: (value: boolean) => Promise<void>
+  setEditorBracketColorization: (value: boolean) => Promise<void>
   toggleEditorMinimap: () => Promise<void>
   toggleEditorWordWrap: () => Promise<void>
+  toggleEditorBracketColorization: () => Promise<void>
   txnOpen: boolean
   txnSupported: boolean
   readOnlyActive: boolean
@@ -442,6 +445,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [editorMinimap, setEditorMinimapState] = useState(false)
   const [editorFontSize, setEditorFontSizeState] = useState(DEFAULT_EDITOR_FONT_SIZE)
   const [editorWordWrap, setEditorWordWrapState] = useState(false)
+  const [editorBracketColorization, setEditorBracketColorizationState] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [aiOpen, setAiOpen] = useState(true)
   const requestRef = useRef<string | null>(null)
@@ -559,6 +563,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setEditorMinimapState(prefs.editorMinimap === true)
         setEditorFontSizeState(clampEditorFontSize(prefs.editorFontSize))
         setEditorWordWrapState(prefs.editorWordWrap === true)
+        setEditorBracketColorizationState(prefs.editorBracketColorization !== false)
         setNotifyOnErrorOnlyState(prefs.notifyOnErrorOnly === true)
         setNotifyOnSlowQueryState(prefs.notifyOnSlowQuery === true)
         const connectionIds = new Set(rows.map((row) => row.id))
@@ -1320,6 +1325,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const toggleEditorWordWrap = useCallback(async () => {
     await setEditorWordWrap(!editorWordWrap)
   }, [editorWordWrap, setEditorWordWrap])
+
+  const setEditorBracketColorization = useCallback(
+    async (value: boolean) => {
+      const next = await api.prefs.save({ editorBracketColorization: value })
+      setEditorBracketColorizationState(next.editorBracketColorization !== false)
+      pushToast(
+        'success',
+        next.editorBracketColorization !== false ? '已开启括号配对着色' : '已关闭括号配对着色',
+      )
+    },
+    [api, pushToast],
+  )
+
+  const toggleEditorBracketColorization = useCallback(async () => {
+    await setEditorBracketColorization(!editorBracketColorization)
+  }, [editorBracketColorization, setEditorBracketColorization])
 
   const setEditorFontSize = useCallback(
     async (value: number) => {
@@ -2155,11 +2176,14 @@ ${sql.trim()}
     editorMinimap,
     editorFontSize,
     editorWordWrap,
+    editorBracketColorization,
     setEditorMinimap,
     setEditorFontSize,
     setEditorWordWrap,
+    setEditorBracketColorization,
     toggleEditorMinimap,
     toggleEditorWordWrap,
+    toggleEditorBracketColorization,
     txnOpen,
     txnSupported,
     readOnlyActive,
