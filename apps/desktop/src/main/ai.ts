@@ -36,17 +36,33 @@ function sendProgress(
   send({ requestId, type: 'progress', mode, step, detail })
 }
 
+async function delayOrAbort(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
 async function streamPreviewText(
   requestId: string,
   text: string,
   signal: AbortSignal,
   send: (event: AiEvent) => void,
+  mode: 'model' | 'preview' = 'preview',
 ): Promise<void> {
-  const chunks = text.match(/.{1,3}/gs) ?? [text]
+  const chunks = text.match(/.{1,4}/gs) ?? [text]
   for (const chunk of chunks) {
     if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
-    send({ requestId, type: 'delta', delta: chunk, mode: 'preview' })
-    await new Promise((resolve) => setTimeout(resolve, 12))
+    send({ requestId, type: 'delta', delta: chunk, mode })
+    await delayOrAbort(10, signal)
   }
 }
 
@@ -108,7 +124,7 @@ export async function streamRepair(options: {
       },
     ],
   })
-  await streamPreviewText(options.requestId, content, options.signal, options.send)
+  await streamPreviewText(options.requestId, content, options.signal, options.send, 'model')
   options.send({ requestId: options.requestId, type: 'done', mode: 'model' })
 }
 
@@ -218,7 +234,7 @@ async function runModelAgent(options: {
 
     const content = (message.content ?? '').trim()
     if (!content) throw new Error('模型没有给出 SQL')
-    await streamPreviewText(options.requestId, content, options.signal, options.send)
+    await streamPreviewText(options.requestId, content, options.signal, options.send, 'model')
     options.send({ requestId: options.requestId, type: 'done', mode: 'model' })
     return
   }

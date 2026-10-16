@@ -118,7 +118,7 @@ export type AiSettingsInput = {
 export type AiEvent =
   | { requestId: string; type: 'delta'; delta: string; mode: 'model' | 'preview' }
   | { requestId: string; type: 'progress'; mode: 'model' | 'preview'; step: string; detail?: string }
-  | { requestId: string; type: 'done'; mode: 'model' | 'preview' }
+  | { requestId: string; type: 'done'; mode: 'model' | 'preview'; cancelled?: boolean }
   | { requestId: string; type: 'error'; message: string }
 
 export type AppMeta = {
@@ -139,6 +139,8 @@ export type AiTurnState = {
   content: string
   mode?: 'model' | 'preview'
   steps?: { step: string; detail?: string }[]
+  /** settled status after stream ends or user stops */
+  status?: 'streaming' | 'done' | 'cancelled' | 'error'
 }
 
 export type WorkspaceState = {

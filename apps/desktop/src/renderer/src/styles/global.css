@@ -704,13 +704,35 @@ button:disabled { cursor: default; opacity: 0.45; }
   left: 0;
   top: 0;
   height: 2px;
-  width: 36%;
-  background: var(--accent);
-  animation: stream 1.1s ease-in-out infinite;
+  width: 42%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: stream 1.05s ease-in-out infinite;
 }
+.card.is-cancelled {
+  border-color: rgba(230, 192, 123, 0.35);
+}
+.card.is-cancelled .card-kicker { color: var(--warn); }
 @keyframes stream {
-  from { transform: translateX(-120%); }
-  to { transform: translateX(320%); }
+  from { transform: translateX(-130%); opacity: 0.55; }
+  50% { opacity: 1; }
+  to { transform: translateX(280%); opacity: 0.55; }
+}
+.ai-stop-inline {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.card-body.is-waiting::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: blink 1s steps(1) infinite;
+  vertical-align: middle;
 }
 .sql-block {
   border-radius: 8px;
@@ -917,6 +939,11 @@ button:disabled { cursor: default; opacity: 0.45; }
   font-size: 12px;
   color: #aeb6c6;
 }
+.ai-steps li.is-active {
+  border-color: rgba(158, 180, 255, 0.35);
+  background: rgba(158, 180, 255, 0.08);
+}
+.ai-steps li.is-active strong { color: var(--accent); }
 .ai-steps strong {
   color: #e8edf7;
   font-weight: 600;

@@ -3,7 +3,7 @@ import { parseBlocks, extractSql } from '@shared/sql'
 import { ASSISTANT_PROMPTS } from '@shared/session'
 import { ALTER_PROMPTS, CREATE_PROMPTS } from '@shared/ddlDraft'
 import type { AiIntent } from '@shared/types'
-import { IconSend, IconSpark } from './icons'
+import { IconSend, IconSpark, IconStop } from './icons'
 import { EmptyState } from './EmptyState'
 import { emitDataai } from '../appEvents'
 import { useWorkspace } from '../state/workspace'
@@ -68,6 +68,7 @@ export function AiPane() {
             role="tab"
             aria-selected={ws.aiIntent === intent}
             className={ws.aiIntent === intent ? 'intent is-active' : 'intent'}
+            disabled={ws.aiStreaming}
             onClick={() => ws.setAiIntent(intent)}
           >
             {INTENT_LABEL[intent]}
@@ -124,7 +125,7 @@ export function AiPane() {
             actions={
               <div className="chips">
                 {prompts.map((prompt) => (
-                  <button key={prompt} type="button" className="chip" onClick={() => void ws.sendAi(prompt)}>
+                  <button key={prompt} type="button" className="chip" disabled={ws.aiStreaming} onClick={() => void ws.sendAi(prompt)}>
                     {prompt}
                   </button>
                 ))}
@@ -139,20 +140,42 @@ export function AiPane() {
               <p className="card-body">{turn.content}</p>
             </article>
           ) : (
-            <article key={turn.id} className={turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming ? 'card is-streaming' : 'card'}>
+            <article
+              key={turn.id}
+              className={[
+                'card',
+                turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming ? 'is-streaming' : '',
+                turn.status === 'cancelled' ? 'is-cancelled' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
               <p className="card-kicker">
                 <IconSpark />
                 {turn.mode === 'model' ? '模型' : '本地预览'}
                 {turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming ? ' · 进行中' : ''}
+                {turn.status === 'cancelled' ? ' · 已停止' : ''}
+                {turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming && (
+                  <button type="button" className="tiny-btn btn btn-danger ai-stop-inline" onClick={ws.cancelAi}>
+                    <IconStop />
+                    停止
+                  </button>
+                )}
               </p>
               {turn.steps && turn.steps.length > 0 && (
                 <ul className="ai-steps">
-                  {turn.steps.map((step, index) => (
-                    <li key={`${turn.id}:step:${index}`}>
-                      <strong>{step.step}</strong>
-                      {step.detail ? <span>{step.detail}</span> : null}
-                    </li>
-                  ))}
+                  {turn.steps.map((step, index) => {
+                    const active =
+                      turn.id === ws.aiTurns.at(-1)?.id &&
+                      ws.aiStreaming &&
+                      index === turn.steps!.length - 1
+                    return (
+                      <li key={`${turn.id}:step:${index}`} className={active ? 'is-active' : undefined}>
+                        <strong>{step.step}</strong>
+                        {step.detail ? <span>{step.detail}</span> : null}
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
               <AssistantBody content={turn.content} streaming={turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming} />
@@ -183,7 +206,8 @@ export function AiPane() {
           }}
         />
         {ws.aiStreaming ? (
-          <button type="button" className="btn btn-ghost" onClick={ws.cancelAi}>
+          <button type="button" className="btn btn-danger send-btn" onClick={ws.cancelAi} aria-label="停止生成">
+            <IconStop />
             停止
           </button>
         ) : (
@@ -198,7 +222,7 @@ export function AiPane() {
 
 function AssistantBody({ content, streaming }: { content: string; streaming: boolean }) {
   const ws = useWorkspace()
-  if (!content && streaming) return <p className="card-body dim">正在处理…</p>
+  if (!content && streaming) return <p className="card-body dim is-waiting">正在检索 / 生成…</p>
   const blocks = parseBlocks(content)
   if (blocks.length === 0) return content ? <p className="card-body">{content}</p> : null
   return (

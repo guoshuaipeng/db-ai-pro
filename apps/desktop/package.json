@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — theme polish + high contrast",
+  "description": "DataAI TypeScript desktop — AI stream stop polish",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

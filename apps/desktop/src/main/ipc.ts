@@ -579,7 +579,10 @@ ipcMain.handle('sql:cancel', async (_event, requestId: string) => {
     try {
       await work(send, controller.signal)
     } catch (error) {
-      if (controller.signal.aborted) return
+      if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+        send({ requestId: payload.requestId, type: 'done', mode: 'preview', cancelled: true })
+        return
+      }
       const message = error instanceof Error ? error.message : '助手没有完成这次起草'
       send({ requestId: payload.requestId, type: 'error', message })
     } finally {

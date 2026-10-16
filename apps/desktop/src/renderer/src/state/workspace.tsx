@@ -16,6 +16,7 @@ import { countTreeNodes, extrasFromConnections, filterNodes } from '@shared/tree
 import { isKvDialect } from '@shared/types'
 import { supportsManualTransaction } from '@shared/transaction'
 import { trimAiTurns } from '@shared/aiMemory'
+import { settleCancelledTurn } from '@shared/aiStream'
 import { formatExplainText } from '@shared/explain'
 import { analyzeDestructiveSql } from '@shared/destructiveSql'
 import type { TableStructure } from '@shared/tableStructure'
@@ -438,16 +439,25 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }
       if (event.type === 'done') {
         setAiStreaming(false)
+        if (requestRef.current === event.requestId) requestRef.current = null
         setAiTurns((turns) =>
-          turns.map((turn) => (turn.id === event.requestId ? { ...turn, mode: event.mode } : turn)),
+          turns.map((turn) => {
+            if (turn.id !== event.requestId) return turn
+            if (event.cancelled) return settleCancelledTurn({ ...turn, mode: event.mode })
+            return { ...turn, mode: event.mode, status: 'done' }
+          }),
         )
+        if (event.cancelled) pushToast('info', '已停止生成')
         return
       }
       if (event.type === 'error') {
         setAiStreaming(false)
+        if (requestRef.current === event.requestId) requestRef.current = null
         setAiTurns((turns) =>
           turns.map((turn) =>
-            turn.id === event.requestId ? { ...turn, content: turn.content || event.message } : turn,
+            turn.id === event.requestId
+              ? { ...turn, content: turn.content || event.message, status: 'error' }
+              : turn,
           ),
         )
         pushToast('error', event.message)
@@ -937,7 +947,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setAiTurns((turns) => [
       ...turns,
       { id: `${requestId}:user`, role: 'user', content: prompt },
-      { id: requestId, role: 'assistant', content: '', mode: settings?.hasKey ? 'model' : 'preview', steps: [] },
+      { id: requestId, role: 'assistant', content: '', mode: settings?.hasKey ? 'model' : 'preview', steps: [], status: 'streaming' },
     ])
     try {
       await api.ai.start({
@@ -1014,7 +1024,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setAiTurns((turns) => [
       ...turns,
       { id: `${requestId}:user`, role: 'user', content: `修复失败 SQL：${error}` },
-      { id: requestId, role: 'assistant', content: '', mode: settings?.hasKey ? 'model' : 'preview', steps: [] },
+      { id: requestId, role: 'assistant', content: '', mode: settings?.hasKey ? 'model' : 'preview', steps: [], status: 'streaming' },
     ])
     try {
       await api.ai.repair({ requestId, connectionId: activeConnectionId, sql, error })
@@ -1028,7 +1038,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const requestId = requestRef.current
     if (!requestId) return
     void api.ai.cancel(requestId)
+    requestRef.current = null
     setAiStreaming(false)
+    setAiTurns((turns) =>
+      turns.map((turn) => (turn.id === requestId ? settleCancelledTurn(turn) : turn)),
+    )
+    pushToast('info', '已停止生成')
   }
 
   const applySql = (sql: string) => {

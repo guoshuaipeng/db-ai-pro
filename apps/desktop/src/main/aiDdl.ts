@@ -3,6 +3,21 @@ import { schemaForTables, searchRelevantTables } from '@shared/tableCatalog'
 import type { TableSpec } from '@shared/schema'
 import type { AiEvent } from '@shared/types'
 
+async function delayOrAbort(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
 async function streamText(
   requestId: string,
   text: string,
@@ -10,11 +25,11 @@ async function streamText(
   signal: AbortSignal,
   send: (event: AiEvent) => void,
 ): Promise<void> {
-  const chunks = text.match(/.{1,3}/gs) ?? [text]
+  const chunks = text.match(/.{1,4}/gs) ?? [text]
   for (const chunk of chunks) {
     if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
     send({ requestId, type: 'delta', delta: chunk, mode })
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await delayOrAbort(8, signal)
   }
 }
 
