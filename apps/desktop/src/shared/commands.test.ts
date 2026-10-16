@@ -83,6 +83,10 @@ describe('filterCommands', () => {
     expect(filterCommands('Markdown').some((item) => item.id === 'result.copyMarkdown')).toBe(true)
   })
 
+  it('finds copy result json command', () => {
+    expect(filterCommands('JSON').some((item) => item.id === 'result.copyJson')).toBe(true)
+  })
+
   it('finds query templates', () => {
     expect(filterCommands('模板').some((item) => item.id === 'query.templates')).toBe(true)
     expect(filterCommands('COUNT').some((item) => item.id === 'query.tpl.selectCount')).toBe(true)

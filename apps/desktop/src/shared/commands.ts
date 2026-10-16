@@ -190,6 +190,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'result.copyJson',
+    title: '复制结果为 JSON',
+    subtitle: 'JSON 数组写入剪贴板（缩进格式）',
+    keywords: 'json copy array 复制 结果',
+    shortcut: '结果工具栏「复制 JSON」',
+    category: 'query',
+  },
+  {
     id: 'result.copyMarkdown',
     title: '复制结果为 Markdown',
     subtitle: 'GFM 表格写入剪贴板（可粘贴到文档 / 聊天）',

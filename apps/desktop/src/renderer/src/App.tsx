@@ -207,6 +207,9 @@ export function App() {
         case 'result.copyMarkdown':
           emitDataai('dataai:result-copy-markdown')
           break
+        case 'result.copyJson':
+          emitDataai('dataai:result-copy-json')
+          break
         case 'editor.replace':
           emitDataai('dataai:replace')
           break

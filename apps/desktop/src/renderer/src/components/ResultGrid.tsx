@@ -15,6 +15,10 @@ import {
   resultMarkdownCopiedToast,
 } from '@shared/resultMarkdownCopy'
 import {
+  buildResultJsonClipboard,
+  resultJsonCopiedToast,
+} from '@shared/resultJsonCopy'
+import {
   columnValues,
   rowsToValuesSql,
   rowTuples,
@@ -158,6 +162,18 @@ export function ResultToolbar({
         : resultMarkdownCopiedToast(rowCount, truncated),
     )
   }
+  const copyJson = async () => {
+    if (copySource.length === 0 || exportColumns.length === 0) return
+    const { text, rowCount, truncated } = buildResultJsonClipboard(exportColumns, copySource)
+    if (!text.trim()) return
+    await navigator.clipboard.writeText(text)
+    setCopyNote(
+      selectionActive
+        ? `${resultJsonCopiedToast(rowCount, truncated)} · 选中行`
+        : resultJsonCopiedToast(rowCount, truncated),
+    )
+  }
+
 
   const copyInList = async () => {
     if (!statsColumn || copySource.length === 0) return
@@ -205,6 +221,12 @@ export function ResultToolbar({
   useEffect(() => {
     return onDataai('dataai:result-copy-markdown', () => {
       void copyMarkdown()
+    })
+  }, [exportColumns, copySource, selectionActive])
+
+  useEffect(() => {
+    return onDataai('dataai:result-copy-json', () => {
+      void copyJson()
     })
   }, [exportColumns, copySource, selectionActive])
 
@@ -410,6 +432,15 @@ export function ResultToolbar({
         onClick={() => void copyMarkdown()}
       >
         复制 MD
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
+        disabled={copySource.length === 0 || exportColumns.length === 0}
+        title="复制为 JSON 数组（缩进格式；过多行会截断）"
+        onClick={() => void copyJson()}
+      >
+        复制 JSON
       </button>
       <button
         type="button"
