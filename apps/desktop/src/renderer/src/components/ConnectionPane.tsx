@@ -6,7 +6,7 @@ import { bucketSchemaByGroup, colorForTag } from '@shared/connGroups'
 import { quoteIdentIfNeeded } from '@shared/sql'
 import { setSqlDragData } from '@shared/sqlDragDrop'
 import type { Dialect, SchemaNode } from '@shared/types'
-import { IconColumn, IconDatabase, IconMore, IconPlus, IconSearch, IconTable } from './icons'
+import { IconColumn, IconDatabase, IconMore, IconPlus, IconRefresh, IconSearch, IconTable } from './icons'
 import { EmptyState } from './EmptyState'
 import { useWorkspace } from '../state/workspace'
 import { recentQueryTitle } from '@shared/recentItems'
@@ -51,6 +51,16 @@ export function ConnectionPane() {
           </button>
           <button type="button" className="tiny-btn btn btn-ghost" onClick={() => void ws.exportConnections()}>
             导出
+          </button>
+          <button
+            type="button"
+            className={ws.schemaRefreshing ? 'icon-btn is-spinning' : 'icon-btn'}
+            aria-label="刷新对象树"
+            title="刷新对象树"
+            disabled={ws.schemaRefreshing}
+            onClick={() => void ws.refreshSchemaTree()}
+          >
+            <IconRefresh />
           </button>
           <button type="button" className="icon-btn" aria-label="新建连接" onClick={ws.openCreate}>
             <IconPlus />
@@ -298,7 +308,18 @@ function TreeNode({
     : undefined
   const dialect = node.dialect || nodeConn?.dialect || connection?.dialect
   const failed = node.status === 'error'
-  const rowClass = ['tree-row', selected ? 'is-selected' : '', failed ? 'is-error' : ''].filter(Boolean).join(' ')
+  const refreshingHere =
+    ws.schemaRefreshing &&
+    (node.kind === 'connection' || node.kind === 'database') &&
+    (!!node.connectionId || node.kind === 'connection')
+  const rowClass = [
+    'tree-row',
+    selected ? 'is-selected' : '',
+    failed ? 'is-error' : '',
+    refreshingHere ? 'is-refreshing' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
   const insertable =
     (node.kind === 'table' && !!(node.tableName || node.name)) ||
     ((node.kind === 'column' || node.kind === 'key') && !!node.name)
@@ -381,6 +402,7 @@ function TreeNode({
             {node.kind === 'table' ? <IconTable /> : node.kind === 'column' ? <IconColumn /> : node.kind === 'key' ? <IconColumn /> : <IconDatabase />}
           </span>
           <span className="tree-label">{node.displayName}</span>
+          {refreshingHere && <span className="tree-refresh-spin" aria-hidden="true" />}
           {node.kind === 'table' && node.displayName !== node.name && <span className="tree-meta">{node.name}</span>}
           {node.kind === 'column' && node.dataType && <span className="col-type">{node.dataType}</span>}
           {node.kind === 'key' && node.dataType && <span className="col-type">{node.dataType}</span>}
@@ -390,6 +412,17 @@ function TreeNode({
           )}
         </button>
         {node.kind === 'connection' && connection && (
+          <button
+            type="button"
+            className="icon-btn tiny"
+            aria-label={`${node.displayName}的操作`}
+            aria-expanded={menuId === node.id}
+            onClick={() => onMenu(menuId === node.id ? null : node.id)}
+          >
+            <IconMore />
+          </button>
+        )}
+        {node.kind === 'database' && node.connectionId && (
           <button
             type="button"
             className="icon-btn tiny"
@@ -427,6 +460,17 @@ function TreeNode({
             <button
               type="button"
               role="menuitem"
+              disabled={ws.schemaRefreshing}
+              onClick={() => {
+                onMenu(null)
+                void ws.refreshSchemaTree(connection.id)
+              }}
+            >
+              刷新
+            </button>
+            <button
+              type="button"
+              role="menuitem"
               onClick={() => {
                 onMenu(null)
                 void ws.checkConnectionHealth(connection.id, false)
@@ -442,8 +486,34 @@ function TreeNode({
             </button>
           </div>
         )}
+        {menuId === node.id && node.kind === 'database' && node.connectionId && (
+          <div className="menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              disabled={ws.schemaRefreshing}
+              onClick={() => {
+                onMenu(null)
+                void ws.refreshSchemaTree(node.connectionId)
+              }}
+            >
+              刷新
+            </button>
+          </div>
+        )}
         {menuId === node.id && node.kind === 'table' && node.connectionId && node.tableName && (
           <div className="menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              disabled={ws.schemaRefreshing}
+              onClick={() => {
+                onMenu(null)
+                void ws.refreshSchemaTree(node.connectionId)
+              }}
+            >
+              刷新
+            </button>
             <button
               type="button"
               role="menuitem"

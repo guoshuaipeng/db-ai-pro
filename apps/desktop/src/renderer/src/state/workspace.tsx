@@ -11,6 +11,7 @@ import {
 import { getApi } from '../bridge'
 import { emitDataai } from '../appEvents'
 import { connectionErrorNode } from '@shared/schema'
+import { replaceConnectionNode, seedExpanded } from '@shared/schemaTreeRefresh'
 import { changesSchema, quoteIdentIfNeeded, statementTitle } from '@shared/sql'
 import {
   DEFAULT_PAGE_SIZE,
@@ -175,6 +176,8 @@ type WorkspaceValue = {
   healthById: Record<string, ConnHealth>
   checkConnectionHealth: (id: string, silent?: boolean) => Promise<ConnHealth | null>
   checkAllConnectionHealth: () => Promise<void>
+  schemaRefreshing: boolean
+  refreshSchemaTree: (connectionId?: string | null) => Promise<void>
   schema: SchemaNode[]
   filteredSchema: SchemaNode[]
   search: string
@@ -398,6 +401,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [connectionGroups, setConnectionGroups] = useState<ConnectionGroup[]>([])
   const [healthById, setHealthById] = useState<Record<string, ConnHealth>>({})
   const [schema, setSchema] = useState<SchemaNode[]>([])
+  const [schemaRefreshing, setSchemaRefreshing] = useState(false)
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -523,15 +527,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }),
       )
       setSchema(nodes)
-      setExpanded((current) => {
-        const next = { ...current }
-        const walk = (node: SchemaNode) => {
-          if (next[node.id] === undefined) next[node.id] = node.kind !== 'table'
-          node.children?.forEach(walk)
-        }
-        nodes.forEach(walk)
-        return next
-      })
+      setExpanded((current) => seedExpanded(nodes, current))
       setActiveConnectionId((current) => {
         const id = preferredId ?? current
         if (id && rows.some((row) => row.id === id)) return id
@@ -539,6 +535,46 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       })
     },
     [api],
+  )
+
+  const refreshSchemaTree = useCallback(
+    async (connectionId?: string | null) => {
+      if (schemaRefreshing) return
+      setSchemaRefreshing(true)
+      try {
+        if (connectionId) {
+          const connection = connections.find((row) => row.id === connectionId)
+          if (!connection) {
+            pushToast('error', '连接不存在，无法刷新')
+            return
+          }
+          let node: SchemaNode
+          try {
+            node = await api.connections.schema(connection.id)
+          } catch (error) {
+            const message = error instanceof Error ? error.message : '无法读取对象'
+            node = connectionErrorNode(connection.id, connection.name, connection.dialect, message)
+            pushToast('error', `刷新失败：${message}`)
+            setSchema((current) => replaceConnectionNode(current, connection.id, node))
+            setExpanded((current) => seedExpanded([node], current))
+            return
+          }
+          setSchema((current) => replaceConnectionNode(current, connection.id, node))
+          setExpanded((current) => seedExpanded([node], current))
+          pushToast('success', `已刷新「${connection.name}」对象树`)
+          return
+        }
+        const rows = await api.connections.list()
+        setConnections(rows)
+        await refreshSchema(rows, activeConnectionId)
+        pushToast('success', '对象树已刷新')
+      } catch (error) {
+        pushToast('error', error instanceof Error ? error.message : '刷新对象树失败')
+      } finally {
+        setSchemaRefreshing(false)
+      }
+    },
+    [api, schemaRefreshing, connections, pushToast, refreshSchema, activeConnectionId],
   )
 
   useEffect(() => {
@@ -2146,6 +2182,8 @@ ${sql.trim()}
     healthById,
     checkConnectionHealth,
     checkAllConnectionHealth,
+    schemaRefreshing,
+    refreshSchemaTree,
     schema,
     filteredSchema,
     search,

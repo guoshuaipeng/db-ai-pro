@@ -3688,3 +3688,24 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   background: rgba(12, 14, 19, 0.55);
   letter-spacing: 0.02em;
 }
+
+@keyframes dataai-spin {
+  to { transform: rotate(360deg); }
+}
+.icon-btn.is-spinning svg,
+.tree-refresh-spin {
+  animation: dataai-spin 0.8s linear infinite;
+}
+.tree-refresh-spin {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-left: 6px;
+  border: 1.5px solid rgba(158, 180, 255, 0.35);
+  border-top-color: var(--accent, #9eb4ff);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.tree-row.is-refreshing .tree-label {
+  opacity: 0.85;
+}

@@ -143,3 +143,12 @@ export function IconSend() {
   )
 }
 
+export function IconRefresh() {
+  return (
+    <Svg>
+      <path d="M12.8 8A4.8 4.8 0 1 1 8 3.2" {...stroke} />
+      <path d="M8 1.2v3.2h3.2" {...stroke} />
+    </Svg>
+  )
+}
+
