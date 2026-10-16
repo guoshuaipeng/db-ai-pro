@@ -12,8 +12,19 @@ import {
 import { emitDataai, onDataai } from '../appEvents'
 import { pickRunSql, selectionIsNonEmpty } from '@shared/runSqlPick'
 import { isSqlDragEvent, readSqlDragText } from '@shared/sqlDragDrop'
-import { isOsFileDrag } from '@shared/sqlFileDrop'
+import { countRejectedDropFiles, isOsFileDrag } from '@shared/sqlFileDrop'
+import {
+  editorDropEmptyToast,
+  editorDropHintBody,
+  editorDropHintTitle,
+  editorDropOverlayAria,
+  editorDropOpenedToast,
+  editorDropRejectedToast,
+  editorDropSnippetToast,
+  type EditorDropKind,
+} from '@shared/sqlFileDropUi'
 import { readDroppedSqlFiles } from '../sqlFileDropRead'
+import { useWorkspace } from '../state/workspace'
 import { formatSql } from '@shared/sqlFormat'
 import { clampGotoLineTarget } from '@shared/gotoLine'
 import {
@@ -169,6 +180,16 @@ export function SqlEditor({
   const host = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [dropKind, setDropKind] = useState<EditorDropKind>('unknown')
+  const ws = useWorkspace()
+  const classifyDrop = (types: readonly string[]): EditorDropKind => {
+    const file = isOsFileDrag(types)
+    const snippet = isSqlDragEvent(types)
+    if (file && snippet) return 'mixed'
+    if (file) return 'file'
+    if (snippet) return 'snippet'
+    return 'unknown'
+  }
   const onChangeRef = useRef(onChange)
   const onCursorRef = useRef(onCursor)
   const onSelectionChangeRef = useRef(onSelectionChange)
@@ -522,6 +543,7 @@ export function SqlEditor({
         const types = event.dataTransfer.types
         if (!isOsFileDrag(types) && !isSqlDragEvent(types)) return
         event.preventDefault()
+        setDropKind(classifyDrop(types))
         setDragOver(true)
       }}
       onDragOver={(event) => {
@@ -529,35 +551,56 @@ export function SqlEditor({
         if (!isOsFileDrag(types) && !isSqlDragEvent(types)) return
         event.preventDefault()
         event.dataTransfer.dropEffect = 'copy'
+        setDropKind(classifyDrop(types))
         setDragOver(true)
       }}
       onDragLeave={(event) => {
         if (event.currentTarget.contains(event.relatedTarget as Node)) return
         setDragOver(false)
+        setDropKind('unknown')
       }}
       onDrop={(event) => {
         const types = event.dataTransfer.types
         if (isOsFileDrag(types) && onOpenDroppedFiles) {
           event.preventDefault()
           setDragOver(false)
+          setDropKind('unknown')
+          const allNames = Array.from(event.dataTransfer.files).map((file) => file.name)
+          const rejected = countRejectedDropFiles(allNames)
           void readDroppedSqlFiles(event.dataTransfer.files).then((items) => {
-            if (items.length === 0) return
+            if (items.length === 0) {
+              ws.pushToast('info', editorDropEmptyToast())
+              if (rejected > 0) ws.pushToast('info', editorDropRejectedToast(rejected))
+              return
+            }
             onOpenDroppedFiles(items)
+            ws.pushToast('success', editorDropOpenedToast(items.length))
+            if (rejected > 0) ws.pushToast('info', editorDropRejectedToast(rejected))
           })
           return
         }
         if (!isSqlDragEvent(types)) return
         event.preventDefault()
         setDragOver(false)
-        const text = readSqlDragText(event.dataTransfer)
-        if (!text) return
-        insertAtClientPoint(event.clientX, event.clientY, text)
+        setDropKind('unknown')
+        const dropped = readSqlDragText(event.dataTransfer)
+        if (!dropped) return
+        insertAtClientPoint(event.clientX, event.clientY, dropped)
+        ws.pushToast('success', editorDropSnippetToast())
       }}
     >
       <div ref={host} className="monaco-host" />
       {dragOver && (
-        <div className="editor-drop-hint" aria-hidden="true">
-          放到此处：插入片段，或打开 .sql / .txt 文件
+        <div
+          className="editor-drop-hint"
+          role="status"
+          aria-live="polite"
+          aria-label={editorDropOverlayAria(dropKind)}
+        >
+          <div className="editor-drop-card">
+            <p className="editor-drop-title">{editorDropHintTitle(dropKind)}</p>
+            <p className="editor-drop-body">{editorDropHintBody(dropKind)}</p>
+          </div>
         </div>
       )}
       {value.trim() === '' && !dragOver && (

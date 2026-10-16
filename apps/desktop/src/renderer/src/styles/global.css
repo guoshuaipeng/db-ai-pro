@@ -5223,6 +5223,7 @@ body.is-col-resizing .grid-col-resizer {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-direction: column;
   z-index: 5;
   color: var(--accent, #9eb4ff);
   font-size: 13px;
@@ -5230,6 +5231,29 @@ body.is-col-resizing .grid-col-resizer {
   background: rgba(12, 14, 19, 0.55);
   letter-spacing: 0.02em;
 }
+.editor-drop-card {
+  max-width: 360px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 1px dashed color-mix(in srgb, var(--accent, #9eb4ff) 55%, transparent);
+  background: color-mix(in srgb, var(--panel, #161a22) 88%, transparent);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  text-align: center;
+}
+.editor-drop-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent, #9eb4ff);
+}
+.editor-drop-body {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--ink-secondary, #c5c9d4);
+}
+
 
 @keyframes dataai-spin {
   to { transform: rotate(360deg); }

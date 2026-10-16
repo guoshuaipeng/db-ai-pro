@@ -20,3 +20,9 @@ export function isLikelySqlFileName(name: string): boolean {
 export function filterSqlDropFileNames(names: readonly string[]): string[] {
   return names.filter((name) => isLikelySqlFileName(name))
 }
+
+/** How many dropped names are not treated as SQL/text tabs. */
+export function countRejectedDropFiles(names: readonly string[]): number {
+  const ok = new Set(filterSqlDropFileNames(names))
+  return names.filter((name) => name.trim() && !ok.has(name)).length
+}
