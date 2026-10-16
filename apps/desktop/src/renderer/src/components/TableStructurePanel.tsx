@@ -101,6 +101,16 @@ export function TableStructurePanel() {
               type="button"
               className="btn btn-ghost tiny-btn"
               onClick={() => {
+                ws.openSchemaDiff({ connectionId: target.connectionId, tableName: target.tableName })
+                ws.closeTableStructure()
+              }}
+            >
+              对比结构
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost tiny-btn"
+              onClick={() => {
                 ws.openTableQuery(target.connectionId, target.tableName)
                 ws.closeTableStructure()
               }}

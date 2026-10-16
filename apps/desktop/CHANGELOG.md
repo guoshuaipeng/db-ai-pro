@@ -1,6 +1,12 @@
 # DataAI Desktop 更新日志
 
-TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**，尚未发布到 GitHub Releases。
+TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
+
+## 1.1.0 — M20 Schema Diff
+
+- 表结构列级对比（可跨连接选两张表）：新增 / 删除 / 类型·可空·默认值差异
+- 深色对比面板；可插入建议 ALTER/ADD SQL 到编辑器（执行仍走现有确认）
+- 入口：表结构「对比结构」或 Ctrl+K「表结构对比」
 
 ## 1.0.0 — 2026-10-16（本地 RC）
 

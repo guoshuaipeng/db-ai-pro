@@ -7,6 +7,11 @@ TypeScript 桌面端（当前主力迭代）见：[`apps/desktop/CHANGELOG.md`](
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**，尚未发布到 GitHub Releases。
 
+## 1.1.0 — M20 Schema Diff
+
+- 表结构列级对比（可跨连接）；建议 ALTER 预览插入编辑器
+- 入口：表结构「对比结构」/ Ctrl+K
+
 ## 1.0.0 — 2026-10-16（本地 RC）
 
 - 文档与关于页对齐 1.0.0；汇总 Soft QA / 驱动 / tip-pack 说明

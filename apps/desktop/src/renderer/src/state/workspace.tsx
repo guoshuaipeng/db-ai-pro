@@ -28,6 +28,11 @@ export type ImportTarget = {
   nonce: number
 }
 
+export type SchemaDiffSeed = {
+  connectionId: string
+  tableName: string
+}
+
 export type ColumnStatsTarget =
   | { source: 'result'; column: string; rows: Record<string, unknown>[] }
   | {
@@ -182,6 +187,10 @@ type WorkspaceValue = {
   importTarget: ImportTarget | null
   openImportWizard: (input: { connectionId: string; tableName?: string }) => void
   closeImportWizard: () => void
+  schemaDiffOpen: boolean
+  schemaDiffSeed: SchemaDiffSeed | null
+  openSchemaDiff: (seed?: SchemaDiffSeed | null) => void
+  closeSchemaDiff: () => void
   refreshConnections: (preferredId?: string | null) => Promise<void>
   sidebarWidth: number
   aiWidth: number
@@ -280,6 +289,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [structureTarget, setStructureTarget] = useState<{ connectionId: string; tableName: string } | null>(null)
   const [columnStatsTarget, setColumnStatsTarget] = useState<ColumnStatsTarget | null>(null)
   const [importTarget, setImportTarget] = useState<ImportTarget | null>(null)
+  const [schemaDiffOpen, setSchemaDiffOpen] = useState(false)
+  const [schemaDiffSeed, setSchemaDiffSeed] = useState<SchemaDiffSeed | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(252)
   const [aiWidth, setAiWidth] = useState(360)
   const [editorRatio, setEditorRatio] = useState(1.35)
@@ -494,6 +505,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   const closeImportWizard = () => setImportTarget(null)
+
+  const openSchemaDiff = (seed?: SchemaDiffSeed | null) => {
+    setSchemaDiffSeed(seed ?? null)
+    setSchemaDiffOpen(true)
+  }
+
+  const closeSchemaDiff = () => {
+    setSchemaDiffOpen(false)
+    setSchemaDiffSeed(null)
+  }
 
   const refreshConnections = async (preferredId?: string | null) => {
     const rows = await api.connections.list()
@@ -1274,6 +1295,10 @@ ${sql.trim()}
     importTarget,
     openImportWizard,
     closeImportWizard,
+    schemaDiffOpen,
+    schemaDiffSeed,
+    openSchemaDiff,
+    closeSchemaDiff,
     refreshConnections,
     sidebarWidth,
     aiWidth,

@@ -94,6 +94,13 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'schema.diff',
+    title: '表结构对比',
+    subtitle: '列级 Schema Diff · 建议 ALTER',
+    keywords: 'schema diff compare alter 对比 差异',
+    category: 'query',
+  },
+  {
     id: 'view.focusSearch',
     title: '聚焦对象树搜索',
     subtitle: '过滤连接 / 表 / 列',

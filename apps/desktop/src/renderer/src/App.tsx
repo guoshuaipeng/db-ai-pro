@@ -12,6 +12,7 @@ import { Dialogs } from './components/Dialogs'
 import { TableStructurePanel } from './components/TableStructurePanel'
 import { ColumnStatsPanel } from './components/ColumnStatsPanel'
 import { ImportWizard } from './components/ImportWizard'
+import { SchemaDiffPanel } from './components/SchemaDiffPanel'
 import { CommandPalette } from './components/CommandPalette'
 import { ShortcutsHelp } from './components/ShortcutsHelp'
 import { SettingsCenter, type SettingsTab } from './components/SettingsCenter'
@@ -82,6 +83,9 @@ export function App() {
           break
         case 'editor.replace':
           emitDataai('dataai:replace')
+          break
+        case 'schema.diff':
+          ws.openSchemaDiff()
           break
         case 'view.focusSearch':
           if (!ws.sidebarOpen) ws.toggleSidebar()
@@ -328,7 +332,7 @@ export function App() {
         {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '1.0.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '1.1.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (
@@ -341,6 +345,7 @@ export function App() {
       <TableStructurePanel />
       <ColumnStatsPanel />
       <ImportWizard />
+      <SchemaDiffPanel />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onRun={runCommand} />
       <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <SettingsCenter
