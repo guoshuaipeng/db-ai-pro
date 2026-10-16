@@ -30,6 +30,7 @@ import {
   type AppPrefs,
 } from '@shared/prefs'
 import { LAYOUT } from '@shared/layoutBounds'
+import { cycleTabId } from '@shared/cycleTabs'
 import {
   layoutResetDefaults,
   layoutResetToast,
@@ -228,6 +229,26 @@ export function App() {
           if (!ws.sidebarOpen) ws.toggleSidebar()
           window.setTimeout(() => emitDataai('dataai:focus-tree-search'), 40)
           break
+        case 'view.nextEditorTab':
+          {
+            const next = cycleTabId(
+              ws.editorTabs.map((tab) => tab.id),
+              ws.activeEditor?.id,
+              1,
+            )
+            if (next) ws.setActiveEditor(next)
+          }
+          break
+        case 'view.prevEditorTab':
+          {
+            const next = cycleTabId(
+              ws.editorTabs.map((tab) => tab.id),
+              ws.activeEditor?.id,
+              -1,
+            )
+            if (next) ws.setActiveEditor(next)
+          }
+          break
         case 'view.focusEditor':
           emitDataai('dataai:focus-editor')
           break
@@ -406,6 +427,36 @@ export function App() {
       if (meta && event.shiftKey && key === '2') {
         event.preventDefault()
         emitDataai('dataai:focus-result')
+        return
+      }
+      if (meta && key === 'tab') {
+        event.preventDefault()
+        const next = cycleTabId(
+          ws.editorTabs.map((tab) => tab.id),
+          ws.activeEditor?.id,
+          event.shiftKey ? -1 : 1,
+        )
+        if (next) ws.setActiveEditor(next)
+        return
+      }
+      if (meta && !event.shiftKey && key === 'pagedown') {
+        event.preventDefault()
+        const next = cycleTabId(
+          ws.editorTabs.map((tab) => tab.id),
+          ws.activeEditor?.id,
+          1,
+        )
+        if (next) ws.setActiveEditor(next)
+        return
+      }
+      if (meta && !event.shiftKey && key === 'pageup') {
+        event.preventDefault()
+        const next = cycleTabId(
+          ws.editorTabs.map((tab) => tab.id),
+          ws.activeEditor?.id,
+          -1,
+        )
+        if (next) ws.setActiveEditor(next)
         return
       }
       if (meta && !event.shiftKey && key === 't') {

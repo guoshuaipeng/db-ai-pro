@@ -39,6 +39,11 @@ describe('filterCommands', () => {
     expect(filterCommands('小地图').some((item) => item.id === 'view.toggleMinimap')).toBe(true)
   })
 
+  it('finds cycle editor tab commands', () => {
+    expect(filterCommands('下一个').some((item) => item.id === 'view.nextEditorTab')).toBe(true)
+    expect(filterCommands('上一个').some((item) => item.id === 'view.prevEditorTab')).toBe(true)
+  })
+
   it('finds focus result command', () => {
     expect(filterCommands('结果').some((item) => item.id === 'view.focusResult')).toBe(true)
     expect(filterCommands('focus result').some((item) => item.id === 'view.focusResult')).toBe(true)
