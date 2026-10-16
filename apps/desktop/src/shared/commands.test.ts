@@ -22,7 +22,8 @@ describe('filterCommands', () => {
 
   it('matches chinese title fragments', () => {
     const hits = filterCommands('收藏')
-    expect(hits[0]?.id).toBe('query.favorites')
+    expect(hits.some((item) => item.id === 'query.saveFavorite')).toBe(true)
+    expect(hits.some((item) => item.id === 'query.favorites')).toBe(true)
   })
 
   it('finds pin and zoom commands', () => {

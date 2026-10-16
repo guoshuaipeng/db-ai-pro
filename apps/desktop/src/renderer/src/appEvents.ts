@@ -1,5 +1,6 @@
 export type DataaiEventMap = {
   'dataai:open-favorites': undefined
+  'dataai:save-favorite': undefined
   'dataai:open-history': undefined
   'dataai:open-history-slow': undefined
   'dataai:open-ai-settings': undefined

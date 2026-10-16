@@ -135,6 +135,9 @@ export function App() {
         case 'query.explain':
           void ws.explain()
           break
+        case 'query.saveFavorite':
+          emitDataai('dataai:save-favorite')
+          break
         case 'query.favorites':
           emitDataai('dataai:open-favorites')
           break
@@ -324,6 +327,11 @@ export function App() {
       if (meta && event.shiftKey && key === 'd') {
         event.preventDefault()
         if (ws.activeEditor) ws.duplicateTab(ws.activeEditor.id)
+        return
+      }
+      if (meta && event.shiftKey && key === 's') {
+        event.preventDefault()
+        emitDataai('dataai:save-favorite')
         return
       }
       if (meta && !event.shiftKey && key === 'w') {

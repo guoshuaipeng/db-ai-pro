@@ -15,6 +15,7 @@ import { canChartResult } from '@shared/chartData'
 import { HistoryPanel } from './HistoryPanel'
 import { EmptyState } from './EmptyState'
 import { FavoritesPanel } from './FavoritesPanel'
+import { SaveFavoriteDialog } from './SaveFavoriteDialog'
 import { useWorkspace } from '../state/workspace'
 import { isSlowQuery } from '@shared/slowQuery'
 import { QUERY_TEMPLATES, getQueryTemplate, type QueryTemplate } from '@shared/queryTemplates'
@@ -45,6 +46,7 @@ export function EditorPane() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historySlowOnly, setHistorySlowOnly] = useState(false)
   const [favoritesOpen, setFavoritesOpen] = useState(false)
+  const [saveFavoriteOpen, setSaveFavoriteOpen] = useState(false)
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [pendingTemplate, setPendingTemplate] = useState<QueryTemplate | null>(null)
   const [varValues, setVarValues] = useState<Record<string, string>>({})
@@ -53,6 +55,10 @@ export function EditorPane() {
   const runPickRef = useRef<RunSqlPick | null>(null)
   const [paramValues, setParamValues] = useState<Record<string, string>>({})
   const templatesRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => onDataai('dataai:save-favorite', () => {
+    setSaveFavoriteOpen(true)
+  }), [])
 
   useEffect(() => onDataai('dataai:open-favorites', () => {
     setFavoritesOpen(true)
@@ -393,6 +399,15 @@ export function EditorPane() {
             >
               计划
             </button>
+            <button
+              type="button"
+              className="btn btn-ghost run-btn"
+              onClick={() => setSaveFavoriteOpen(true)}
+              disabled={!ws.activeEditor?.sql?.trim()}
+              title="收藏当前 SQL（Ctrl+Shift+S）"
+            >
+              收藏
+            </button>
           </>
         }
         primary={
@@ -430,6 +445,7 @@ export function EditorPane() {
         )}
         <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} slowOnlyDefault={historySlowOnly} />
         <FavoritesPanel open={favoritesOpen} onClose={() => setFavoritesOpen(false)} />
+        <SaveFavoriteDialog open={saveFavoriteOpen} onClose={() => setSaveFavoriteOpen(false)} />
         {pendingTemplate && (
           <div
             className="palette-overlay"

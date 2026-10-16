@@ -4220,3 +4220,20 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   font-size: 10px;
   padding: 1px 6px;
 }
+
+
+/* M79: quick save favorite dialog */
+.fav-scope-fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px 10px;
+  margin: 0 0 16px;
+}
+.fav-scope-fieldset legend {
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--ink-tertiary);
+}
+.fav-scope-fieldset .checkline {
+  margin: 4px 0;
+}
