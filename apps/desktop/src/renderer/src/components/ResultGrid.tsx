@@ -11,6 +11,10 @@ import {
   rowsToTsv,
 } from '@shared/exportTable'
 import {
+  buildResultMarkdownClipboard,
+  resultMarkdownCopiedToast,
+} from '@shared/resultMarkdownCopy'
+import {
   columnValues,
   rowsToValuesSql,
   rowTuples,
@@ -143,6 +147,18 @@ export function ResultToolbar({
     )
   }
 
+  const copyMarkdown = async () => {
+    if (copySource.length === 0 || exportColumns.length === 0) return
+    const { text, rowCount, truncated } = buildResultMarkdownClipboard(exportColumns, copySource)
+    if (!text.trim()) return
+    await navigator.clipboard.writeText(text)
+    setCopyNote(
+      selectionActive
+        ? `${resultMarkdownCopiedToast(rowCount, truncated)} · 选中行`
+        : resultMarkdownCopiedToast(rowCount, truncated),
+    )
+  }
+
   const copyInList = async () => {
     if (!statsColumn || copySource.length === 0) return
     const { sql, truncated, count } = valuesToInList(columnValues(copySource, statsColumn))
@@ -185,6 +201,12 @@ export function ResultToolbar({
       })()
     })
   }, [exportColumns])
+
+  useEffect(() => {
+    return onDataai('dataai:result-copy-markdown', () => {
+      void copyMarkdown()
+    })
+  }, [exportColumns, copySource, selectionActive])
 
   const exportCapped = (kind: 'markdown' | 'html' | 'excel', sourceRows: Record<string, unknown>[]) => {
     const { rows: capped, truncated, total } = capExportRows(sourceRows)
@@ -379,6 +401,15 @@ export function ResultToolbar({
         onClick={() => void copyTsv()}
       >
         复制 TSV
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
+        disabled={copySource.length === 0 || exportColumns.length === 0}
+        title="复制为 GitHub Markdown 表格（可粘贴到文档 / 聊天；过多行会截断）"
+        onClick={() => void copyMarkdown()}
+      >
+        复制 MD
       </button>
       <button
         type="button"

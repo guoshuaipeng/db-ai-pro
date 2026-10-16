@@ -190,6 +190,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'result.copyMarkdown',
+    title: '复制结果为 Markdown',
+    subtitle: 'GFM 表格写入剪贴板（可粘贴到文档 / 聊天）',
+    keywords: 'markdown md copy table 复制 表格 文档',
+    shortcut: '结果工具栏「复制 MD」',
+    category: 'query',
+  },
+  {
     id: 'result.copyMessage',
     title: '复制结果输出',
     subtitle: '消息 / 执行计划文本写入剪贴板',

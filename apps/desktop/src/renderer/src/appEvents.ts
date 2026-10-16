@@ -23,6 +23,7 @@ export type DataaiEventMap = {
   'dataai:result-autofit-columns': undefined
   'dataai:result-copy-headers': undefined
   'dataai:result-copy-message': undefined
+  'dataai:result-copy-markdown': undefined
   'dataai:result-column-visibility': undefined
   'dataai:result-cell-preview': undefined
   'dataai:replace': undefined
