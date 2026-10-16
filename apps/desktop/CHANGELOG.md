@@ -2,6 +2,11 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 1.6.0 — M25 连接健康 / 延迟徽章
+
+- 连接树显示延迟徽章（绿 / 黄 / 红）；菜单与 Ctrl+K 可手动探测；选中连接时自动轻量检测
+- SQLite / MySQL / PG / SQL Server：`SELECT 1`；Redis：`PING`
+
 ## 1.5.0 — M24 AI 流式停止与进度抛光
 
 - 生成中显示停止；中止 in-flight 请求并干净收尾，避免卡死转圈

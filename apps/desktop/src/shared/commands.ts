@@ -130,6 +130,19 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'view',
   },
   {
+    id: 'connection.health',
+    title: '检测当前连接延迟',
+    subtitle: 'SELECT 1 / PING',
+    keywords: 'ping health latency 延迟 探测',
+    category: 'connection',
+  },
+  {
+    id: 'connection.healthAll',
+    title: '检测全部连接延迟',
+    keywords: 'ping health all 延迟',
+    category: 'connection',
+  },
+  {
     id: 'connection.new',
     title: '新建连接',
     keywords: 'new connection database',

@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — AI stream stop polish",
+  "description": "DataAI TypeScript desktop — connection health + latency",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

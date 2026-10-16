@@ -13,7 +13,8 @@ import { connectionErrorNode } from '@shared/schema'
 import { changesSchema, identStyle, selectAll, selectAllWithRowid, statementTitle } from '@shared/sql'
 import { INITIAL_TABS } from '@shared/session'
 import { countTreeNodes, extrasFromConnections, filterNodes } from '@shared/tree'
-import { isKvDialect } from '@shared/types'
+import { dialectInfo, isKvDialect } from '@shared/types'
+import { buildConnHealth, type ConnHealth } from '@shared/connHealth'
 import { supportsManualTransaction } from '@shared/transaction'
 import { trimAiTurns } from '@shared/aiMemory'
 import { settleCancelledTurn } from '@shared/aiStream'
@@ -99,6 +100,9 @@ type WorkspaceValue = {
   ready: boolean
   meta: AppMeta | null
   connections: ConnectionPublic[]
+  healthById: Record<string, ConnHealth>
+  checkConnectionHealth: (id: string, silent?: boolean) => Promise<ConnHealth | null>
+  checkAllConnectionHealth: () => Promise<void>
   schema: SchemaNode[]
   filteredSchema: SchemaNode[]
   search: string
@@ -267,6 +271,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
   const [meta, setMeta] = useState<AppMeta | null>(null)
   const [connections, setConnections] = useState<ConnectionPublic[]>([])
+  const [healthById, setHealthById] = useState<Record<string, ConnHealth>>({})
   const [schema, setSchema] = useState<SchemaNode[]>([])
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -541,9 +546,47 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setActiveEditorId(id)
   }
 
+
+  const checkConnectionHealth = async (id: string, silent = true): Promise<ConnHealth | null> => {
+    const connection = connections.find((row) => row.id === id)
+    if (!connection) return null
+    try {
+      const raw = await api.connections.health(id)
+      const health = buildConnHealth(raw)
+      setHealthById((current) => ({ ...current, [id]: health }))
+      if (!silent) {
+        if (health.unsupported) pushToast('info', health.error ?? '暂不支持探测')
+        else if (health.ok) pushToast('success', `延迟 ${health.latencyMs} ms`)
+        else pushToast('error', health.error ?? '探测失败')
+      }
+      return health
+    } catch (error) {
+      const health = buildConnHealth({
+        ok: false,
+        latencyMs: 0,
+        error: error instanceof Error ? error.message : '探测失败',
+      })
+      setHealthById((current) => ({ ...current, [id]: health }))
+      if (!silent) pushToast('error', health.error ?? '探测失败')
+      return health
+    }
+  }
+
+  const checkAllConnectionHealth = async () => {
+    const rows = connections.filter((row) => {
+      const info = dialectInfo(row.dialect)
+      return info.executable || Boolean(info.kv)
+    })
+    await Promise.all(rows.map((row) => checkConnectionHealth(row.id, true)))
+    pushToast('success', `已检测 ${rows.length} 个连接`)
+  }
+
   const selectNode = (node: SchemaNode) => {
     setSelectedId(node.id)
-    if (node.connectionId) setActiveConnectionId(node.connectionId)
+    if (node.connectionId) {
+      setActiveConnectionId(node.connectionId)
+      if (node.kind === 'connection') void checkConnectionHealth(node.connectionId, true)
+    }
     if (node.kind === 'key' && node.redisKey) {
       setAiOpen(true)
       return
@@ -1200,10 +1243,20 @@ ${sql.trim()}
     void refreshTxnStatus(activeConnectionId)
   }, [activeConnectionId, connections])
 
+
+  useEffect(() => {
+    if (!ready || !activeConnectionId) return
+    if (healthById[activeConnectionId]) return
+    void checkConnectionHealth(activeConnectionId, true)
+  }, [ready, activeConnectionId])
+
   const value: WorkspaceValue = {
     ready,
     meta,
     connections,
+    healthById,
+    checkConnectionHealth,
+    checkAllConnectionHealth,
     schema,
     filteredSchema,
     search,

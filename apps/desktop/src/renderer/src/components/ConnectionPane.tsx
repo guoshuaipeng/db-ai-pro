@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { onDataai } from '../appEvents'
 import { dialectInfo } from '@shared/types'
+import { formatLatency } from '@shared/connHealth'
 import type { Dialect, SchemaNode } from '@shared/types'
 import { IconColumn, IconDatabase, IconMore, IconPlus, IconSearch, IconTable } from './icons'
 import { EmptyState } from './EmptyState'
@@ -162,6 +163,9 @@ function TreeNode({
           {node.kind === 'column' && node.dataType && <span className="col-type">{node.dataType}</span>}
           {node.kind === 'key' && node.dataType && <span className="col-type">{node.dataType}</span>}
           {node.kind === 'connection' && node.dialect && <DialectBadge dialect={node.dialect} />}
+          {node.kind === 'connection' && node.connectionId && (
+            <HealthBadge health={ws.healthById[node.connectionId]} />
+          )}
         </button>
         {node.kind === 'connection' && connection && (
           <button
@@ -187,6 +191,16 @@ function TreeNode({
         )}
         {menuId === node.id && connection && (
           <div className="menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onMenu(null)
+                void ws.checkConnectionHealth(connection.id, false)
+              }}
+            >
+              检测延迟
+            </button>
             <button type="button" role="menuitem" onClick={() => { onMenu(null); ws.openEdit(connection) }}>
               编辑
             </button>
@@ -243,6 +257,26 @@ function TreeNode({
           ),
         )}
     </div>
+  )
+}
+
+function HealthBadge({ health }: { health?: import('@shared/connHealth').ConnHealth }) {
+  if (!health) return null
+  if (health.unsupported) {
+    return (
+      <span className="health-badge is-unsupported" title={health.error ?? '暂不支持探测'}>
+        —
+      </span>
+    )
+  }
+  const label = health.ok ? formatLatency(health.latencyMs) : '失败'
+  const title = health.ok
+    ? `延迟 ${health.latencyMs} ms · ${new Date(health.checkedAt).toLocaleTimeString()}`
+    : health.error ?? '探测失败'
+  return (
+    <span className={`health-badge is-${health.tone}`} title={title}>
+      {label}
+    </span>
   )
 }
 

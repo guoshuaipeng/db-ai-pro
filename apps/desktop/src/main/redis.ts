@@ -94,6 +94,12 @@ export async function probeRedis(target: SqlTarget): Promise<void> {
   }
 }
 
+/** Lightweight PING on the live Redis session (opens if needed). */
+export async function pingRedis(target: SqlTarget): Promise<void> {
+  const client = await openRedis(target)
+  await client.ping()
+}
+
 export async function scanRedisKeys(target: SqlTarget, pattern = '*', count = 120): Promise<RedisKeyInfo[]> {
   const client = await openRedis(target)
   const keys: string[] = []

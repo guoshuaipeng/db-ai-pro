@@ -266,6 +266,14 @@ export function createPreviewApi(): DesktopApi {
         }
         return { ok: false, error: '这个类型还不能查询。' }
       },
+      health: async (id: string) => {
+        const row = memory.connections.find((item) => item.id === id)
+        if (!row) return { ok: false, latencyMs: 0, error: '连接不存在' }
+        if (row.dialect === 'oracle' || row.dialect === 'hive') {
+          return { ok: false, latencyMs: 0, unsupported: true, error: '当前类型暂不支持探测' }
+        }
+        return { ok: true, latencyMs: 6 }
+      },
       pickFile: async () => null,
       exportBundle: async () => ({ path: null, count: 0 }),
       importPreview: async () => ({ cancelled: true as const }),

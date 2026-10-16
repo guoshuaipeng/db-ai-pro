@@ -100,6 +100,12 @@ export function App() {
         case 'view.toggleAi':
           ws.toggleAi()
           break
+        case 'connection.health':
+          if (ws.activeConnection) void ws.checkConnectionHealth(ws.activeConnection.id, false)
+          break
+        case 'connection.healthAll':
+          void ws.checkAllConnectionHealth()
+          break
         case 'connection.new':
           ws.openCreate()
           break
@@ -332,7 +338,7 @@ export function App() {
         {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '1.5.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '1.6.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (

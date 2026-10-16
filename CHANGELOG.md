@@ -7,6 +7,10 @@ TypeScript 桌面端（当前主力迭代）见：[`apps/desktop/CHANGELOG.md`](
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**，尚未发布到 GitHub Releases。
 
+## 1.6.0 — M25 连接健康 / 延迟徽章
+
+- 连接延迟徽章；手动 / 自动探测
+
 ## 1.5.0 — M24 AI 流式停止与进度抛光
 
 - 停止生成；流式进度抛光；本地预览保留

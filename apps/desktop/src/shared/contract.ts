@@ -42,6 +42,12 @@ export type DesktopApi = {
     remove: (id: string) => Promise<void>
     schema: (id: string) => Promise<SchemaNode>
     test: (input: ConnectionInput) => Promise<{ ok: boolean; error?: string }>
+    health: (id: string) => Promise<{
+      ok: boolean
+      latencyMs: number
+      error?: string
+      unsupported?: boolean
+    }>
     seedSample: () => Promise<ConnectionPublic>
     pickFile: (mode: 'open' | 'save') => Promise<string | null>
     exportBundle: () => Promise<{ path: string | null; count: number }>

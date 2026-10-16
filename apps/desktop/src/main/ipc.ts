@@ -24,6 +24,7 @@ import {
   cancelQuery,
   executeSession,
   probeTarget,
+  pingSession,
   schemaForSession,
   inspectTableSession,
   beginTransaction,
@@ -259,6 +260,16 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
       return { ok: true }
     } catch (error) {
       return { ok: false, error: explainDbError(error) }
+    }
+  })
+
+  ipcMain.handle('connections:health', async (_event, id: string) => {
+    const row = getConnection(id)
+    if (!row) return { ok: false, latencyMs: 0, error: '连接不存在' }
+    try {
+      return await pingSession(targetFromStored(row))
+    } catch (error) {
+      return { ok: false, latencyMs: 0, error: explainDbError(error) }
     }
   })
 

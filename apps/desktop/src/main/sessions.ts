@@ -6,7 +6,7 @@ import type Database from 'better-sqlite3'
 import { describeMysql, executeMysql, listMysqlSchema, openMysql, type ServerLogin } from './mysql'
 import { describeMssql, executeMssql, listMssqlSchema, openMssql } from './mssql'
 import { describePostgres, executePostgres, listPostgresSchema, openPostgres } from './postgres'
-import { closeRedis, listRedisSchema, probeRedis, scanRedisKeys } from './redis'
+import { closeRedis, listRedisSchema, probeRedis, pingRedis, scanRedisKeys } from './redis'
 import { databaseExists, describeSchema, executeScript, listSchema, openDatabase } from './sqlite'
 import {
   inspectMssqlTable,
@@ -225,6 +225,39 @@ export async function probeTarget(target: SqlTarget): Promise<void> {
     else await created.pool.request().query('SELECT 1')
   } finally {
     await release(created)
+  }
+}
+
+export type PingSessionResult = {
+  ok: boolean
+  latencyMs: number
+  error?: string
+  unsupported?: boolean
+}
+
+/** SELECT 1 / PING on the live session when possible; measures round-trip ms. */
+export async function pingSession(target: SqlTarget): Promise<PingSessionResult> {
+  if (target.dialect === 'oracle' || target.dialect === 'hive') {
+    return { ok: false, latencyMs: 0, unsupported: true, error: '当前类型暂不支持探测' }
+  }
+  const started = Date.now()
+  try {
+    if (target.dialect === 'redis') {
+      await pingRedis(target)
+    } else {
+      const session = await openSession(target)
+      if (session.kind === 'sqlite') session.db.prepare('SELECT 1').get()
+      else if (session.kind === 'mysql') await session.conn.query('SELECT 1')
+      else if (session.kind === 'postgres') await session.client.query('SELECT 1')
+      else await session.pool.request().query('SELECT 1')
+    }
+    return { ok: true, latencyMs: Date.now() - started }
+  } catch (error) {
+    return {
+      ok: false,
+      latencyMs: Date.now() - started,
+      error: error instanceof Error ? error.message : '探测失败',
+    }
   }
 }
 
