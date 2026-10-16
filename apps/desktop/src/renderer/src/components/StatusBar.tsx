@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { dialectInfo } from '@shared/types'
 import { formatElapsedMs } from '@shared/slowQuery'
 import { statusHealthView } from '@shared/statusBar'
+import { statusBarConnectionTitle } from '@shared/revealConnection'
 import { statusBarRerunTitle } from '@shared/statusBarRerun'
 import type { ConnHealth } from '@shared/connHealth'
 import type { ConnectionPublic } from '@shared/types'
@@ -25,6 +26,7 @@ type StatusBarProps = {
   zoomLabel: string
   version: string
   onProbeHealth: () => void
+  onRevealConnection: () => void
   onOpenPalette: () => void
   onOpenShortcuts: () => void
   onOpenGotoLine: () => void
@@ -52,6 +54,7 @@ export function StatusBar({
   zoomLabel,
   version,
   onProbeHealth,
+  onRevealConnection,
   onOpenPalette,
   onOpenShortcuts,
   onOpenGotoLine,
@@ -67,8 +70,15 @@ export function StatusBar({
         <button
           type="button"
           className="status-item status-btn"
-          title={healthView.title}
-          onClick={onProbeHealth}
+          title={statusBarConnectionTitle(healthView.title)}
+          onClick={(event) => {
+            if (event.ctrlKey || event.metaKey) {
+              event.preventDefault()
+              onRevealConnection()
+              return
+            }
+            onProbeHealth()
+          }}
         >
           <span
             className={

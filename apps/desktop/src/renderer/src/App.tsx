@@ -234,6 +234,9 @@ export function App() {
           if (ws.activeConnection) void ws.copyConnectionEndpoint(ws.activeConnection.id)
           else ws.pushToast('info', '先选择一个连接')
           break
+        case 'connection.revealInTree':
+          ws.revealConnectionInTree()
+          break
         case 'connection.export':
           void ws.exportConnections()
           break
@@ -566,6 +569,7 @@ export function App() {
         onProbeHealth={() => {
           if (ws.activeConnection) void ws.checkConnectionHealth(ws.activeConnection.id, false)
         }}
+        onRevealConnection={() => ws.revealConnectionInTree()}
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenGotoLine={() => setGotoOpen(true)}

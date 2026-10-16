@@ -49,6 +49,19 @@ export function ConnectionPane() {
     }, 0)
   }), [ws])
 
+  useEffect(
+    () =>
+      onDataai('dataai:reveal-connection', (detail) => {
+        const id = detail?.connectionId
+        if (!id || !root.current) return
+        window.requestAnimationFrame(() => {
+          const el = root.current?.querySelector(`[data-tree-node-id="${CSS.escape(id)}"]`)
+          el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+        })
+      }),
+    [],
+  )
+
   return (
     <aside className="sidebar" ref={root} aria-label="连接">
       <div className="side-head">

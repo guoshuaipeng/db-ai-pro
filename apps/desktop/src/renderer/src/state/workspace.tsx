@@ -190,6 +190,7 @@ type WorkspaceValue = {
   filteredSchema: SchemaNode[]
   search: string
   setSearch: (value: string) => void
+  revealConnectionInTree: (connectionId?: string | null) => void
   expanded: Record<string, boolean>
   toggleExpanded: (id: string) => void
   selectedId: string | null
@@ -1076,6 +1077,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     })
     await Promise.all(rows.map((row) => checkConnectionHealth(row.id, true)))
     pushToast('success', `已检测 ${rows.length} 个连接`)
+  }
+
+  const revealConnectionInTree = (connectionId?: string | null) => {
+    const id = (connectionId ?? activeConnectionId)?.trim()
+    if (!id) {
+      pushToast('info', '先选择一个连接')
+      return
+    }
+    if (!connections.some((row) => row.id === id)) {
+      pushToast('error', '连接不存在')
+      return
+    }
+    if (!sidebarOpen) setSidebarOpen(true)
+    setSearch('')
+    setSelectedId(id)
+    setActiveConnectionId(id)
+    setExpanded((current) => ({ ...current, [id]: true }))
+    window.setTimeout(() => emitDataai('dataai:reveal-connection', { connectionId: id }), 40)
   }
 
   const selectNode = (node: SchemaNode) => {
@@ -2343,6 +2362,7 @@ ${sql.trim()}
     filteredSchema,
     search,
     setSearch,
+    revealConnectionInTree,
     expanded,
     toggleExpanded: (id) => setExpanded((current) => ({ ...current, [id]: !current[id] })),
     selectedId,

@@ -62,6 +62,10 @@ describe('filterCommands', () => {
     expect(filterCommands('打开 SQL').some((item) => item.id === 'query.openFromFile')).toBe(true)
   })
 
+  it('finds reveal connection in tree command', () => {
+    expect(filterCommands('对象树').some((item) => item.id === 'connection.revealInTree')).toBe(true)
+  })
+
   it('finds query templates', () => {
     expect(filterCommands('模板').some((item) => item.id === 'query.templates')).toBe(true)
     expect(filterCommands('COUNT').some((item) => item.id === 'query.tpl.selectCount')).toBe(true)

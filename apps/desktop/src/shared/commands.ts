@@ -259,6 +259,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'connection',
   },
   {
+    id: 'connection.revealInTree',
+    title: '在对象树中显示连接',
+    subtitle: '打开侧栏并滚动到当前连接（状态栏 Ctrl+单击）',
+    keywords: 'reveal tree navigate locate 对象树 显示 定位 连接',
+    shortcut: '状态栏 Ctrl+单击',
+    category: 'connection',
+  },
+  {
     id: 'connection.export',
     title: '导出连接',
     subtitle: 'JSON（仅密封密文）',
@@ -467,6 +475,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '复制表名 / 列名 / 库名', keys: '对象树菜单「复制…」' },
   { action: '复制连接', keys: '对象树菜单「复制连接」· Ctrl+K' },
   { action: '复制连接地址', keys: '对象树菜单「复制地址」· Ctrl+K' },
+  { action: '在对象树中显示连接', keys: '状态栏 Ctrl+单击 · Ctrl+K' },
   { action: '未保存标签关闭确认', keys: '关闭脏标签 / 关窗时提示' },
   { action: '固定查询标签', keys: '标签右键 · 固定/取消固定' },
   { action: '重命名查询标签', keys: '右键 / 双击 / F2' },

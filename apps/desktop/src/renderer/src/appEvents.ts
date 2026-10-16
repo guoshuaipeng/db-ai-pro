@@ -5,6 +5,8 @@ export type DataaiEventMap = {
   'dataai:open-history-slow': undefined
   'dataai:open-ai-settings': undefined
   'dataai:focus-tree-search': undefined
+  /** Scroll/select a connection row in the object tree. */
+  'dataai:reveal-connection': { connectionId: string }
   'dataai:focus-editor': undefined
   'dataai:format-sql': undefined
   'dataai:request-run': undefined
