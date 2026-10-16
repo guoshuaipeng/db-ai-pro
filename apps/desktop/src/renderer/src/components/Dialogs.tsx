@@ -86,6 +86,10 @@ import {
   connColorTagAria,
   connColorTagTitle,
 } from '@shared/connColorUi'
+import {
+  sampleDbDialogActionLabel,
+  sampleDbDialogActionTitle,
+} from '@shared/sampleDbUi'
 import { EmptyState } from './EmptyState'
 
 export function Dialogs() {
@@ -549,10 +553,10 @@ function ConnectionDialog() {
             <button
               type="button"
               className="btn btn-ghost"
-              title="关闭对话框并恢复内置示例业务库"
+              title={sampleDbDialogActionTitle()}
               onClick={useSampleInstead}
             >
-              改用示例库
+              {sampleDbDialogActionLabel()}
             </button>
           )}
           <button

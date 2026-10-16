@@ -195,6 +195,10 @@ import type {
 import { dbVisibilitySavedToast } from '@shared/dbVisibilityUi'
 import { expandRestoredToast } from '@shared/treeExpandPersistUi'
 import {
+  sampleDbRestoreFailToast,
+  sampleDbRestoreSuccessToast,
+} from '@shared/sampleDbUi'
+import {
   duplicateConnectionFailToast,
   duplicateConnectionSuccessToast,
 } from '@shared/duplicateConnectionUi'
@@ -2535,11 +2539,24 @@ ${sql.trim()}
   }
 
   const restoreSample = async () => {
-    const saved = await api.connections.seedSample()
-    const rows = await api.connections.list()
-    setConnections(rows)
-    await refreshSchema(rows, saved.id)
-    pushToast('success', '已恢复示例业务库')
+    try {
+      const saved = await api.connections.seedSample()
+      const rows = await api.connections.list()
+      setConnections(rows)
+      setActiveConnectionId(saved.id)
+      await refreshSchema(rows, saved.id)
+      if (!sidebarOpen) setSidebarOpen(true)
+      setSearch('')
+      setSelectedId(saved.id)
+      setExpanded((current) => ({ ...current, [saved.id]: true }))
+      window.setTimeout(() => emitDataai('dataai:reveal-connection', { connectionId: saved.id }), 40)
+      pushToast('success', sampleDbRestoreSuccessToast(saved.name))
+    } catch (error) {
+      pushToast(
+        'error',
+        sampleDbRestoreFailToast(error instanceof Error ? error.message : undefined),
+      )
+    }
   }
 
   const selected = findNode(schema, selectedId)

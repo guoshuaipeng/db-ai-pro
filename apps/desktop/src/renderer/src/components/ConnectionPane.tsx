@@ -20,6 +20,12 @@ import {
   connColorTagTitle,
 } from '@shared/connColorUi'
 import {
+  sampleDbEmptyActionLabel,
+  sampleDbEmptyActionTitle,
+  sampleDbEmptyBody,
+  sampleDbEmptyTitle,
+} from '@shared/sampleDbUi'
+import {
   duplicateConnectionMenuLabel,
   duplicateConnectionMenuTitle,
 } from '@shared/duplicateConnectionUi'
@@ -306,16 +312,21 @@ export function ConnectionPane() {
       {ws.connections.length === 0 ? (
         <EmptyState
           kicker="开始使用"
-          title="还没有数据库连接"
-          body="先添加一个连接。SQLite / MySQL / MariaDB / PostgreSQL / SQL Server 可直接查询；Redis 可浏览键值。也可以一键恢复示例业务库。"
+          title={sampleDbEmptyTitle()}
+          body={sampleDbEmptyBody()}
           icon={<IconDatabase />}
           actions={
             <>
               <button type="button" className="btn btn-primary" onClick={ws.openCreate}>
                 新建连接
               </button>
-              <button type="button" className="btn btn-ghost" onClick={() => void ws.restoreSample()}>
-                恢复示例库
+              <button
+                type="button"
+                className="btn btn-ghost"
+                title={sampleDbEmptyActionTitle()}
+                onClick={() => void ws.restoreSample()}
+              >
+                {sampleDbEmptyActionLabel()}
               </button>
             </>
           }
