@@ -126,6 +126,7 @@ export function EditorPane() {
         onRename={ws.renameTab}
         onContextAction={(id, action: TabContextAction) => {
           if (action === 'pin' || action === 'unpin') ws.togglePinTab(id)
+          else if (action === 'duplicate') ws.duplicateTab(id)
           else if (action === 'close') ws.closeTab(id)
           else if (action === 'close-others') ws.closeOtherTabs(id)
           else if (action === 'close-right') ws.closeTabsToRight(id)

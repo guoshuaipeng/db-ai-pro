@@ -8,3 +8,10 @@ export function sanitizeTabTitle(input: string, fallback = DEFAULT_TAB_TITLE): s
   if (!cleaned) return base.slice(0, TAB_TITLE_MAX)
   return cleaned.slice(0, TAB_TITLE_MAX)
 }
+
+/** Title for a duplicated tab:「原标题 副本」, sanitized. */
+export function duplicateTabTitle(title: string): string {
+  const base = sanitizeTabTitle(title)
+  return sanitizeTabTitle(`${base} 副本`)
+}
+

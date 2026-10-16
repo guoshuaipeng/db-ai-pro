@@ -12,7 +12,7 @@ type TabItem = {
   pinned?: boolean
 }
 
-export type TabContextAction = 'pin' | 'unpin' | 'rename' | 'close' | 'close-others' | 'close-right'
+export type TabContextAction = 'pin' | 'unpin' | 'rename' | 'duplicate' | 'close' | 'close-others' | 'close-right'
 
 type ScrollTabsProps = {
   label: string
@@ -302,6 +302,11 @@ export function ScrollTabs({
           {onRename && (
             <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'rename')}>
               重命名
+            </button>
+          )}
+          {onContextAction && (
+            <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'duplicate')}>
+              复制标签
             </button>
           )}
           {onContextAction && (

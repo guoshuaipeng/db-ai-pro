@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_TAB_TITLE, sanitizeTabTitle, TAB_TITLE_MAX } from './tabTitle'
+import { DEFAULT_TAB_TITLE, duplicateTabTitle, sanitizeTabTitle, TAB_TITLE_MAX } from './tabTitle'
 
 describe('sanitizeTabTitle', () => {
   it('trims and collapses whitespace', () => {
@@ -10,6 +10,11 @@ describe('sanitizeTabTitle', () => {
     expect(sanitizeTabTitle('')).toBe(DEFAULT_TAB_TITLE)
     expect(sanitizeTabTitle('   ', '订单')).toBe('订单')
     expect(sanitizeTabTitle('\n\t', '  ')).toBe(DEFAULT_TAB_TITLE)
+  })
+
+  it('builds duplicate titles', () => {
+    expect(duplicateTabTitle('客户')).toBe('客户 副本')
+    expect(duplicateTabTitle('   ')).toBe('查询 副本')
   })
 
   it('clamps length', () => {

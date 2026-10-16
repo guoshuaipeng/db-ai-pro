@@ -20,6 +20,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'query.duplicate',
+    title: '复制当前查询标签',
+    subtitle: '复制 SQL 与连接，打开为新标签',
+    keywords: 'duplicate copy tab clone',
+    shortcut: 'Ctrl+Shift+D',
+    category: 'query',
+  },
+  {
     id: 'query.run',
     title: '运行当前 SQL',
     subtitle: '执行编辑器中的语句',
@@ -345,4 +353,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '未保存标签关闭确认', keys: '关闭脏标签 / 关窗时提示' },
   { action: '固定查询标签', keys: '标签右键 · 固定/取消固定' },
   { action: '重命名查询标签', keys: '右键 / 双击 / F2' },
+  { action: '复制查询标签', keys: 'Ctrl+Shift+D · 右键' },
 ]

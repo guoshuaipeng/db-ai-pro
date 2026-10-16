@@ -30,7 +30,7 @@ import {
   sortPinnedFirst,
   togglePinnedFlag,
 } from '@shared/tabPin'
-import { sanitizeTabTitle } from '@shared/tabTitle'
+import { duplicateTabTitle, sanitizeTabTitle } from '@shared/tabTitle'
 import { countTreeNodes, extrasFromConnections, filterNodes } from '@shared/tree'
 import { dialectInfo, isKvDialect } from '@shared/types'
 import { buildConnHealth, type ConnHealth } from '@shared/connHealth'
@@ -188,6 +188,7 @@ type WorkspaceValue = {
   closeOtherTabs: (id: string) => void
   closeTabsToRight: (id: string) => void
   renameTab: (id: string, title: string) => void
+  duplicateTab: (id: string) => void
   results: ResultState | null
   setActiveResult: (id: string) => void
   running: boolean
@@ -1169,6 +1170,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     )
   }
 
+  const duplicateTab = (id: string) => {
+    const source = editorTabs.find((tab) => tab.id === id)
+    if (!source) return
+    const newId = crypto.randomUUID()
+    const copy = withCleanBaseline({
+      id: newId,
+      title: duplicateTabTitle(source.title),
+      sql: source.sql,
+      connectionId: source.connectionId ?? activeConnectionId,
+      ...(source.browse ? { browse: { ...source.browse } } : {}),
+    })
+    setEditorTabs((tabs) => {
+      const index = tabs.findIndex((tab) => tab.id === id)
+      const next = tabs.slice()
+      next.splice(index < 0 ? next.length : index + 1, 0, copy)
+      return sortPinnedFirst(next)
+    })
+    setActiveEditorId(newId)
+  }
+
 
   const confirmIfDestructive = async (sql: string): Promise<boolean> => {
     if (skipDestructiveRef.current) return true
@@ -2045,6 +2066,7 @@ ${sql.trim()}
     closeOtherTabs,
     closeTabsToRight,
     renameTab,
+    duplicateTab,
     results: activeEditor ? (resultMap[activeEditor.id] ?? null) : null,
     setActiveResult: (id) => {
       if (!activeEditor) return

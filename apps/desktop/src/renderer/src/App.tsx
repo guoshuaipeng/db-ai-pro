@@ -118,6 +118,9 @@ export function App() {
         case 'query.new':
           ws.newTab()
           break
+        case 'query.duplicate':
+          if (ws.activeEditor) ws.duplicateTab(ws.activeEditor.id)
+          break
         case 'query.run':
           void ws.run()
           break
@@ -288,6 +291,11 @@ export function App() {
       if (meta && !event.shiftKey && key === 't') {
         event.preventDefault()
         ws.newTab()
+        return
+      }
+      if (meta && event.shiftKey && key === 'd') {
+        event.preventDefault()
+        if (ws.activeEditor) ws.duplicateTab(ws.activeEditor.id)
         return
       }
       if (meta && !event.shiftKey && key === 'w') {
