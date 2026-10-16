@@ -26,12 +26,14 @@ export function expandSnippet(sql: string, values: Record<string, string>): stri
 
 export function defaultSnippetValues(
   vars: string[],
-  hints?: { table?: string | null; limit?: string | null },
+  hints?: { table?: string | null; limit?: string | null; column?: string | null },
 ): Record<string, string> {
   const next: Record<string, string> = {}
   for (const name of vars) {
-    if (name === 'table' && hints?.table) next[name] = hints.table
+    if ((name === 'table' || name === 'tables') && hints?.table) next[name] = hints.table
     else if (name === 'limit') next[name] = hints?.limit ?? '100'
+    else if ((name === 'column' || name === 'columns') && hints?.column) next[name] = hints.column
+    else if (name === 'id') next[name] = '1'
     else next[name] = ''
   }
   return next

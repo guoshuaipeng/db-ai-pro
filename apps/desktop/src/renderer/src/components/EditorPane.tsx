@@ -68,6 +68,19 @@ import { pickFocusResultTarget } from '@shared/focusResult'
 import { isSlowQuery } from '@shared/slowQuery'
 import { QUERY_TEMPLATES, getQueryTemplate, type QueryTemplate } from '@shared/queryTemplates'
 import {
+  snippetEmptyTemplatesBody,
+  snippetExpandedPreview,
+  snippetInsertPlainToast,
+  snippetInsertToast,
+  snippetPreviewLabel,
+  snippetTemplateVarsBadge,
+  snippetVarHint,
+  snippetVarLabel,
+  snippetVarPlaceholder,
+  snippetVarsDialogLead,
+  snippetVarsDialogTitle,
+} from '@shared/snippetInsert'
+import {
   defaultSnippetValues,
   expandSnippet,
   extractSnippetVars,
@@ -186,6 +199,7 @@ export function EditorPane() {
     setTemplatesOpen(false)
     if (!hasSnippetVars(tpl.sql)) {
       ws.insertFavoriteSql(tpl.sql)
+      ws.pushToast('success', snippetInsertPlainToast(tpl.title))
       return
     }
     setPendingTemplate(tpl)
@@ -199,9 +213,11 @@ export function EditorPane() {
 
   const confirmTemplate = () => {
     if (!pendingTemplate) return
+    const title = pendingTemplate.title
     const expanded = expandSnippet(pendingTemplate.sql, varValues)
     setPendingTemplate(null)
     ws.insertFavoriteSql(expanded)
+    ws.pushToast('success', snippetInsertToast(title))
   }
 
 
@@ -447,18 +463,26 @@ export function EditorPane() {
               </button>
               {templatesOpen && (
                 <div className="template-popover" role="menu" aria-label="查询模板">
-                  {QUERY_TEMPLATES.map((tpl) => (
-                    <button
-                      key={tpl.id}
-                      type="button"
-                      className="template-row"
-                      role="menuitem"
-                      onClick={() => beginTemplate(tpl)}
-                    >
-                      <span className="template-row-title">{tpl.title}</span>
-                      <span className="template-row-sub">{tpl.subtitle}</span>
-                    </button>
-                  ))}
+                  {QUERY_TEMPLATES.length === 0 ? (
+                    <EmptyState compact kicker="模板" title="暂无模板" body={snippetEmptyTemplatesBody()} />
+                  ) : (
+                    QUERY_TEMPLATES.map((tpl) => {
+                      const varsBadge = snippetTemplateVarsBadge(tpl.sql)
+                      return (
+                        <button
+                          key={tpl.id}
+                          type="button"
+                          className="template-row"
+                          role="menuitem"
+                          onClick={() => beginTemplate(tpl)}
+                        >
+                          <span className="template-row-title">{tpl.title}</span>
+                          <span className="template-row-sub">{tpl.subtitle}</span>
+                          {varsBadge ? <span className="template-row-vars">{varsBadge}</span> : null}
+                        </button>
+                      )
+                    })
+                  )}
                 </div>
               )}
             </div>
@@ -686,31 +710,43 @@ export function EditorPane() {
               aria-label="填写模板变量"
               onMouseDown={(event) => event.stopPropagation()}
             >
-              <h2 className="palette-vars-title">填写模板变量</h2>
-              <p className="palette-vars-copy">「{pendingTemplate.title}」</p>
+              <h2 className="palette-vars-title">{snippetVarsDialogTitle()}</h2>
+              <p className="palette-vars-copy">{snippetVarsDialogLead(pendingTemplate.title)}</p>
               <div className="snippet-var-fields">
-                {extractSnippetVars(pendingTemplate.sql).map((varName, index) => (
-                  <label key={varName} className="field">
-                    <span>{`{{${varName}}}`}</span>
-                    <input
-                      className="fav-input"
-                      value={varValues[varName] ?? ''}
-                      autoFocus={index === 0}
-                      spellCheck={false}
-                      onChange={(e) => setVarValues((prev) => ({ ...prev, [varName]: e.target.value }))}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          confirmTemplate()
-                        }
-                        if (e.key === 'Escape') {
-                          e.preventDefault()
-                          setPendingTemplate(null)
-                        }
-                      }}
-                    />
-                  </label>
-                ))}
+                {extractSnippetVars(pendingTemplate.sql).map((varName, index) => {
+                  const hint = snippetVarHint(varName)
+                  return (
+                    <label key={varName} className="field">
+                      <span>
+                        {snippetVarLabel(varName)}
+                        <span className="snippet-var-token">{`{{${varName}}}`}</span>
+                      </span>
+                      <input
+                        className="fav-input"
+                        value={varValues[varName] ?? ''}
+                        placeholder={snippetVarPlaceholder(varName)}
+                        autoFocus={index === 0}
+                        spellCheck={false}
+                        onChange={(e) => setVarValues((prev) => ({ ...prev, [varName]: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            confirmTemplate()
+                          }
+                          if (e.key === 'Escape') {
+                            e.preventDefault()
+                            setPendingTemplate(null)
+                          }
+                        }}
+                      />
+                      {hint ? <span className="field-hint">{hint}</span> : null}
+                    </label>
+                  )
+                })}
+              </div>
+              <div className="snippet-preview">
+                <span className="snippet-preview-label">{snippetPreviewLabel()}</span>
+                <pre className="snippet-preview-body">{snippetExpandedPreview(pendingTemplate.sql, varValues)}</pre>
               </div>
               <div className="dialog-actions">
                 <button type="button" className="btn btn-ghost" onClick={() => setPendingTemplate(null)}>
