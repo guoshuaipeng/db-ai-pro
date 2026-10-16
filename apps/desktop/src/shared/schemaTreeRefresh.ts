@@ -73,3 +73,22 @@ export function collectNodeIds(nodes: SchemaNode[]): Set<string> {
   nodes.forEach(walk)
   return ids
 }
+
+/**
+ * Collapse all folders: connection roots stay open; databases / tables / etc. close.
+ * Rebuilds the map from the current schema so stale keys are dropped.
+ */
+export function collapseSchemaTreeExpanded(schema: SchemaNode[]): Record<string, boolean> {
+  const next: Record<string, boolean> = {}
+  const walk = (node: SchemaNode) => {
+    next[node.id] = node.kind === 'connection'
+    node.children?.forEach(walk)
+  }
+  schema.forEach(walk)
+  return next
+}
+
+export function collapseSchemaTreeToast(clearedSearch: boolean): string {
+  return clearedSearch ? '已折叠对象树并清除搜索' : '已折叠对象树'
+}
+

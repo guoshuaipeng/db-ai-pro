@@ -11,7 +11,13 @@ import {
 import { getApi } from '../bridge'
 import { emitDataai } from '../appEvents'
 import { connectionErrorNode } from '@shared/schema'
-import { normalizeExpanded, replaceConnectionNode, seedExpanded } from '@shared/schemaTreeRefresh'
+import {
+  collapseSchemaTreeExpanded,
+  collapseSchemaTreeToast,
+  normalizeExpanded,
+  replaceConnectionNode,
+  seedExpanded,
+} from '@shared/schemaTreeRefresh'
 import { changesSchema, quoteIdentIfNeeded, statementTitle } from '@shared/sql'
 import {
   DEFAULT_PAGE_SIZE,
@@ -193,6 +199,8 @@ type WorkspaceValue = {
   revealConnectionInTree: (connectionId?: string | null) => void
   expanded: Record<string, boolean>
   toggleExpanded: (id: string) => void
+  /** Collapse databases/tables; keep connection roots open. Clears tree search if any. */
+  collapseObjectTree: () => void
   selectedId: string | null
   activeConnection: ConnectionPublic | null
   selectNode: (node: SchemaNode) => void
@@ -1084,6 +1092,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     })
     await Promise.all(rows.map((row) => checkConnectionHealth(row.id, true)))
     pushToast('success', `已检测 ${rows.length} 个连接`)
+  }
+
+  const collapseObjectTree = () => {
+    if (!sidebarOpen) setSidebarOpen(true)
+    const clearedSearch = Boolean(search.trim())
+    if (clearedSearch) setSearch('')
+    setExpanded(collapseSchemaTreeExpanded(schema))
+    pushToast('success', collapseSchemaTreeToast(clearedSearch))
   }
 
   const revealConnectionInTree = (connectionId?: string | null) => {
@@ -2372,6 +2388,7 @@ ${sql.trim()}
     revealConnectionInTree,
     expanded,
     toggleExpanded: (id) => setExpanded((current) => ({ ...current, [id]: !current[id] })),
+    collapseObjectTree,
     selectedId,
     activeConnection,
     selectNode,

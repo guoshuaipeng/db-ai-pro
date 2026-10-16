@@ -299,6 +299,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'connection',
   },
   {
+    id: 'view.collapseObjectTree',
+    title: '折叠对象树',
+    subtitle: '收起库 / 表节点，保留连接根展开',
+    keywords: 'collapse fold tree 折叠 对象树 收起',
+    shortcut: '连接栏「折叠」',
+    category: 'view',
+  },
+  {
     id: 'connection.revealInTree',
     title: '在对象树中显示连接',
     subtitle: '打开侧栏并滚动到当前连接（状态栏 Ctrl+单击）',
@@ -504,6 +512,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '连接栏', keys: 'Ctrl+B' },
   { action: '助手面板', keys: 'Ctrl+Shift+A' },
   { action: '对象树搜索', keys: 'Ctrl+Shift+F' },
+  { action: '折叠对象树', keys: '连接栏「折叠」· Ctrl+K' },
   { action: '聚焦编辑器', keys: 'Ctrl+Shift+1' },
   { action: '快捷键说明', keys: 'F1' },
   { action: '收藏片段变量 {{table}} / {{limit}}', keys: '插入时填写' },

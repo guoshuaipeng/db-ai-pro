@@ -75,6 +75,15 @@ export function ConnectionPane() {
           </button>
           <button
             type="button"
+            className="tiny-btn btn btn-ghost"
+            aria-label="折叠对象树"
+            title="折叠全部（保留连接根展开；有搜索时一并清除）"
+            onClick={() => ws.collapseObjectTree()}
+          >
+            折叠
+          </button>
+          <button
+            type="button"
             className={ws.schemaRefreshing ? 'icon-btn is-spinning' : 'icon-btn'}
             aria-label="刷新对象树"
             title="刷新对象树"

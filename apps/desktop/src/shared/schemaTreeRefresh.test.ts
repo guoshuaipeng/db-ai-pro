@@ -5,6 +5,8 @@ import {
   normalizeExpanded,
   replaceConnectionNode,
   seedExpanded,
+  collapseSchemaTreeExpanded,
+  collapseSchemaTreeToast,
 } from './schemaTreeRefresh'
 import type { SchemaNode } from './types'
 
@@ -69,3 +71,35 @@ describe('schemaTreeRefresh', () => {
     expect([...collectNodeIds(tree)].sort()).toEqual(['c', 'c:db'])
   })
 })
+
+describe('collapseSchemaTreeExpanded', () => {
+  it('keeps connections open and collapses children', () => {
+    const tree = [
+      {
+        id: 'c1',
+        kind: 'connection' as const,
+        label: 'Local',
+        children: [
+          {
+            id: 'c1:db',
+            kind: 'database' as const,
+            label: 'db',
+            children: [{ id: 'c1:db:t', kind: 'table' as const, label: 't' }],
+          },
+        ],
+      },
+    ]
+    const next = collapseSchemaTreeExpanded(tree as any)
+    expect(next['c1']).toBe(true)
+    expect(next['c1:db']).toBe(false)
+    expect(next['c1:db:t']).toBe(false)
+  })
+})
+
+describe('collapseSchemaTreeToast', () => {
+  it('mentions search when cleared', () => {
+    expect(collapseSchemaTreeToast(false)).toContain('折叠')
+    expect(collapseSchemaTreeToast(true)).toContain('搜索')
+  })
+})
+

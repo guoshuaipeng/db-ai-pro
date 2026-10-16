@@ -71,6 +71,10 @@ describe('filterCommands', () => {
     expect(filterCommands('对象树').some((item) => item.id === 'connection.revealInTree')).toBe(true)
   })
 
+  it('finds collapse object tree command', () => {
+    expect(filterCommands('折叠').some((item) => item.id === 'view.collapseObjectTree')).toBe(true)
+  })
+
   it('finds copy result headers command', () => {
     expect(filterCommands('列名').some((item) => item.id === 'result.copyHeaders')).toBe(true)
   })
