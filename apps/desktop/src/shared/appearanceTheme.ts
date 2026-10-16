@@ -1,6 +1,6 @@
-/** Dark-theme accent & appearance copy (M148). */
+/** Dark-theme accent, density & appearance copy (M148–M149). */
 
-import type { UiAccent } from './prefs'
+import type { UiAccent, UiDensity } from './prefs'
 
 export type AccentOption = {
   id: UiAccent
@@ -55,9 +55,36 @@ export function highContrastHint(): string {
 }
 
 export function densityComfortableBlurb(): string {
-  return '更宽松的行距与内边距，适合浏览结果。'
+  return '默认行距与内边距，适合日常查阅与编写 SQL。'
 }
 
 export function densityCompactBlurb(): string {
-  return '更紧凑的工具栏与树，适合小屏或多面板。'
+  return '收紧标题栏、标签与树行，一屏看到更多对象与结果。'
+}
+
+
+export function densityLabel(density: UiDensity): string {
+  return density === 'compact' ? '紧凑' : '舒适'
+}
+
+export function densityChangedToast(density: UiDensity): string {
+  return density === 'compact'
+    ? '已切换为紧凑密度：一屏显示更多对象与结果行。'
+    : '已切换为舒适密度：更宽松的间距便于阅读。'
+}
+
+export function densitySectionTitle(): string {
+  return '界面密度'
+}
+
+export function densitySectionBody(): string {
+  return '紧凑模式会收紧标题栏、标签、树行与结果行高，适合 1366×768 或多面板并行。'
+}
+
+export function densityComfortableTitle(): string {
+  return '舒适'
+}
+
+export function densityCompactTitle(): string {
+  return '紧凑'
 }

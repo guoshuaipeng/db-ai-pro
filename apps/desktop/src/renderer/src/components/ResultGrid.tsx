@@ -97,7 +97,25 @@ import {
   togglePinnedColumns,
 } from '@shared/resultColumnPin'
 
-const ROW_HEIGHT = 32
+const ROW_HEIGHT_COMFORTABLE = 32
+const ROW_HEIGHT_COMPACT = 26
+
+function useDensityRowHeight(): number {
+  const [height, setHeight] = useState(ROW_HEIGHT_COMFORTABLE)
+  useEffect(() => {
+    const root = document.querySelector('.app')
+    if (!root) return
+    const sync = () => {
+      setHeight(root.getAttribute('data-density') === 'compact' ? ROW_HEIGHT_COMPACT : ROW_HEIGHT_COMFORTABLE)
+    }
+    sync()
+    const mo = new MutationObserver(sync)
+    mo.observe(root, { attributes: true, attributeFilter: ['data-density'] })
+    return () => mo.disconnect()
+  }, [])
+  return height
+}
+
 
 function downloadBlob(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob)
@@ -592,6 +610,7 @@ export function ResultGrid({
   /** Currently shown columns (excludes hidden + __rowid__), for export/copy defaults. */
   onVisibleColumnsChange?: (columns: string[]) => void
 }) {
+  const ROW_HEIGHT = useDensityRowHeight()
   const ws = useWorkspace()
   const parentRef = useRef<HTMLDivElement>(null)
   const [focus, setFocus] = useState({ row: 0, col: 0 })
@@ -710,6 +729,10 @@ export function ResultGrid({
     estimateSize: () => ROW_HEIGHT,
     overscan: 16,
   })
+
+  useEffect(() => {
+    virtualizer.measure()
+  }, [ROW_HEIGHT, virtualizer])
 
   useEffect(() => {
     setFocus({ row: 0, col: 0 })

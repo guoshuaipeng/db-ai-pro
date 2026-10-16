@@ -74,6 +74,9 @@ button:disabled { cursor: default; opacity: 0.45; }
   --titlebar-height: 34px;
   --statusbar-height: 24px;
   --pad: 8px;
+  --density-row: 26px;
+  --density-tab: 30px;
+  --density-toolbar: 30px;
 }
 
 .boot {
@@ -2520,10 +2523,40 @@ body.is-col-resizing .grid-col-resizer {
   color: inherit;
 }
 .density-card strong { font-size: 14px; }
-.density-card span { color: var(--ink-secondary); font-size: 12px; }
+.density-card-body { color: var(--ink-secondary); font-size: 12px; line-height: 1.45; }
 .density-card.is-active {
   border-color: rgba(158, 180, 255, 0.45);
   background: var(--accent-soft);
+}
+.density-section {
+  display: grid;
+  gap: 12px;
+}
+.density-preview {
+  display: grid;
+  gap: 5px;
+  margin-top: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+.density-preview > span {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.22);
+}
+.density-preview > span:nth-child(1) { width: 72%; }
+.density-preview > span:nth-child(2) { width: 92%; }
+.density-preview > span:nth-child(3) { width: 58%; }
+.density-preview.is-compact {
+  gap: 3px;
+  padding: 6px;
+}
+.density-preview.is-compact > span {
+  height: 5px;
+  border-radius: 3px;
 }
 .about-stack { display: grid; gap: 12px; }
 .about-hero {
@@ -2595,10 +2628,65 @@ body.is-col-resizing .grid-col-resizer {
 
 .app[data-density="compact"] .side-head,
 .app[data-density="compact"] .ai-head {
-  padding-top: 8px;
-  padding-bottom: 8px;
+  height: 40px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  padding-left: 10px;
+  padding-right: 10px;
 }
-.app[data-density="compact"] .tree-row { min-height: 26px; }
+.app[data-density="compact"] .ai-head {
+  height: auto;
+}
+.app[data-density="compact"] .search {
+  margin: 0 10px 6px;
+  height: 28px;
+}
+.app[data-density="compact"] .tree-row {
+  min-height: var(--density-row, 26px);
+  border-radius: 5px;
+}
+.app[data-density="compact"] .tree-hit {
+  height: var(--density-row, 26px);
+}
+.app[data-density="compact"] .tabstrip,
+.app[data-density="compact"] .tab,
+.app[data-density="compact"] .tab-main {
+  height: var(--density-tab, 30px);
+}
+.app[data-density="compact"] .tab-main {
+  padding-left: 10px;
+}
+.app[data-density="compact"] .editor-toolbar,
+.app[data-density="compact"] .editor-toolbar-row,
+.app[data-density="compact"] .result-toolbar-row {
+  min-height: var(--density-toolbar, 30px);
+  padding-top: 2px;
+  padding-bottom: 2px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.app[data-density="compact"] .statusbar {
+  gap: 10px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+.app[data-density="compact"] .grid th,
+.app[data-density="compact"] .grid td {
+  height: var(--density-row, 26px);
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.app[data-density="compact"] .grid.is-virtual tbody tr {
+  height: var(--density-row, 26px);
+}
+.app[data-density="compact"] .tiny-btn {
+  height: 24px;
+  padding: 0 6px;
+}
+.app[data-density="compact"] .result-find-bar {
+  padding: 4px 6px;
+  gap: 4px;
+}
 
 @media (max-width: 900px) {
   .settings-shell { grid-template-columns: 1fr; height: auto; max-height: calc(100vh - 40px); }

@@ -29,6 +29,13 @@ import {
   appearanceThemeKicker,
   appearanceThemeLead,
   appearanceThemeTitle,
+  densityChangedToast,
+  densityComfortableBlurb,
+  densityComfortableTitle,
+  densityCompactBlurb,
+  densityCompactTitle,
+  densitySectionBody,
+  densitySectionTitle,
   highContrastHint,
 } from '@shared/appearanceTheme'
 import {
@@ -559,6 +566,7 @@ function AppearancePanel({
     try {
       const next = await api.prefs.save({ density })
       onPrefs(next)
+      ws.pushToast('success', densityChangedToast(density))
     } finally {
       setBusy(false)
     }
@@ -748,26 +756,47 @@ function AppearancePanel({
         </div>
       ) : null}
       {show('density') ? (
-        <div className="density-grid" role="radiogroup" aria-label="界面密度">
-          {(
-            [
-              { id: 'comfortable' as const, title: '舒适', body: '默认间距，适合日常查阅与编写 SQL。' },
-              { id: 'compact' as const, title: '紧凑', body: '收紧标题栏与侧栏留白，一屏看到更多对象。' },
-            ] as const
-          ).map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="radio"
-              aria-checked={prefs.density === item.id}
-              className={prefs.density === item.id ? 'density-card is-active' : 'density-card'}
-              disabled={busy}
-              onClick={() => void setDensity(item.id)}
-            >
-              <strong>{item.title}</strong>
-              <span>{item.body}</span>
-            </button>
-          ))}
+        <div className="density-section">
+          <EmptyState
+            compact
+            kicker="布局"
+            title={densitySectionTitle()}
+            body={densitySectionBody()}
+          />
+          <div className="density-grid" role="radiogroup" aria-label="界面密度">
+            {(
+              [
+                {
+                  id: 'comfortable' as const,
+                  title: densityComfortableTitle(),
+                  body: densityComfortableBlurb(),
+                },
+                {
+                  id: 'compact' as const,
+                  title: densityCompactTitle(),
+                  body: densityCompactBlurb(),
+                },
+              ] as const
+            ).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="radio"
+                aria-checked={prefs.density === item.id}
+                className={prefs.density === item.id ? 'density-card is-active' : 'density-card'}
+                disabled={busy}
+                onClick={() => void setDensity(item.id)}
+              >
+                <strong>{item.title}</strong>
+                <span className="density-card-body">{item.body}</span>
+                <span className={item.id === 'compact' ? 'density-preview is-compact' : 'density-preview'} aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
       {show('zoom') ? (
