@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { emitDataai, onDataai } from '../appEvents'
 import { suggestionsFromSchema } from '@shared/schemaSuggest'
 import { IconClock, IconPlay, IconPlus, IconStar, IconStop } from './icons'
@@ -13,6 +13,13 @@ import { EmptyState } from './EmptyState'
 import { FavoritesPanel } from './FavoritesPanel'
 import { useWorkspace } from '../state/workspace'
 import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
+import { QUERY_TEMPLATES, getQueryTemplate, type QueryTemplate } from '@shared/queryTemplates'
+import {
+  defaultSnippetValues,
+  expandSnippet,
+  extractSnippetVars,
+  hasSnippetVars,
+} from '@shared/snippetVars'
 import {
   PAGE_SIZES,
   canNextPage,
@@ -25,6 +32,10 @@ export function EditorPane() {
   const ws = useWorkspace()
   const [historyOpen, setHistoryOpen] = useState(false)
   const [favoritesOpen, setFavoritesOpen] = useState(false)
+  const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [pendingTemplate, setPendingTemplate] = useState<QueryTemplate | null>(null)
+  const [varValues, setVarValues] = useState<Record<string, string>>({})
+  const templatesRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => onDataai('dataai:open-favorites', () => {
     setFavoritesOpen(true)
@@ -34,6 +45,62 @@ export function EditorPane() {
     setHistoryOpen(true)
     setFavoritesOpen(false)
   }), [])
+  useEffect(() => onDataai('dataai:open-templates', () => {
+    setTemplatesOpen(true)
+    setFavoritesOpen(false)
+    setHistoryOpen(false)
+  }), [])
+  useEffect(() => {
+    if (!templatesOpen) return
+    const onDoc = (event: MouseEvent) => {
+      if (!templatesRef.current?.contains(event.target as Node)) setTemplatesOpen(false)
+    }
+    window.addEventListener('mousedown', onDoc)
+    return () => window.removeEventListener('mousedown', onDoc)
+  }, [templatesOpen])
+
+  const beginTemplate = (tpl: QueryTemplate) => {
+    setTemplatesOpen(false)
+    if (!hasSnippetVars(tpl.sql)) {
+      ws.insertFavoriteSql(tpl.sql)
+      return
+    }
+    setPendingTemplate(tpl)
+    setVarValues(
+      defaultSnippetValues(extractSnippetVars(tpl.sql), {
+        table: ws.targetTable || null,
+        limit: '100',
+      }),
+    )
+  }
+
+  const confirmTemplate = () => {
+    if (!pendingTemplate) return
+    const expanded = expandSnippet(pendingTemplate.sql, varValues)
+    setPendingTemplate(null)
+    ws.insertFavoriteSql(expanded)
+  }
+
+  useEffect(
+    () =>
+      onDataai('dataai:insert-template', (detail) => {
+        const tpl = getQueryTemplate(detail.templateId)
+        if (!tpl) return
+        setTemplatesOpen(false)
+        if (!hasSnippetVars(tpl.sql)) {
+          ws.insertFavoriteSql(tpl.sql)
+          return
+        }
+        setPendingTemplate(tpl)
+        setVarValues(
+          defaultSnippetValues(extractSnippetVars(tpl.sql), {
+            table: ws.targetTable || null,
+            limit: '100',
+          }),
+        )
+      }),
+    [ws],
+  )
 
   const suggestions = useMemo(
     () => suggestionsFromSchema(ws.schema, ws.activeConnection?.id ?? null),
@@ -113,6 +180,33 @@ export function EditorPane() {
                 </button>
               </>
             )}
+            <div className="template-menu" ref={templatesRef}>
+              <button
+                type="button"
+                className={templatesOpen ? 'btn btn-ghost run-btn is-active' : 'btn btn-ghost run-btn'}
+                onClick={() => setTemplatesOpen((open) => !open)}
+                title="快速查询模板（Ctrl+K「模板」）"
+                aria-expanded={templatesOpen}
+              >
+                模板
+              </button>
+              {templatesOpen && (
+                <div className="template-popover" role="menu" aria-label="查询模板">
+                  {QUERY_TEMPLATES.map((tpl) => (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      className="template-row"
+                      role="menuitem"
+                      onClick={() => beginTemplate(tpl)}
+                    >
+                      <span className="template-row-title">{tpl.title}</span>
+                      <span className="template-row-sub">{tpl.subtitle}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               type="button"
               className="btn btn-ghost run-btn"
@@ -172,6 +266,58 @@ export function EditorPane() {
         )}
         <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} />
         <FavoritesPanel open={favoritesOpen} onClose={() => setFavoritesOpen(false)} />
+        {pendingTemplate && (
+          <div
+            className="palette-overlay"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setPendingTemplate(null)
+            }}
+          >
+            <div
+              className="palette palette-vars"
+              role="dialog"
+              aria-modal="true"
+              aria-label="填写模板变量"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <h2 className="palette-vars-title">填写模板变量</h2>
+              <p className="palette-vars-copy">「{pendingTemplate.title}」</p>
+              <div className="snippet-var-fields">
+                {extractSnippetVars(pendingTemplate.sql).map((varName, index) => (
+                  <label key={varName} className="field">
+                    <span>{`{{${varName}}}`}</span>
+                    <input
+                      className="fav-input"
+                      value={varValues[varName] ?? ''}
+                      autoFocus={index === 0}
+                      spellCheck={false}
+                      onChange={(e) => setVarValues((prev) => ({ ...prev, [varName]: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          confirmTemplate()
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault()
+                          setPendingTemplate(null)
+                        }
+                      }}
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="dialog-actions">
+                <button type="button" className="btn btn-ghost" onClick={() => setPendingTemplate(null)}>
+                  取消
+                </button>
+                <button type="button" className="btn btn-primary" onClick={confirmTemplate}>
+                  插入编辑器
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   )

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { emitDataai, onDataai } from './appEvents'
 import type { CommandDef } from '@shared/commands'
+import { templateIdFromCommand } from '@shared/queryTemplates'
 import { dialectInfo, isKvDialect } from '@shared/types'
 import { Mark } from './components/icons'
 import { TitleBar } from './components/TitleBar'
@@ -141,6 +142,9 @@ export function App() {
         case 'query.format':
           emitDataai('dataai:format-sql')
           break
+        case 'query.templates':
+          emitDataai('dataai:open-templates')
+          break
         case 'editor.toggleComment':
           emitDataai('dataai:toggle-comment')
           break
@@ -220,8 +224,11 @@ export function App() {
         case 'help.palette':
           setPaletteOpen(true)
           break
-        default:
+        default: {
+          const templateId = templateIdFromCommand(command.id)
+          if (templateId) emitDataai('dataai:insert-template', { templateId })
           break
+        }
       }
     },
     [ws, toggleAlwaysOnTop, zoomIn, zoomOut, zoomReset],

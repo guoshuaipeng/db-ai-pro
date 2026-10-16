@@ -3130,3 +3130,51 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   font-size: 12px;
   color: var(--ink-tertiary);
 }
+
+
+/* M43 query templates */
+.template-menu {
+  position: relative;
+  display: inline-flex;
+}
+.template-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: min(320px, 70vw);
+  max-height: min(360px, 50vh);
+  overflow: auto;
+  padding: 6px;
+  border-radius: 10px;
+  background: #161b22;
+  border: 1px solid var(--border, #2a3140);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.template-row {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink, #eef2fa);
+  cursor: pointer;
+}
+.template-row:hover {
+  background: rgba(158, 180, 255, 0.12);
+}
+.template-row-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.template-row-sub {
+  font-size: 11px;
+  color: var(--ink-secondary, #b4bccf);
+}
+.run-btn.is-active {
+  background: rgba(158, 180, 255, 0.14);
+  color: var(--accent, #9eb4ff);
+}

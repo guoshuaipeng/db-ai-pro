@@ -1,3 +1,4 @@
+import { QUERY_TEMPLATES, templateCommandId } from './queryTemplates'
 export type CommandCategory = 'query' | 'view' | 'connection' | 'ai' | 'help'
 
 export type CommandDef = {
@@ -264,6 +265,22 @@ export const COMMAND_CATALOG: CommandDef[] = [
     shortcut: 'Ctrl+K',
     category: 'help',
   },
+  {
+    id: 'query.templates',
+    title: '快速查询模板…',
+    subtitle: '打开编辑器模板菜单',
+    keywords: 'template 模板 snippet quick',
+    category: 'query',
+  },
+  ...QUERY_TEMPLATES.map(
+    (tpl): CommandDef => ({
+      id: templateCommandId(tpl.id),
+      title: `模板：${tpl.title}`,
+      subtitle: tpl.subtitle,
+      keywords: `template 模板 ${tpl.keywords}`,
+      category: 'query',
+    }),
+  ),
 ]
 
 /** Case-insensitive subsequence / substring score. Higher is better; null = no match. */
@@ -323,4 +340,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '放大 / 缩小 / 重置缩放', keys: 'Ctrl+= · Ctrl+- · Ctrl+0' },
   { action: '编辑器小地图', keys: '设置 · Ctrl+K「小地图」' },
   { action: '编辑器字号', keys: '设置 → 外观' },
+  { action: '快速查询模板', keys: '工具栏「模板」· Ctrl+K' },
 ]

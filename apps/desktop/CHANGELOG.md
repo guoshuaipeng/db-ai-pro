@@ -2,6 +2,11 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 3.4.0 — M43 快速查询模板
+
+- 工具栏「模板」与 Ctrl+K：内置 SELECT / COUNT / WHERE、各引擎表结构、INSERT/UPDATE/DELETE 骨架（约 9 条）
+- 含 `{{table}}` / `{{limit}}` 等占位符时走现有片段变量填写框后插入编辑器
+
 ## 3.3.0 — M42 欢迎页 / 空工作区引导
 
 - 无连接时展示深色欢迎面板：打开示例 SQLite、新建连接、导入连接、最近表/查询

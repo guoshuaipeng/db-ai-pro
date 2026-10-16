@@ -8,14 +8,26 @@ export type DataaiEventMap = {
   'dataai:toggle-comment': undefined
   'dataai:find': undefined
   'dataai:replace': undefined
+  'dataai:open-templates': undefined
+  'dataai:insert-template': { templateId: string }
 }
 
-export function emitDataai<K extends keyof DataaiEventMap>(name: K): void {
-  window.dispatchEvent(new CustomEvent(name))
+export function emitDataai<K extends keyof DataaiEventMap>(
+  name: K,
+  ...args: DataaiEventMap[K] extends undefined ? [] : [DataaiEventMap[K]]
+): void {
+  const detail = (args as unknown[])[0]
+  window.dispatchEvent(new CustomEvent(name, { detail }))
 }
 
-export function onDataai<K extends keyof DataaiEventMap>(name: K, handler: () => void): () => void {
-  const listener = () => handler()
+export function onDataai<K extends keyof DataaiEventMap>(
+  name: K,
+  handler: DataaiEventMap[K] extends undefined ? () => void : (detail: DataaiEventMap[K]) => void,
+): () => void {
+  const listener = (event: Event) => {
+    const detail = (event as CustomEvent<DataaiEventMap[K]>).detail
+    ;(handler as (detail: DataaiEventMap[K]) => void)(detail)
+  }
   window.addEventListener(name, listener)
   return () => window.removeEventListener(name, listener)
 }
