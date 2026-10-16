@@ -416,7 +416,7 @@ export function EditorPane() {
               type="button"
               className="btn btn-danger run-btn"
               onClick={() => ws.cancelRun()}
-              title="取消正在执行的查询"
+              title="取消正在执行的查询（Esc）"
             >
               <IconStop />
               取消

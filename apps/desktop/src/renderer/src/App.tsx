@@ -31,6 +31,8 @@ import {
 } from '@shared/prefs'
 import { LAYOUT } from '@shared/layoutBounds'
 import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
+import { shouldCancelRunOnEscape } from '@shared/escCancelRun'
+import { isUiModalOpen } from './uiModal'
 import { getApi } from './bridge'
 import { useWorkspace } from './state/workspace'
 
@@ -131,6 +133,9 @@ export function App() {
           break
         case 'query.run':
           emitDataai('dataai:request-run')
+          break
+        case 'query.cancel':
+          if (ws.running) ws.cancelRun()
           break
         case 'query.fillParams':
           emitDataai('dataai:fill-query-params')
@@ -276,6 +281,15 @@ export function App() {
 
       if (paletteOpen || shortcutsOpen || settingsOpen || gotoOpen) {
         // Palette / help handle Esc themselves; don't steal other chords.
+        return
+      }
+
+      if (event.key === 'Escape') {
+        const modalOpen = Boolean(ws.dialog) || isUiModalOpen()
+        if (!shouldCancelRunOnEscape({ running: ws.running, modalOpen })) return
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        ws.cancelRun()
         return
       }
 

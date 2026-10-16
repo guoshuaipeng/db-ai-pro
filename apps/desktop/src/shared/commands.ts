@@ -44,6 +44,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'query.cancel',
+    title: '取消正在执行的查询',
+    subtitle: '停止当前 SQL（有弹层时 Esc 仍关闭弹层）',
+    keywords: 'cancel stop abort 取消 停止 esc',
+    shortcut: 'Esc（执行中）',
+    category: 'query',
+  },
+  {
     id: 'query.fillParams',
     title: '填写查询参数',
     subtitle: '为当前 SQL 的 {{name}} 占位符赋值',

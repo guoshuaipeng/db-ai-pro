@@ -44,6 +44,11 @@ describe('filterCommands', () => {
     expect(filterCommands('goto').some((item) => item.id === 'editor.gotoLine')).toBe(true)
   })
 
+  it('finds cancel query command', () => {
+    expect(filterCommands('取消').some((item) => item.id === 'query.cancel')).toBe(true)
+    expect(filterCommands('abort').some((item) => item.id === 'query.cancel')).toBe(true)
+  })
+
   it('finds query templates', () => {
     expect(filterCommands('模板').some((item) => item.id === 'query.templates')).toBe(true)
     expect(filterCommands('COUNT').some((item) => item.id === 'query.tpl.selectCount')).toBe(true)

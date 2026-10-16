@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "3.41.0",
+  "version": "3.42.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — go to line",
+  "description": "DataAI TypeScript desktop — Esc cancel run",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",
