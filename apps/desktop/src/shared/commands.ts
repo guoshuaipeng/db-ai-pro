@@ -99,10 +99,17 @@ export const COMMAND_CATALOG: CommandDef[] = [
   },
   {
     id: 'ai.settings',
-    title: '打开模型设置',
-    subtitle: 'Base URL / Model / API Key',
-    keywords: 'settings openai key',
+    title: '打开设置',
+    subtitle: '模型 / 外观 / 关于',
+    keywords: 'settings openai key about preference',
     category: 'ai',
+  },
+  {
+    id: 'help.about',
+    title: '关于 DataAI',
+    subtitle: '版本与工作区目录',
+    keywords: 'about version',
+    category: 'help',
   },
   {
     id: 'ai.clear',

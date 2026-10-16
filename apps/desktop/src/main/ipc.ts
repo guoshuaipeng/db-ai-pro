@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 
 const require = createRequire(import.meta.url)
 const pkg = require('../../package.json') as { version: string }
@@ -34,6 +34,8 @@ import {
   clearQueryHistory,
   connectionPassword,
   exportConnectionsBundle,
+  loadPrefs,
+  savePrefs,
   getConnection,
   hasConnectionStore,
   listConnections,
@@ -172,6 +174,20 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     getWindow()?.close()
   })
   ipcMain.handle('window:isMaximized', () => Boolean(getWindow()?.isMaximized()))
+
+  ipcMain.handle('prefs:get', () => loadPrefs())
+  ipcMain.handle('prefs:save', (_event, input: Partial<import('@shared/prefs').AppPrefs>) => savePrefs(input))
+
+  ipcMain.handle('app:openUserData', async () => {
+    const path = userData
+    const err = await shell.openPath(path)
+    return err ? { ok: false as const, error: err } : { ok: true as const, path }
+  })
+  ipcMain.handle('app:openLogs', async () => {
+    const path = app.getPath('logs')
+    const err = await shell.openPath(path)
+    return err ? { ok: false as const, error: err } : { ok: true as const, path }
+  })
 
   ipcMain.handle('connections:list', () => listConnections())
 

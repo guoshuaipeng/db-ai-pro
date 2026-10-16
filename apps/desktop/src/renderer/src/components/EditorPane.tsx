@@ -6,6 +6,7 @@ import { ScrollTabs } from './ScrollTabs'
 import { SqlEditor } from './SqlEditor'
 import { ResultGrid, ResultToolbar } from './ResultGrid'
 import { HistoryPanel } from './HistoryPanel'
+import { EmptyState } from './EmptyState'
 import { FavoritesPanel } from './FavoritesPanel'
 import { useWorkspace } from '../state/workspace'
 
@@ -125,10 +126,12 @@ export function ResultPane() {
         <div className="result-head">结果</div>
       )}
       {!results && (
-        <div className="result-empty">
-          <p>运行当前语句后，结果会显示在这里。</p>
-          <p className="hint">F5 或 Ctrl/⌘ Enter · Ctrl+Space 补全</p>
-        </div>
+        <EmptyState
+          compact
+          kicker="结果区"
+          title="还没有查询结果"
+          body="编写 SQL 后按 F5 或 Ctrl+Enter 运行。可用 Ctrl+Shift+E 查看执行计划，Ctrl+Space 补全表与列。"
+        />
       )}
       {active?.kind === 'plan' && <pre className="message-log plan-log">{active.message}</pre>}
       {active?.kind === 'message' && <pre className="message-log">{active.message}</pre>}

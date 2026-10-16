@@ -10,6 +10,7 @@ type TitleBarProps = {
   onToggleSidebar: () => void
   onToggleAi: () => void
   onOpenPalette: () => void
+  onOpenSettings: () => void
 }
 
 export function TitleBar({
@@ -20,6 +21,7 @@ export function TitleBar({
   onToggleSidebar,
   onToggleAi,
   onOpenPalette,
+  onOpenSettings,
 }: TitleBarProps) {
   const api = getApi()
   const [maximized, setMaximized] = useState(false)
@@ -62,6 +64,9 @@ export function TitleBar({
       <div className="title-actions titlebar-no-drag">
         <button type="button" className="pill palette-trigger" onClick={onOpenPalette} title="命令面板 (Ctrl+K)">
           Ctrl+K
+        </button>
+        <button type="button" className="pill" onClick={onOpenSettings} title="设置">
+          设置
         </button>
         <button
           type="button"

@@ -11,6 +11,14 @@ const api: DesktopApi = {
     close: () => ipcRenderer.invoke('window:close'),
     isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
   },
+  prefs: {
+    get: () => ipcRenderer.invoke('prefs:get'),
+    save: (input) => ipcRenderer.invoke('prefs:save', input),
+  },
+  app: {
+    openUserData: () => ipcRenderer.invoke('app:openUserData'),
+    openLogs: () => ipcRenderer.invoke('app:openLogs'),
+  },
   connections: {
     list: () => ipcRenderer.invoke('connections:list'),
     save: async (input: ConnectionInput) => {

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { onDataai } from '../appEvents'
 import { parseBlocks, extractSql } from '@shared/sql'
 import { ASSISTANT_PROMPTS } from '@shared/session'
 import { ALTER_PROMPTS, CREATE_PROMPTS } from '@shared/ddlDraft'
 import type { AiIntent } from '@shared/types'
 import { IconSend, IconSpark } from './icons'
+import { EmptyState } from './EmptyState'
+import { emitDataai } from '../appEvents'
 import { useWorkspace } from '../state/workspace'
 
 const INTENT_LABEL: Record<AiIntent, string> = {
@@ -16,13 +17,9 @@ const INTENT_LABEL: Record<AiIntent, string> = {
 export function AiPane() {
   const ws = useWorkspace()
   const [draft, setDraft] = useState('')
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const scroller = useRef<HTMLDivElement>(null)
 
-  useEffect(() => onDataai('dataai:open-ai-settings', () => {
-    if (!ws.aiOpen) ws.toggleAi()
-    setSettingsOpen(true)
-  }), [ws])
+  // 模型设置改由全局 SettingsCenter 承载；此处不再内嵌卡片。
 
   useEffect(() => {
     const el = scroller.current
@@ -56,8 +53,7 @@ export function AiPane() {
           <button
             type="button"
             className={ws.settings?.hasKey ? 'pill is-ready' : 'pill'}
-            onClick={() => setSettingsOpen((open) => !open)}
-            aria-expanded={settingsOpen}
+            onClick={() => emitDataai('dataai:open-ai-settings')}
           >
             {ws.settings?.hasKey ? '模型已就绪' : '本地预览'}
           </button>
@@ -106,33 +102,35 @@ export function AiPane() {
         </label>
       )}
 
-      {settingsOpen && <SettingsCard onClose={() => setSettingsOpen(false)} />}
       <div className="ai-scroll" ref={scroller}>
         {ws.aiTurns.length === 0 && (
-          <article className="card">
-            <p className="card-kicker">从当前库开始</p>
-            <h3>
-              {ws.aiIntent === 'create'
+          <EmptyState
+            kicker="从当前库开始"
+            title={
+              ws.aiIntent === 'create'
                 ? '描述要建的表'
                 : ws.aiIntent === 'alter'
                   ? '描述要改的字段'
-                  : '用一句话描述要看的数据'}
-            </h3>
-            <p className="card-body">
-              {ws.aiIntent === 'create'
+                  : '用一句话描述要看的数据'
+            }
+            body={
+              ws.aiIntent === 'create'
                 ? '助手会参考现有表风格起草 CREATE TABLE，确认后可一键执行。'
                 : ws.aiIntent === 'alter'
                   ? '助手先给出 ALTER TABLE 预览，确认后再执行；失败会尝试修复。'
-                  : '助手会先检索相关表、读取字段，再起草 SQL。'}
-            </p>
-            <div className="chips">
-              {prompts.map((prompt) => (
-                <button key={prompt} type="button" className="chip" onClick={() => void ws.sendAi(prompt)}>
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          </article>
+                  : '助手会先检索相关表、读取字段，再起草 SQL。未配置密钥时使用本地预览。'
+            }
+            icon={<IconSpark />}
+            actions={
+              <div className="chips">
+                {prompts.map((prompt) => (
+                  <button key={prompt} type="button" className="chip" onClick={() => void ws.sendAi(prompt)}>
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            }
+          />
         )}
         {ws.aiTurns.map((turn) =>
           turn.role === 'user' ? (
@@ -243,61 +241,5 @@ function AssistantBody({ content, streaming }: { content: string; streaming: boo
         <p className="card-footnote">DDL 会直接改库结构，执行前请再看一眼。</p>
       )}
     </div>
-  )
-}
-
-function SettingsCard({ onClose }: { onClose: () => void }) {
-  const ws = useWorkspace()
-  const [baseUrl, setBaseUrl] = useState(ws.settings?.baseUrl ?? '')
-  const [model, setModel] = useState(ws.settings?.model ?? '')
-  const [apiKey, setApiKey] = useState('')
-  const [error, setError] = useState('')
-
-  return (
-    <form
-      className="card settings-card"
-      onSubmit={(event) => {
-        event.preventDefault()
-        void ws
-          .saveSettings({ baseUrl, model, apiKey: apiKey || undefined })
-          .then(() => {
-            setApiKey('')
-            onClose()
-          })
-          .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : '没有保存'))
-      }}
-    >
-      <p className="card-kicker">OpenAI 兼容接口</p>
-      <label className="field">
-        <span>接口地址</span>
-        <input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} spellCheck={false} />
-      </label>
-      <label className="field">
-        <span>模型</span>
-        <input value={model} onChange={(event) => setModel(event.target.value)} spellCheck={false} />
-      </label>
-      <label className="field">
-        <span>密钥</span>
-        <input
-          type="password"
-          value={apiKey}
-          placeholder={ws.settings?.hasKey ? '已保存，留空则不修改' : '不会以明文写入磁盘'}
-          onChange={(event) => setApiKey(event.target.value)}
-          autoComplete="off"
-        />
-      </label>
-      <p className="field-hint">
-        {ws.meta?.encryption === 'os' ? '密钥用系统密钥环加密后保存在本机。' : '当前系统没有可用的密钥环，密钥不会写入磁盘。'}
-      </p>
-      {error && <p className="field-error">{error}</p>}
-      <div className="dialog-actions">
-        <button type="button" className="btn btn-ghost" onClick={onClose}>
-          关闭
-        </button>
-        <button type="submit" className="btn btn-primary">
-          保存
-        </button>
-      </div>
-    </form>
   )
 }

@@ -15,6 +15,7 @@ import type {
   WorkspaceState,
 } from './types'
 import type { ConnectionBundle, ImportPlanItem } from './connectionTransfer'
+import type { AppPrefs } from './prefs'
 
 export type DesktopApi = {
   meta: () => Promise<AppMeta>
@@ -23,6 +24,14 @@ export type DesktopApi = {
     maximize: () => Promise<{ maximized: boolean }>
     close: () => Promise<void>
     isMaximized: () => Promise<boolean>
+  }
+  prefs: {
+    get: () => Promise<AppPrefs>
+    save: (input: Partial<AppPrefs>) => Promise<AppPrefs>
+  }
+  app: {
+    openUserData: () => Promise<{ ok: true; path: string } | { ok: false; error: string }>
+    openLogs: () => Promise<{ ok: true; path: string } | { ok: false; error: string }>
   }
   connections: {
     list: () => Promise<ConnectionPublic[]>

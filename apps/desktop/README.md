@@ -1,13 +1,12 @@
 # DataAI Desktop (TypeScript)
 
-Milestone 9：
+Milestone 10：
 
-- 无边框深色自定义标题栏（frameless，对齐 AI-SSH-Pro 一体壳，无 Windows 白条）
-- 命令面板（Ctrl+K / Ctrl+Shift+P）：模糊搜索运行、计划、收藏、历史、导入导出、助手等
-- 快捷键说明（F1）；Explain = Ctrl+Shift+E；对象树搜索 = Ctrl+Shift+F
-- 状态栏：连接/引擎、最近一次运行行数与耗时、系统密钥提示
-- 保留 M3–M8
-- 版本 **0.9.0**
+- 设置中心：模型密钥（密封）、外观密度、关于页（版本 / 工作区 / 日志目录）
+- 主题 token 收敛：shell / titlebar / statusbar / hairline，减少浅色缝隙
+- 首屏与空态：无连接、无结果、助手空态按产品文案重排
+- 保留 M3–M9（含无边框深色 TitleBar + Ctrl+K）
+- 版本 **0.10.0**
 
 ## Soft QA
 

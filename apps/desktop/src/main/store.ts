@@ -14,6 +14,7 @@ import type {
 } from '@shared/types'
 import { QUERY_HISTORY_LIMIT, pushQueryHistory } from '@shared/queryHistory'
 import { upsertFavorite } from '@shared/favorites'
+import { DEFAULT_PREFS, normalizePrefs, type AppPrefs } from '@shared/prefs'
 import {
   applyImportPlan,
   isConnectionBundle,
@@ -417,4 +418,14 @@ export function applyConnectionImport(
     connections: stored.map(toPublic),
     imported: plan.filter((item) => item.decision !== 'skip').length,
   }
+}
+
+export function loadPrefs(): AppPrefs {
+  return normalizePrefs(readJson<unknown>('prefs.json', DEFAULT_PREFS))
+}
+
+export function savePrefs(input: Partial<AppPrefs>): AppPrefs {
+  const next = normalizePrefs({ ...loadPrefs(), ...input })
+  writeJson('prefs.json', next)
+  return next
 }

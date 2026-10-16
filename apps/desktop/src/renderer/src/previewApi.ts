@@ -189,12 +189,20 @@ export function createPreviewApi(): DesktopApi {
   }
 
   return {
-    meta: async () => ({ version: '0.9.0', encryption: 'unavailable', mode: 'preview' }),
+    meta: async () => ({ version: '0.10.0', encryption: 'unavailable', mode: 'preview' }),
     window: {
       minimize: async () => undefined,
       maximize: async () => ({ maximized: false }),
       close: async () => undefined,
       isMaximized: async () => false,
+    },
+    prefs: {
+      get: async () => ({ density: 'comfortable' as const }),
+      save: async (input) => ({ density: input.density === 'compact' ? ('compact' as const) : ('comfortable' as const) }),
+    },
+    app: {
+      openUserData: async () => ({ ok: false as const, error: '预览模式无法打开系统文件夹' }),
+      openLogs: async () => ({ ok: false as const, error: '预览模式无法打开系统文件夹' }),
     },
     connections: {
       list: async () => memory.connections,

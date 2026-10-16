@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — command palette, shortcuts, status bar",
+  "description": "DataAI TypeScript desktop — settings/about, theme tokens, empty states",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

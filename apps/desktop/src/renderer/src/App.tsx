@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { emitDataai } from './appEvents'
+import { emitDataai, onDataai } from './appEvents'
 import type { CommandDef } from '@shared/commands'
 import { dialectInfo, isKvDialect } from '@shared/types'
 import { Mark } from './components/icons'
@@ -11,12 +11,38 @@ import { RedisPane } from './components/RedisPane'
 import { Dialogs } from './components/Dialogs'
 import { CommandPalette } from './components/CommandPalette'
 import { ShortcutsHelp } from './components/ShortcutsHelp'
+import { SettingsCenter, type SettingsTab } from './components/SettingsCenter'
+import { DEFAULT_PREFS, type AppPrefs } from '@shared/prefs'
+import { getApi } from './bridge'
 import { useWorkspace } from './state/workspace'
 
 export function App() {
   const ws = useWorkspace()
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('model')
+  const [prefs, setPrefs] = useState<AppPrefs>(DEFAULT_PREFS)
+
+  const openSettings = (tab: SettingsTab = 'model') => {
+    setSettingsTab(tab)
+    setSettingsOpen(true)
+  }
+
+  useEffect(() => onDataai('dataai:open-ai-settings', () => openSettings('model')), [])
+
+  useEffect(() => {
+    let cancelled = false
+    void getApi()
+      .prefs.get()
+      .then((value) => {
+        if (!cancelled) setPrefs(value)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const runCommand = useCallback(
     (command: CommandDef) => {
@@ -59,8 +85,10 @@ export function App() {
           void ws.importConnections()
           break
         case 'ai.settings':
-          if (!ws.aiOpen) ws.toggleAi()
-          window.setTimeout(() => emitDataai('dataai:open-ai-settings'), 40)
+          openSettings('model')
+          break
+        case 'help.about':
+          openSettings('about')
           break
         case 'ai.clear':
           ws.clearAiMemory()
@@ -83,7 +111,7 @@ export function App() {
       const meta = event.metaKey || event.ctrlKey
       const key = event.key.toLowerCase()
 
-      if (paletteOpen || shortcutsOpen) {
+      if (paletteOpen || shortcutsOpen || settingsOpen) {
         // Palette / help handle Esc themselves; don't steal other chords.
         return
       }
@@ -146,7 +174,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [ws, paletteOpen, shortcutsOpen])
+  }, [ws, paletteOpen, shortcutsOpen, settingsOpen])
 
   if (!ws.ready) {
     return (
@@ -177,7 +205,7 @@ export function App() {
     : null
 
   return (
-    <div className="app">
+    <div className="app" data-density={prefs.density}>
       <TitleBar
         crumb={ws.breadcrumb}
         version={ws.meta?.version}
@@ -186,6 +214,7 @@ export function App() {
         onToggleSidebar={ws.toggleSidebar}
         onToggleAi={ws.toggleAi}
         onOpenPalette={() => setPaletteOpen(true)}
+        onOpenSettings={() => openSettings('model')}
       />
       <div className="workspace" style={{ gridTemplateColumns: columns }}>
         {ws.sidebarOpen && <ConnectionPane />}
@@ -263,7 +292,7 @@ export function App() {
         {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '0.9.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '0.10.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (
@@ -275,6 +304,14 @@ export function App() {
       <Dialogs />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onRun={runCommand} />
       <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <SettingsCenter
+        open={settingsOpen}
+        tab={settingsTab}
+        onTab={setSettingsTab}
+        onClose={() => setSettingsOpen(false)}
+        prefs={prefs}
+        onPrefs={setPrefs}
+      />
     </div>
   )
 }

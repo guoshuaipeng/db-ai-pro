@@ -3,6 +3,7 @@ import { onDataai } from '../appEvents'
 import { dialectInfo } from '@shared/types'
 import type { Dialect, SchemaNode } from '@shared/types'
 import { IconColumn, IconDatabase, IconMore, IconPlus, IconSearch, IconTable } from './icons'
+import { EmptyState } from './EmptyState'
 import { useWorkspace } from '../state/workspace'
 
 export function ConnectionPane() {
@@ -64,24 +65,33 @@ export function ConnectionPane() {
         </p>
       )}
       {ws.connections.length === 0 ? (
-        <div className="empty">
-          <IconDatabase />
-          <p className="empty-title">还没有连接</p>
-          <p className="empty-copy">SQLite / MySQL / MariaDB / PostgreSQL / SQL Server 可查 SQL；Redis 可浏览键值。Oracle / Hive 可先保存。</p>
-          <button type="button" className="btn btn-primary" onClick={ws.openCreate}>
-            新建连接
-          </button>
-          <button type="button" className="btn btn-ghost" onClick={() => void ws.restoreSample()}>
-            恢复示例库
-          </button>
-        </div>
+        <EmptyState
+          kicker="开始使用"
+          title="还没有数据库连接"
+          body="先添加一个连接。SQLite / MySQL / MariaDB / PostgreSQL / SQL Server 可直接查询；Redis 可浏览键值。也可以一键恢复示例业务库。"
+          icon={<IconDatabase />}
+          actions={
+            <>
+              <button type="button" className="btn btn-primary" onClick={ws.openCreate}>
+                新建连接
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => void ws.restoreSample()}>
+                恢复示例库
+              </button>
+            </>
+          }
+        />
       ) : ws.filteredSchema.length === 0 ? (
-        <div className="empty">
-          <p className="empty-title">没有匹配的对象</p>
-          <button type="button" className="btn btn-ghost" onClick={() => ws.setSearch('')}>
-            清除搜索
-          </button>
-        </div>
+        <EmptyState
+          compact
+          title="没有匹配的对象"
+          body="试试更短的关键字，或清除搜索后从连接树继续浏览。"
+          actions={
+            <button type="button" className="btn btn-ghost" onClick={() => ws.setSearch('')}>
+              清除搜索
+            </button>
+          }
+        />
       ) : (
         <div className="tree" role="tree">
           {ws.filteredSchema.map((node) => (
