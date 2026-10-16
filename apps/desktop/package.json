@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "3.42.0",
+  "version": "3.43.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — Esc cancel run",
+  "description": "DataAI TypeScript desktop — copy tree identifiers",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

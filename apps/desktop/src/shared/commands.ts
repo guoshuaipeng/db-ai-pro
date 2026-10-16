@@ -430,6 +430,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '编辑器字号', keys: '设置 → 外观' },
   { action: '快速查询模板', keys: '工具栏「模板」· Ctrl+K' },
   { action: '插入表名 / 列名', keys: '对象树菜单 · Alt/Ctrl+单击' },
+  { action: '复制表名 / 列名 / 库名', keys: '对象树菜单「复制…」' },
   { action: '未保存标签关闭确认', keys: '关闭脏标签 / 关窗时提示' },
   { action: '固定查询标签', keys: '标签右键 · 固定/取消固定' },
   { action: '重命名查询标签', keys: '右键 / 双击 / F2' },

@@ -6,6 +6,12 @@ import { bucketSchemaByGroup, colorForTag, CONN_COLOR_TAGS } from '@shared/connG
 import { quoteIdentIfNeeded } from '@shared/sql'
 import { isTreeNodeExpanded } from '@shared/schemaTreeRefresh'
 import { qualifyBrowseTable } from '@shared/tablePaging'
+import {
+  treeColumnCopyText,
+  treeDatabaseCopyText,
+  treeIdentCopiedToast,
+  treeTableCopyText,
+} from '@shared/treeIdentCopy'
 import { setSqlDragData } from '@shared/sqlDragDrop'
 import type { Dialect, SchemaNode } from '@shared/types'
 import { IconColumn, IconDatabase, IconMore, IconPlus, IconRefresh, IconSearch, IconTable } from './icons'
@@ -336,6 +342,28 @@ function TreeNode({
     }
   }
 
+  const copyName = async () => {
+    const dial = dialect || ws.activeConnection?.dialect || 'sqlite'
+    let text = ''
+    if (node.kind === 'table') {
+      text = treeTableCopyText(dial, node.tableName || node.name, node.databaseName)
+    } else if (node.kind === 'column' || node.kind === 'key') {
+      text = treeColumnCopyText(dial, node.name)
+    } else if (node.kind === 'database') {
+      text = treeDatabaseCopyText(dial, node.name)
+    }
+    if (!text) {
+      ws.pushToast('info', '没有可复制的名称')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(text)
+      ws.pushToast('success', treeIdentCopiedToast(text))
+    } catch (error) {
+      ws.pushToast('error', error instanceof Error ? error.message : '复制失败')
+    }
+  }
+
   const dragIdentText = () => {
     const dial = dialect || ws.activeConnection?.dialect || 'sqlite'
     if (node.kind === 'table') {
@@ -547,6 +575,16 @@ function TreeNode({
             >
               刷新
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onMenu(null)
+                void copyName()
+              }}
+            >
+              复制库名
+            </button>
           </div>
         )}
         {menuId === node.id && node.kind === 'table' && node.connectionId && node.tableName && (
@@ -571,6 +609,16 @@ function TreeNode({
               }}
             >
               插入表名
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onMenu(null)
+                void copyName()
+              }}
+            >
+              复制表名
             </button>
             <button
               type="button"
@@ -615,6 +663,16 @@ function TreeNode({
               }}
             >
               插入列名
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onMenu(null)
+                void copyName()
+              }}
+            >
+              复制列名
             </button>
           </div>
         )}
