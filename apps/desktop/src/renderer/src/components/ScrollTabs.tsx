@@ -1,6 +1,20 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { filterTabsForPicker } from '@shared/tabPicker'
+import {
+  tabPickerButtonAria,
+  tabPickerButtonTitle,
+  tabPickerClearFilterLabel,
+  tabPickerCloseTitle,
+  tabPickerEmptyBody,
+  tabPickerEmptyTitle,
+  tabPickerFilterStatus,
+  tabPickerFoot,
+  tabPickerMenuAria,
+  tabPickerSearchAria,
+  tabPickerSearchPlaceholder,
+} from '@shared/tabPickerUi'
 import { isTabstripBackgroundDoubleClick } from '@shared/tabstripNewTab'
+import { EmptyState } from './EmptyState'
 
 type TabItem = {
   id: string
@@ -438,10 +452,10 @@ export function ScrollTabs({
           <button
             type="button"
             className={pickerOpen ? 'tab-nav tab-picker-btn is-open' : 'tab-nav tab-picker-btn'}
-            aria-label="全部标签"
+            aria-label={tabPickerButtonAria()}
             aria-expanded={pickerOpen}
             aria-haspopup="listbox"
-            title="全部标签"
+            title={tabPickerButtonTitle()}
             onClick={() => {
               setMenu(null)
               setPickerOpen((open) => {
@@ -453,14 +467,14 @@ export function ScrollTabs({
             <ListChevron />
           </button>
           {pickerOpen && (
-            <div className="tab-picker-menu" role="listbox" aria-label="全部查询标签">
+            <div className="tab-picker-menu" role="listbox" aria-label={tabPickerMenuAria()}>
               <div className="tab-picker-search">
                 <input
                   ref={pickerSearchRef}
                   value={pickerQuery}
                   onChange={(event) => setPickerQuery(event.target.value)}
-                  placeholder="筛选标签…"
-                  aria-label="筛选标签"
+                  placeholder={tabPickerSearchPlaceholder()}
+                  aria-label={tabPickerSearchAria()}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' && filteredPickerTabs[0]) {
                       event.preventDefault()
@@ -469,9 +483,33 @@ export function ScrollTabs({
                   }}
                 />
               </div>
+              <p className="sr-only" role="status" aria-live="polite">
+                {tabPickerFilterStatus(
+                  filteredPickerTabs.length,
+                  tabs.length,
+                  Boolean(pickerQuery.trim()),
+                )}
+              </p>
               <div className="tab-picker-list">
                 {filteredPickerTabs.length === 0 ? (
-                  <p className="tab-picker-empty">无匹配标签</p>
+                  <div className="tab-picker-empty-wrap">
+                    <EmptyState
+                      compact
+                      title={tabPickerEmptyTitle()}
+                      body={tabPickerEmptyBody()}
+                      actions={
+                        pickerQuery.trim() ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => setPickerQuery('')}
+                          >
+                            {tabPickerClearFilterLabel()}
+                          </button>
+                        ) : null
+                      }
+                    />
+                  </div>
                 ) : (
                   filteredPickerTabs.map((tab) => {
                     const full = tabs.find((row) => row.id === tab.id)
@@ -501,7 +539,7 @@ export function ScrollTabs({
                           <span
                             className="tab-picker-close"
                             role="presentation"
-                            title="关闭"
+                            title={tabPickerCloseTitle()}
                             onClick={(event) => {
                               event.stopPropagation()
                               onClose(tab.id)
@@ -515,7 +553,9 @@ export function ScrollTabs({
                   })
                 )}
               </div>
-              <p className="tab-picker-foot">{tabs.length} 个标签 · 中键可关闭</p>
+              <p className="tab-picker-foot">
+                {tabPickerFoot(tabs.length, filteredPickerTabs.length, Boolean(pickerQuery.trim()))}
+              </p>
             </div>
           )}
         </div>
