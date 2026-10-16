@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react'
 import { dialectInfo } from '@shared/types'
 import { formatElapsedMs } from '@shared/slowQuery'
-import { statusHealthView } from '@shared/statusBar'
-import { statusBarConnectionTitle } from '@shared/revealConnection'
+import {
+  statusBarConnectionTitle,
+  statusBarCopyEndpointHint,
+  statusBarDisconnectedLabel,
+  statusBarDisconnectedTitle,
+  statusBarEndpointSummary,
+  statusHealthView,
+} from '@shared/statusBar'
 import { statusBarRerunTitle } from '@shared/statusBarRerun'
 import { editorSelectionStatusTitle } from '@shared/editorSelection'
 import { statusBarWordWrapLabel, statusBarWordWrapTitle } from '@shared/statusBarWordWrap'
@@ -39,6 +45,8 @@ type StatusBarProps = {
   version: string
   onProbeHealth: () => void
   onRevealConnection: () => void
+  onCopyEndpoint: () => void
+  onOpenCreateConnection: () => void
   onOpenPalette: () => void
   onOpenShortcuts: () => void
   onOpenGotoLine: () => void
@@ -76,6 +84,8 @@ export function StatusBar({
   version,
   onProbeHealth,
   onRevealConnection,
+  onCopyEndpoint,
+  onOpenCreateConnection,
   onOpenPalette,
   onOpenShortcuts,
   onOpenGotoLine,
@@ -87,53 +97,81 @@ export function StatusBar({
   onToggleGlobalReadOnly,
 }: StatusBarProps) {
   const healthView = statusHealthView(health)
+  const endpointSummary = activeConnection ? statusBarEndpointSummary(activeConnection) : ''
 
   return (
     <footer className="statusbar">
       {activeConnection ? (
+        <div className="status-conn">
+          <button
+            type="button"
+            className="status-item status-btn status-conn-main"
+            title={statusBarConnectionTitle(healthView.title, endpointSummary)}
+            onClick={(event) => {
+              if (event.altKey) {
+                event.preventDefault()
+                onCopyEndpoint()
+                return
+              }
+              if (event.ctrlKey || event.metaKey) {
+                event.preventDefault()
+                onRevealConnection()
+                return
+              }
+              onProbeHealth()
+            }}
+          >
+            <span
+              className={
+                schemaError
+                  ? 'status-dot is-bad'
+                  : healthView.tone === 'bad'
+                    ? 'status-dot is-bad'
+                    : healthView.tone === 'warn'
+                      ? 'status-dot is-warn'
+                      : healthView.tone === 'good'
+                        ? 'status-dot is-on'
+                        : 'status-dot'
+              }
+            />
+            <span
+              className={`badge badge-${activeConnection.dialect}${
+                dialectInfo(activeConnection.dialect).executable || dialectInfo(activeConnection.dialect).kv
+                  ? ''
+                  : ' badge-pending'
+              }`}
+            >
+              {dialectInfo(activeConnection.dialect).label}
+            </span>
+            <span className="status-conn-name">{activeConnection.name}</span>
+            {endpointSummary ? (
+              <span className="status-conn-endpoint" title={endpointSummary}>
+                {endpointSummary}
+              </span>
+            ) : null}
+            <span className={`status-latency is-${healthView.tone}`}>{healthView.text}</span>
+          </button>
+          <button
+            type="button"
+            className="status-item status-btn status-conn-copy"
+            title={statusBarCopyEndpointHint()}
+            aria-label={statusBarCopyEndpointHint()}
+            onClick={onCopyEndpoint}
+          >
+            复制地址
+          </button>
+        </div>
+      ) : (
         <button
           type="button"
-          className="status-item status-btn"
-          title={statusBarConnectionTitle(healthView.title)}
-          onClick={(event) => {
-            if (event.ctrlKey || event.metaKey) {
-              event.preventDefault()
-              onRevealConnection()
-              return
-            }
-            onProbeHealth()
-          }}
+          className="status-item status-btn status-disconnected"
+          title={statusBarDisconnectedTitle()}
+          onClick={onOpenCreateConnection}
         >
-          <span
-            className={
-              schemaError
-                ? 'status-dot is-bad'
-                : healthView.tone === 'bad'
-                  ? 'status-dot is-bad'
-                  : healthView.tone === 'warn'
-                    ? 'status-dot is-warn'
-                    : healthView.tone === 'good'
-                      ? 'status-dot is-on'
-                      : 'status-dot'
-            }
-          />
-          <span
-            className={`badge badge-${activeConnection.dialect}${
-              dialectInfo(activeConnection.dialect).executable || dialectInfo(activeConnection.dialect).kv
-                ? ''
-                : ' badge-pending'
-            }`}
-          >
-            {dialectInfo(activeConnection.dialect).label}
-          </span>
-          <span className="status-conn-name">{activeConnection.name}</span>
-          <span className={`status-latency is-${healthView.tone}`}>{healthView.text}</span>
-        </button>
-      ) : (
-        <span className="status-item">
           <span className="status-dot" />
-          未连接
-        </span>
+          {statusBarDisconnectedLabel()}
+          <span className="status-disconnected-hint">新建连接</span>
+        </button>
       )}
       <button
         type="button"

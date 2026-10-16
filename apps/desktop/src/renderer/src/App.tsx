@@ -780,6 +780,11 @@ export function App() {
           if (ws.activeConnection) void ws.checkConnectionHealth(ws.activeConnection.id, false)
         }}
         onRevealConnection={() => ws.revealConnectionInTree()}
+        onCopyEndpoint={() => {
+          if (ws.activeConnection) void ws.copyConnectionEndpoint(ws.activeConnection.id)
+          else ws.pushToast('info', '先选择一个连接')
+        }}
+        onOpenCreateConnection={() => ws.openCreate()}
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenGotoLine={() => setGotoOpen(true)}

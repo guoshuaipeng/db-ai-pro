@@ -1349,6 +1349,46 @@ body.is-col-resizing .grid-col-resizer {
 .dialog-copy { margin: 0 0 16px; color: var(--ink-secondary); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
+
+.status-conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: min(52vw, 560px);
+}
+.status-conn-main {
+  min-width: 0;
+  max-width: 100%;
+}
+.status-conn-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-conn-endpoint {
+  color: var(--muted, #8b95a8);
+  font-size: 11px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-conn-copy {
+  flex-shrink: 0;
+  opacity: 0.72;
+}
+.status-conn-copy:hover,
+.status-conn:hover .status-conn-copy {
+  opacity: 1;
+}
+.status-disconnected-hint {
+  margin-left: 6px;
+  color: var(--accent, #5b8def);
+  font-size: 11px;
+}
+
 .statusbar {
   display: flex;
   align-items: center;
