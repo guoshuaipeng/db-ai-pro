@@ -4057,3 +4057,102 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
 .db-vis-item:hover {
   background: color-mix(in srgb, var(--accent, #5b8cff) 8%, transparent);
 }
+
+
+/* M73: editor / result toolbar layout (no tabstrip collision) */
+.tab-actions-slim {
+  flex: 0 0 auto;
+}
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--chrome);
+  min-width: 0;
+  position: relative;
+}
+.toolbar-overflow-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  display: flex;
+  gap: 6px;
+  left: 0;
+  top: 0;
+  height: 0;
+  overflow: hidden;
+}
+.toolbar-overflow-secondary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.toolbar-overflow-primary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.toolbar-overflow-more {
+  position: relative;
+  flex: 0 0 auto;
+}
+.toolbar-overflow-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  min-width: 160px;
+  max-width: min(320px, 70vw);
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel, #121826);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.toolbar-overflow-menu .run-btn,
+.toolbar-overflow-menu .btn {
+  width: 100%;
+  justify-content: flex-start;
+}
+.toolbar-overflow-menu .template-menu {
+  width: 100%;
+}
+.toolbar-overflow-menu .template-popover {
+  position: static;
+  margin-top: 4px;
+  box-shadow: none;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.result-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--chrome);
+  min-width: 0;
+}
+.result-toolbar-row .result-tools {
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
+.result-toolbar-row .result-count {
+  height: auto;
+  padding: 0;
+  border: 0;
+}

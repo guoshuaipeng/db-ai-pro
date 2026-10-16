@@ -3,6 +3,7 @@ import { emitDataai, onDataai } from '../appEvents'
 import { suggestionsFromSchema } from '@shared/schemaSuggest'
 import { IconClock, IconPlay, IconPlus, IconStar, IconStop } from './icons'
 import { ScrollTabs, type TabContextAction } from './ScrollTabs'
+import { ToolbarOverflow } from './ToolbarOverflow'
 import { SqlEditor } from './SqlEditor'
 import { ResultGrid, ResultToolbar } from './ResultGrid'
 import { ResultSummaryBar } from './ResultSummaryBar'
@@ -221,7 +222,7 @@ export function EditorPane() {
           else if (action === 'close-right') ws.closeTabsToRight(id)
         }}
         trailing={
-          <div className="tab-actions">
+          <div className="tab-actions tab-actions-slim">
             <button
               type="button"
               className={favoritesOpen ? 'icon-btn is-active' : 'icon-btn'}
@@ -253,6 +254,13 @@ export function EditorPane() {
             <button type="button" className="icon-btn" aria-label="新建查询" onClick={ws.newTab}>
               <IconPlus />
             </button>
+          </div>
+        }
+      />
+      <ToolbarOverflow
+        className="editor-toolbar"
+        secondary={
+          <>
             {ws.txnSupported && (
               <>
                 <button
@@ -356,23 +364,25 @@ export function EditorPane() {
             >
               计划
             </button>
-            {ws.running ? (
-              <button
-                type="button"
-                className="btn btn-danger run-btn"
-                onClick={() => ws.cancelRun()}
-                title="取消正在执行的查询"
-              >
-                <IconStop />
-                取消
-              </button>
-            ) : (
-              <button type="button" className="btn btn-primary run-btn" onClick={() => requestRun()}>
-                <IconPlay />
-                运行
-              </button>
-            )}
-          </div>
+          </>
+        }
+        primary={
+          ws.running ? (
+            <button
+              type="button"
+              className="btn btn-danger run-btn"
+              onClick={() => ws.cancelRun()}
+              title="取消正在执行的查询"
+            >
+              <IconStop />
+              取消
+            </button>
+          ) : (
+            <button type="button" className="btn btn-primary run-btn" onClick={() => requestRun()}>
+              <IconPlay />
+              运行
+            </button>
+          )
         }
       />
       <div className="editor-body">
@@ -582,41 +592,48 @@ export function ResultPane() {
           tabs={results.tabs.map((tab) => ({ id: tab.id, label: tab.title }))}
           activeId={results.activeId}
           onSelect={ws.setActiveResult}
-          trailing={
-            active?.kind === 'grid' && active.columns ? (
-              <div className="result-trailing">
-                {chartable && (
-                  <div className="result-view-toggle" role="group" aria-label="结果视图">
-                    <button
-                      type="button"
-                      className={view === 'table' ? 'btn btn-ghost tiny-btn is-active' : 'btn btn-ghost tiny-btn'}
-                      onClick={() => setView('table')}
-                    >
-                      表格
-                    </button>
-                    <button
-                      type="button"
-                      className={view === 'chart' ? 'btn btn-ghost tiny-btn is-active' : 'btn btn-ghost tiny-btn'}
-                      onClick={() => setView('chart')}
-                    >
-                      图表
-                    </button>
-                  </div>
-                )}
-                <ResultToolbar columns={gridVisibleColumns ?? active.columns} rows={exportRows} selectedRows={selectedRows} focusColumn={focusColumn} filterQuery={resultFilter} onFilterQuery={setResultFilter} totalRows={(active.rows ?? []).length} />
-              </div>
-            ) : (
-              <div className="result-trailing">
-                <span className="result-count">输出</span>
-              </div>
-            )
-          }
+          trailing={undefined}
         />
       ) : (
         <div className="result-head">
           <span>结果</span>
         </div>
       )}
+      {results && results.tabs.length > 0 && active?.kind === 'grid' && active.columns ? (
+        <div className="result-toolbar-row">
+          {chartable && (
+            <div className="result-view-toggle" role="group" aria-label="结果视图">
+              <button
+                type="button"
+                className={view === 'table' ? 'btn btn-ghost tiny-btn is-active' : 'btn btn-ghost tiny-btn'}
+                onClick={() => setView('table')}
+              >
+                表格
+              </button>
+              <button
+                type="button"
+                className={view === 'chart' ? 'btn btn-ghost tiny-btn is-active' : 'btn btn-ghost tiny-btn'}
+                onClick={() => setView('chart')}
+              >
+                图表
+              </button>
+            </div>
+          )}
+          <ResultToolbar
+            columns={gridVisibleColumns ?? active.columns}
+            rows={exportRows}
+            selectedRows={selectedRows}
+            focusColumn={focusColumn}
+            filterQuery={resultFilter}
+            onFilterQuery={setResultFilter}
+            totalRows={(active.rows ?? []).length}
+          />
+        </div>
+      ) : results && results.tabs.length > 0 ? (
+        <div className="result-toolbar-row">
+          <span className="result-count">输出</span>
+        </div>
+      ) : null}
 
       {results && (
         <ResultSummaryBar
