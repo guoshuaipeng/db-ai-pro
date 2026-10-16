@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  aiApplyAllSqlButtonLabel,
+  aiApplyAllSqlButtonTitle,
+  aiReuseUserPromptToast,
   aiStepsSummary,
   joinSqlBlocksForCopy,
   listClosedSqlBlocks,
@@ -35,3 +38,13 @@ describe('aiStepsSummary', () => {
     expect(aiStepsSummary(5)).toBe('5 个步骤')
   })
 })
+
+describe('ai message action copy', () => {
+  it('labels apply-all by block count', () => {
+    expect(aiApplyAllSqlButtonTitle(1)).toContain('SQL')
+    expect(aiApplyAllSqlButtonTitle(3)).toContain('3')
+    expect(aiApplyAllSqlButtonLabel(2)).toContain('2')
+    expect(aiReuseUserPromptToast()).toContain('输入框')
+  })
+})
+

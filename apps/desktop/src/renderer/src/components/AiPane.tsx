@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { parseBlocks, extractSql } from '@shared/sql'
 import {
+  aiApplyAllSqlButtonLabel,
+  aiApplyAllSqlButtonTitle,
+  aiReuseUserPromptTitle,
+  aiReuseUserPromptToast,
   aiStepsSummary,
   joinSqlBlocksForCopy,
+  listClosedSqlBlocks,
   shouldCollapseAiSteps,
 } from '@shared/aiCardActions'
 import { ASSISTANT_PROMPTS } from '@shared/session'
@@ -180,6 +185,19 @@ export function AiPane() {
                     >
                       复制
                     </button>
+                    <button
+                      type="button"
+                      className="tiny-btn btn btn-ghost"
+                      title={aiReuseUserPromptTitle()}
+                      disabled={ws.aiStreaming}
+                      onClick={() => {
+                        setDraft(turn.content)
+                        ws.pushToast('info', aiReuseUserPromptToast())
+                        queueMicrotask(() => composerRef.current?.focus())
+                      }}
+                    >
+                      填入输入框
+                    </button>
                   </div>
                 </div>
                 <p className="card-body">{turn.content}</p>
@@ -188,6 +206,7 @@ export function AiPane() {
           }
 
           const sqlCopy = joinSqlBlocksForCopy(turn.content)
+          const sqlBlockCount = listClosedSqlBlocks(turn.content).length || (sqlCopy ? 1 : 0)
           const stepCount = turn.steps?.length ?? 0
           const collapseDefault = shouldCollapseAiSteps(stepCount, streaming)
           const open = stepsOpen[turn.id] ?? !collapseDefault
@@ -236,6 +255,16 @@ export function AiPane() {
                       onClick={() => void copyText(sqlCopy).then((ok) => notifyCopy(ok, ' SQL'))}
                     >
                       复制 SQL
+                    </button>
+                  )}
+                  {!streaming && sqlCopy && (
+                    <button
+                      type="button"
+                      className="tiny-btn btn btn-ghost"
+                      title={aiApplyAllSqlButtonTitle(sqlBlockCount)}
+                      onClick={() => ws.applySql(sqlCopy)}
+                    >
+                      {aiApplyAllSqlButtonLabel(sqlBlockCount)}
                     </button>
                   )}
                 </div>

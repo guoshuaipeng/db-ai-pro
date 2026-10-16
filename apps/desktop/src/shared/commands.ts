@@ -602,6 +602,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '连接栏', keys: 'Ctrl+B' },
   { action: '助手面板', keys: 'Ctrl+Shift+A' },
   { action: '聚焦助手输入框', keys: '打开助手时自动 · Ctrl+K「聚焦助手」' },
+  { action: '助手消息操作', keys: '消息「填入输入框」·「写入编辑器」/「复制 SQL」' },
   { action: '对象树搜索', keys: 'Ctrl+Shift+F' },
   { action: '展开对象树下一级', keys: '连接栏「展开」· Ctrl+K' },
   { action: '折叠对象树', keys: '连接栏「折叠」· Ctrl+K' },
