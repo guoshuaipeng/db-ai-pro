@@ -486,6 +486,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '复制连接', keys: '对象树菜单「复制连接」· Ctrl+K' },
   { action: '复制连接地址', keys: '对象树菜单「复制地址」· Ctrl+K' },
   { action: '在对象树中显示连接', keys: '状态栏 Ctrl+单击 · Ctrl+K' },
+  { action: '标题栏定位连接', keys: '单击标题栏路径（面包屑）' },
   { action: '未保存标签关闭确认', keys: '关闭脏标签 / 关窗时提示' },
   { action: '固定查询标签', keys: '标签右键 · 固定/取消固定' },
   { action: '重命名查询标签', keys: '右键 / 双击 / F2' },

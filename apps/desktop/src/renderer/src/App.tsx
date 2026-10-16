@@ -471,6 +471,8 @@ export function App() {
       <TitleBar
         crumb={ws.breadcrumb}
         crumbColor={resolveTabConnectionColor(ws.activeConnection?.id, ws.connections)}
+        crumbClickable={Boolean(ws.activeConnection)}
+        onRevealCrumb={() => ws.revealConnectionInTree()}
         version={ws.meta?.version}
         sidebarOpen={ws.sidebarOpen}
         aiOpen={ws.aiOpen}

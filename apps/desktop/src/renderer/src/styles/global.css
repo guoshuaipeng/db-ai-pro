@@ -151,6 +151,26 @@ button:disabled { cursor: default; opacity: 0.45; }
   text-overflow: ellipsis;
   font-size: 12px;
 }
+button.crumb-btn {
+  max-width: min(420px, 46vw);
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+button.crumb-btn:hover {
+  color: var(--ink);
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+button.crumb-btn .crumb-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .title-actions {
   margin-left: auto;
   display: flex;

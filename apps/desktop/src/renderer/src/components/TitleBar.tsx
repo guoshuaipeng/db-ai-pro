@@ -2,11 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { getApi } from '../bridge'
 import { recentQueryTitle, type RecentQueryItem, type RecentTableItem } from '@shared/recentItems'
 import { IconSidebar, IconSpark, Mark } from './icons'
+import { crumbRevealTitle } from '@shared/revealConnection'
 
 type TitleBarProps = {
   crumb: string
   /** Active connection colorTag hex for crumb dot. */
   crumbColor?: string | null
+  /** When set, crumb is clickable (reveal in tree). */
+  onRevealCrumb?: () => void
+  crumbClickable?: boolean
   version?: string
   sidebarOpen: boolean
   aiOpen: boolean
@@ -31,6 +35,8 @@ type TitleBarProps = {
 export function TitleBar({
   crumb,
   crumbColor,
+  onRevealCrumb,
+  crumbClickable = false,
   version,
   sidebarOpen,
   aiOpen,
@@ -104,12 +110,26 @@ export function TitleBar({
           <span className="word">DataAI</span>
           {version && <span className="title-version">{version}</span>}
         </div>
-        <p className="crumb" title={crumb}>
-          {crumbColor ? (
-            <span className="crumb-conn-dot" style={{ background: crumbColor }} aria-hidden="true" />
-          ) : null}
-          {crumb}
-        </p>
+        {crumbClickable && onRevealCrumb ? (
+          <button
+            type="button"
+            className="crumb crumb-btn titlebar-no-drag"
+            title={crumbRevealTitle(true)}
+            onClick={onRevealCrumb}
+          >
+            {crumbColor ? (
+              <span className="crumb-conn-dot" style={{ background: crumbColor }} aria-hidden="true" />
+            ) : null}
+            <span className="crumb-text">{crumb}</span>
+          </button>
+        ) : (
+          <p className="crumb" title={crumbClickable ? crumbRevealTitle(false) : crumb}>
+            {crumbColor ? (
+              <span className="crumb-conn-dot" style={{ background: crumbColor }} aria-hidden="true" />
+            ) : null}
+            {crumb}
+          </p>
+        )}
       </div>
       <div className="title-actions titlebar-no-drag">
         <div className="recent-menu" ref={recentRef}>
