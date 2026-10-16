@@ -285,14 +285,19 @@ export function App() {
         <span className="status-item">
           行 {ws.cursor.line} · 列 {ws.cursor.column}
         </span>
-        {lastRunLabel && (
+        {ws.running ? (
+          <span className="status-item is-running" aria-live="polite">
+            <span className="status-pulse" />
+            执行中…
+          </span>
+        ) : lastRunLabel ? (
           <span className={ws.lastRun?.ok === false ? 'status-item is-warn' : 'status-item'}>{lastRunLabel}</span>
-        )}
+        ) : null}
         <span className="status-spacer" />
         {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '0.10.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '0.11.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (

@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — settings/about, theme tokens, empty states",
+  "description": "DataAI TypeScript desktop — cancel/timeout + destructive SQL confirm",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

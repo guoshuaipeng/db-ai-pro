@@ -4,7 +4,7 @@ import { Mark } from './icons'
 import { useWorkspace } from '../state/workspace'
 import { getApi } from '../bridge'
 
-export type SettingsTab = 'model' | 'appearance' | 'about'
+export type SettingsTab = 'model' | 'appearance' | 'query' | 'about'
 
 type SettingsCenterProps = {
   open: boolean
@@ -49,6 +49,7 @@ export function SettingsCenter({ open, tab, onTab, onClose, prefs, onPrefs }: Se
               [
                 { id: 'model' as const, label: '模型' },
                 { id: 'appearance' as const, label: '外观' },
+                { id: 'query' as const, label: '查询' },
                 { id: 'about' as const, label: '关于' },
               ] as const
             ).map((item) => (
@@ -65,7 +66,15 @@ export function SettingsCenter({ open, tab, onTab, onClose, prefs, onPrefs }: Se
         </aside>
         <section className="settings-main">
           <header className="settings-main-head">
-            <h3>{tab === 'model' ? '模型与密钥' : tab === 'appearance' ? '外观' : '关于 DataAI'}</h3>
+            <h3>
+              {tab === 'model'
+                ? '模型与密钥'
+                : tab === 'appearance'
+                  ? '外观'
+                  : tab === 'query'
+                    ? '查询'
+                    : '关于 DataAI'}
+            </h3>
             <button type="button" className="btn btn-ghost tiny-btn" onClick={onClose}>
               关闭
             </button>
@@ -73,7 +82,8 @@ export function SettingsCenter({ open, tab, onTab, onClose, prefs, onPrefs }: Se
           <div className="settings-body">
             {tab === 'model' && <ModelPanel onClose={onClose} />}
             {tab === 'appearance' && <AppearancePanel prefs={prefs} onPrefs={onPrefs} />}
-            {tab === 'about' && <AboutPanel version={ws.meta?.version ?? '0.10.0'} encryption={ws.meta?.encryption} />}
+            {tab === 'query' && <QueryPanel prefs={prefs} onPrefs={onPrefs} />}
+            {tab === 'about' && <AboutPanel version={ws.meta?.version ?? '0.11.0'} encryption={ws.meta?.encryption} />}
           </div>
         </section>
       </div>
@@ -138,6 +148,61 @@ function ModelPanel({ onClose }: { onClose: () => void }) {
         </button>
       </div>
     </form>
+  )
+}
+
+
+function QueryPanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs: AppPrefs) => void }) {
+  const api = getApi()
+  const [timeoutSec, setTimeoutSec] = useState(String(prefs.queryTimeoutSec))
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState('')
+
+  useEffect(() => {
+    setTimeoutSec(String(prefs.queryTimeoutSec))
+  }, [prefs.queryTimeoutSec])
+
+  const saveTimeout = async () => {
+    setBusy(true)
+    setNote('')
+    try {
+      const next = await api.prefs.save({ queryTimeoutSec: Number(timeoutSec) })
+      onPrefs(next)
+      setTimeoutSec(String(next.queryTimeoutSec))
+      setNote(
+        next.queryTimeoutSec === 0
+          ? '已关闭软超时（查询不会自动取消）。'
+          : `软超时已设为 ${next.queryTimeoutSec} 秒；超时后会自动取消查询。`,
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="settings-card">
+      <p className="settings-lead">
+        配置查询软超时。执行中可在编辑器工具栏取消；超时后会按驱动能力中断连接上的查询，避免一直挂起。
+      </p>
+      <label className="field">
+        <span>软超时（秒，0 = 不限制）</span>
+        <input
+          type="number"
+          min={0}
+          max={600}
+          step={1}
+          value={timeoutSec}
+          onChange={(event) => setTimeoutSec(event.target.value)}
+        />
+      </label>
+      <p className="field-hint">默认 30 秒。建议在本地大表或慢网关时按需调大；危险语句仍会先弹出确认框。</p>
+      {note && <p className="field-ok">{note}</p>}
+      <div className="dialog-actions">
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveTimeout()}>
+          {busy ? '保存中…' : '保存超时'}
+        </button>
+      </div>
+    </div>
   )
 }
 

@@ -16,6 +16,7 @@ import { countTreeNodes, extrasFromConnections, filterNodes } from '@shared/tree
 import { isKvDialect } from '@shared/types'
 import { trimAiTurns } from '@shared/aiMemory'
 import { formatExplainText } from '@shared/explain'
+import { analyzeDestructiveSql } from '@shared/destructiveSql'
 import type { ImportPlanItem } from '@shared/connectionTransfer'
 import type { AiIntent } from '@shared/types'
 import type {
@@ -52,11 +53,19 @@ export type LastRunStats = {
   kind: 'run' | 'explain'
 }
 
+type DestructiveDecision = 'run' | 'skip-session' | 'cancel'
+
 type DialogState =
   | null
   | { type: 'connection'; connection?: ConnectionPublic }
   | { type: 'delete'; connection: ConnectionPublic }
   | { type: 'import'; path: string; plan: ImportPlanItem[] }
+  | {
+      type: 'destructive'
+      reasons: string[]
+      preview: string
+      onDecide: (decision: DestructiveDecision) => void
+    }
 
 type WorkspaceValue = {
   ready: boolean
@@ -82,6 +91,7 @@ type WorkspaceValue = {
   running: boolean
   lastRun: LastRunStats | null
   run: () => Promise<void>
+  cancelRun: () => void
   explain: () => Promise<void>
   clearAiMemory: () => void
   exportConnections: () => Promise<void>
@@ -221,6 +231,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [aiOpen, setAiOpen] = useState(true)
   const requestRef = useRef<string | null>(null)
+  const sqlRequestRef = useRef<string | null>(null)
+  const skipDestructiveRef = useRef(false)
   const loaded = useRef(false)
 
   const pushToast = useCallback((tone: Toast['tone'], text: string) => {
@@ -436,6 +448,30 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  const confirmIfDestructive = async (sql: string): Promise<boolean> => {
+    if (skipDestructiveRef.current) return true
+    const analysis = analyzeDestructiveSql(sql)
+    if (!analysis.destructive) return true
+    return await new Promise<boolean>((resolve) => {
+      setDialog({
+        type: 'destructive',
+        reasons: [...new Set(analysis.hits.map((hit) => hit.summary))],
+        preview: sql.trim().slice(0, 320),
+        onDecide: (decision: DestructiveDecision) => {
+          setDialog(null)
+          if (decision === 'skip-session') skipDestructiveRef.current = true
+          resolve(decision !== 'cancel')
+        },
+      })
+    })
+  }
+
+  const cancelRun = () => {
+    const requestId = sqlRequestRef.current
+    if (!requestId) return
+    void api.sql.cancel(requestId)
+  }
+
   const run = async () => {
     if (!activeEditor || running) return
     if (!activeConnection) {
@@ -446,9 +482,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       pushToast('info', 'Redis 请使用键浏览器，而不是 SQL 运行')
       return
     }
+    const sql = activeEditor.sql
+    if (!(await confirmIfDestructive(sql))) {
+      pushToast('info', '已取消执行')
+      return
+    }
+    const requestId = crypto.randomUUID()
+    sqlRequestRef.current = requestId
     setRunning(true)
     try {
-      const statements = await api.sql.execute({ connectionId: activeConnection.id, sql: activeEditor.sql })
+      const prefs = await api.prefs.get()
+      const timeoutMs = prefs.queryTimeoutSec > 0 ? prefs.queryTimeoutSec * 1000 : 0
+      const statements = await api.sql.execute({
+        connectionId: activeConnection.id,
+        sql,
+        requestId,
+        timeoutMs,
+      })
       const next = resultsFrom(statements)
       const elapsedMs = statements.reduce((sum, item) => sum + (item.elapsedMs || 0), 0)
       const rowCount = statements.reduce((sum, item) => sum + (item.rows?.length ?? 0), 0)
@@ -457,7 +507,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const failed = statements.find((statement) => !statement.ok)
       if (failed) {
         pushToast('error', failed.error ?? '执行失败')
-        void repairAi(failed.statement || activeEditor.sql, failed.error ?? '执行失败')
+        void repairAi(failed.statement || sql, failed.error ?? '执行失败')
       } else pushToast('success', '执行完成')
       if (statements.some((statement) => statement.ok && changesSchema(statement.statement))) {
         const rows = await api.connections.list()
@@ -465,12 +515,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         await refreshSchema(rows, activeConnection.id)
       }
     } catch (error) {
-      pushToast('error', error instanceof Error ? error.message : '执行失败')
+      const message = error instanceof Error ? error.message : '执行失败'
+      if (/查询已取消|查询已超时/.test(message)) {
+        setLastRun({ rows: 0, elapsedMs: 0, ok: false, kind: 'run' })
+        pushToast('info', message)
+      } else {
+        pushToast('error', message)
+      }
     } finally {
+      if (sqlRequestRef.current === requestId) sqlRequestRef.current = null
       setRunning(false)
     }
   }
-
 
   const explain = async () => {
     if (!activeEditor || running) return
@@ -482,9 +538,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       pushToast('info', 'Redis 不支持 SQL 执行计划')
       return
     }
+    const requestId = crypto.randomUUID()
+    sqlRequestRef.current = requestId
     setRunning(true)
     try {
-      const statements = await api.sql.explain({ connectionId: activeConnection.id, sql: activeEditor.sql })
+      const prefs = await api.prefs.get()
+      const timeoutMs = prefs.queryTimeoutSec > 0 ? prefs.queryTimeoutSec * 1000 : 0
+      const statements = await api.sql.explain({
+        connectionId: activeConnection.id,
+        sql: activeEditor.sql,
+        requestId,
+        timeoutMs,
+      })
       const planTab: ResultTab = {
         id: 'explain-plan',
         title: '执行计划',
@@ -532,8 +597,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (failed) pushToast('error', failed.error ?? '执行计划失败')
       else pushToast('success', '已生成执行计划')
     } catch (error) {
-      pushToast('error', error instanceof Error ? error.message : '执行计划失败')
+      const message = error instanceof Error ? error.message : '执行计划失败'
+      if (/查询已取消|查询已超时/.test(message)) {
+        setLastRun({ rows: 0, elapsedMs: 0, ok: false, kind: 'explain' })
+        pushToast('info', message)
+      } else {
+        pushToast('error', message)
+      }
     } finally {
+      if (sqlRequestRef.current === requestId) sqlRequestRef.current = null
       setRunning(false)
     }
   }
@@ -627,9 +699,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       return
     }
     applySql(sql)
+    if (!(await confirmIfDestructive(sql))) {
+      pushToast('info', '已取消执行')
+      return
+    }
+    const requestId = crypto.randomUUID()
+    sqlRequestRef.current = requestId
     setRunning(true)
     try {
-      const statements = await api.sql.execute({ connectionId: activeConnection.id, sql })
+      const prefs = await api.prefs.get()
+      const timeoutMs = prefs.queryTimeoutSec > 0 ? prefs.queryTimeoutSec * 1000 : 0
+      const statements = await api.sql.execute({
+        connectionId: activeConnection.id,
+        sql,
+        requestId,
+        timeoutMs,
+      })
       const next = resultsFrom(statements)
       if (activeEditor) setResultMap((current) => ({ ...current, [activeEditor.id]: next }))
       const failed = statements.find((statement) => !statement.ok)
@@ -645,8 +730,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch (error) {
-      pushToast('error', error instanceof Error ? error.message : '执行失败')
+      const message = error instanceof Error ? error.message : '执行失败'
+      if (/查询已取消|查询已超时/.test(message)) pushToast('info', message)
+      else pushToast('error', message)
     } finally {
+      if (sqlRequestRef.current === requestId) sqlRequestRef.current = null
       setRunning(false)
     }
   }
@@ -749,9 +837,22 @@ ${sql.trim()}
     const id = crypto.randomUUID()
     setEditorTabs((tabs) => [...tabs, { id, title: `历史 ${tabs.length + 1}`, sql }])
     setActiveEditorId(id)
+    if (!(await confirmIfDestructive(sql))) {
+      pushToast('info', '已取消执行')
+      return
+    }
+    const requestId = crypto.randomUUID()
+    sqlRequestRef.current = requestId
     setRunning(true)
     try {
-      const statements = await api.sql.execute({ connectionId: activeConnection.id, sql })
+      const prefs = await api.prefs.get()
+      const timeoutMs = prefs.queryTimeoutSec > 0 ? prefs.queryTimeoutSec * 1000 : 0
+      const statements = await api.sql.execute({
+        connectionId: activeConnection.id,
+        sql,
+        requestId,
+        timeoutMs,
+      })
       const next = resultsFrom(statements)
       setResultMap((current) => ({ ...current, [id]: next }))
       const failed = statements.find((statement) => !statement.ok)
@@ -767,8 +868,11 @@ ${sql.trim()}
         }
       }
     } catch (error) {
-      pushToast('error', error instanceof Error ? error.message : '执行失败')
+      const message = error instanceof Error ? error.message : '执行失败'
+      if (/查询已取消|查询已超时/.test(message)) pushToast('info', message)
+      else pushToast('error', message)
     } finally {
+      if (sqlRequestRef.current === requestId) sqlRequestRef.current = null
       setRunning(false)
     }
   }
@@ -835,6 +939,7 @@ ${sql.trim()}
     running,
     lastRun,
     run,
+    cancelRun,
     explain,
     clearAiMemory,
     exportConnections,

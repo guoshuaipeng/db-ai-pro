@@ -48,8 +48,19 @@ export type DesktopApi = {
     importApply: (plan: ImportPlanItem[]) => Promise<{ connections: ConnectionPublic[]; imported: number }>
   }
   sql: {
-    execute: (payload: { connectionId: string; sql: string }) => Promise<StatementResult[]>
-    explain: (payload: { connectionId: string; sql: string }) => Promise<StatementResult[]>
+    execute: (payload: {
+      connectionId: string
+      sql: string
+      requestId?: string
+      timeoutMs?: number
+    }) => Promise<StatementResult[]>
+    explain: (payload: {
+      connectionId: string
+      sql: string
+      requestId?: string
+      timeoutMs?: number
+    }) => Promise<StatementResult[]>
+    cancel: (requestId: string) => Promise<{ ok: boolean }>
     updateSqliteCell: (payload: {
       connectionId: string
       table: string

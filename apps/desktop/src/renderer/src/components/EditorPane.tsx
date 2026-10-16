@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { onDataai } from '../appEvents'
 import { suggestionsFromSchema } from '@shared/schemaSuggest'
-import { IconClock, IconPlay, IconPlus, IconStar } from './icons'
+import { IconClock, IconPlay, IconPlus, IconStar, IconStop } from './icons'
 import { ScrollTabs } from './ScrollTabs'
 import { SqlEditor } from './SqlEditor'
 import { ResultGrid, ResultToolbar } from './ResultGrid'
@@ -75,10 +75,22 @@ export function EditorPane() {
             >
               计划
             </button>
-            <button type="button" className="btn btn-primary run-btn" onClick={() => void ws.run()} disabled={ws.running}>
-              <IconPlay />
-              {ws.running ? '执行中' : '运行'}
-            </button>
+            {ws.running ? (
+              <button
+                type="button"
+                className="btn btn-danger run-btn"
+                onClick={() => ws.cancelRun()}
+                title="取消正在执行的查询"
+              >
+                <IconStop />
+                取消
+              </button>
+            ) : (
+              <button type="button" className="btn btn-primary run-btn" onClick={() => void ws.run()}>
+                <IconPlay />
+                运行
+              </button>
+            )}
           </div>
         }
       />

@@ -7,6 +7,40 @@ import { useWorkspace } from '../state/workspace'
 export function Dialogs() {
   const ws = useWorkspace()
   if (!ws.dialog) return null
+  if (ws.dialog.type === 'destructive') {
+    const { reasons, preview, onDecide } = ws.dialog
+    return (
+      <div className="overlay" role="presentation" onMouseDown={() => onDecide('cancel')}>
+        <div
+          className="dialog dialog-danger"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="destructive-title"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <h2 id="destructive-title">确认执行高风险 SQL</h2>
+          <p className="dialog-copy">检测到可能造成数据丢失的语句，请确认后再执行。</p>
+          <ul className="danger-list">
+            {reasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+          <pre className="danger-preview">{preview}</pre>
+          <div className="dialog-actions dialog-actions-wrap">
+            <button type="button" className="btn btn-ghost" onClick={() => onDecide('cancel')}>
+              取消
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => onDecide('skip-session')}>
+              本次会话不再询问并执行
+            </button>
+            <button type="button" className="btn btn-danger" onClick={() => onDecide('run')}>
+              确认执行
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
   if (ws.dialog.type === 'delete') {
     const connection = ws.dialog.connection
     return (

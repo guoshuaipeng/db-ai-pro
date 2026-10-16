@@ -197,8 +197,14 @@ export function createPreviewApi(): DesktopApi {
       isMaximized: async () => false,
     },
     prefs: {
-      get: async () => ({ density: 'comfortable' as const }),
-      save: async (input) => ({ density: input.density === 'compact' ? ('compact' as const) : ('comfortable' as const) }),
+      get: async () => ({ density: 'comfortable' as const, queryTimeoutSec: 30 }),
+      save: async (input) => ({
+        density: input.density === 'compact' ? ('compact' as const) : ('comfortable' as const),
+        queryTimeoutSec:
+          typeof input.queryTimeoutSec === 'number' && Number.isFinite(input.queryTimeoutSec)
+            ? Math.min(600, Math.max(0, Math.round(input.queryTimeoutSec)))
+            : 30,
+      }),
     },
     app: {
       openUserData: async () => ({ ok: false as const, error: '预览模式无法打开系统文件夹' }),
@@ -264,6 +270,7 @@ export function createPreviewApi(): DesktopApi {
       importApply: async () => ({ connections: memory.connections, imported: 0 }),
     },
     sql: {
+      cancel: async (_requestId: string) => ({ ok: true as const }),
       execute: async ({ connectionId, sql }) => {
         const results = splitSql(sql).map((statement) => previewRows(statement))
         const failed = results.find((item) => !item.ok)

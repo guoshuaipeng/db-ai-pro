@@ -11,6 +11,18 @@ import { databaseExists, describeSchema, executeScript, listSchema, openDatabase
 
 export type { SqlTarget } from './target'
 
+export type QueryCancelReason = 'cancel' | 'timeout'
+
+export class QueryCancelledError extends Error {
+  readonly reason: QueryCancelReason
+
+  constructor(reason: QueryCancelReason = 'cancel') {
+    super(reason === 'timeout' ? '查询已超时并取消' : '查询已取消')
+    this.name = 'QueryCancelledError'
+    this.reason = reason
+  }
+}
+
 type Live =
   | { kind: 'sqlite'; db: Database.Database; stamp: string }
   | { kind: 'mysql'; conn: Connection; stamp: string }
@@ -18,6 +30,14 @@ type Live =
   | { kind: 'mssql'; pool: import('mssql').ConnectionPool; stamp: string }
 
 const live = new Map<string, Live>()
+
+type ActiveQuery = {
+  connectionId: string
+  reason: QueryCancelReason | null
+  abort: () => void
+}
+
+const activeQueries = new Map<string, ActiveQuery>()
 
 function stampOf(target: SqlTarget): string {
   return [
@@ -51,6 +71,59 @@ async function release(row: Live): Promise<void> {
     else await row.pool.close()
   } catch {
     /* already closed */
+  }
+}
+
+/** Hard-kill an open session so in-flight driver work aborts when possible. */
+async function killSession(connectionId: string): Promise<void> {
+  const row = live.get(connectionId)
+  if (!row) return
+  live.delete(connectionId)
+  try {
+    if (row.kind === 'sqlite') {
+      try {
+        const interrupt = (row.db as unknown as { interrupt?: () => void }).interrupt
+        interrupt?.()
+      } catch {
+        /* ignore */
+      }
+      try {
+        row.db.close()
+      } catch {
+        /* ignore */
+      }
+      return
+    }
+    if (row.kind === 'mysql') {
+      try {
+        row.conn.destroy()
+      } catch {
+        /* ignore */
+      }
+      return
+    }
+    if (row.kind === 'postgres') {
+      try {
+        const stream = (row.client as unknown as { connection?: { stream?: { destroy?: () => void } } }).connection
+          ?.stream
+        stream?.destroy?.()
+      } catch {
+        /* ignore */
+      }
+      try {
+        await row.client.end()
+      } catch {
+        /* ignore */
+      }
+      return
+    }
+    try {
+      await row.pool.close()
+    } catch {
+      /* ignore */
+    }
+  } catch {
+    /* ignore */
   }
 }
 
@@ -125,13 +198,85 @@ export async function schemaForSession(target: SqlTarget): Promise<SchemaNode> {
   return listMssqlSchema(session.pool, target)
 }
 
-export async function executeSession(target: SqlTarget, sql: string): Promise<StatementResult[]> {
+export type ExecuteSessionOptions = {
+  requestId?: string
+  /** Soft timeout in ms. 0 / undefined = no timeout. */
+  timeoutMs?: number
+}
+
+async function runOnSession(target: SqlTarget, sql: string): Promise<StatementResult[]> {
   if (target.dialect === 'redis') throw new Error('Redis 请使用键浏览器，而不是 SQL 编辑器')
   const session = await openSession(target)
   if (session.kind === 'sqlite') return executeScript(session.db, sql)
   if (session.kind === 'mysql') return executeMysql(session.conn, sql)
   if (session.kind === 'postgres') return executePostgres(session.client, sql)
   return executeMssql(session.pool, sql)
+}
+
+export async function executeSession(
+  target: SqlTarget,
+  sql: string,
+  opts: ExecuteSessionOptions = {},
+): Promise<StatementResult[]> {
+  const requestId = opts.requestId ?? ''
+  const timeoutMs = opts.timeoutMs && opts.timeoutMs > 0 ? opts.timeoutMs : 0
+
+  let settled = false
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+
+  const clearActive = () => {
+    if (requestId) activeQueries.delete(requestId)
+    if (timeoutHandle) clearTimeout(timeoutHandle)
+  }
+
+  const abortLive = (reason: QueryCancelReason) => {
+    const active = requestId ? activeQueries.get(requestId) : undefined
+    if (active) active.reason = reason
+    void killSession(target.id)
+  }
+
+  if (requestId) {
+    activeQueries.set(requestId, {
+      connectionId: target.id,
+      reason: null,
+      abort: () => abortLive('cancel'),
+    })
+  }
+
+  const work = (async () => {
+    try {
+      return await runOnSession(target, sql)
+    } catch (error) {
+      const active = requestId ? activeQueries.get(requestId) : undefined
+      if (active?.reason) throw new QueryCancelledError(active.reason)
+      throw error
+    } finally {
+      settled = true
+      clearActive()
+    }
+  })()
+
+  if (!timeoutMs) return work
+
+  return await new Promise<StatementResult[]>((resolve, reject) => {
+    timeoutHandle = setTimeout(() => {
+      if (settled) return
+      abortLive('timeout')
+    }, timeoutMs)
+
+    work.then(resolve, reject)
+  }).finally(() => {
+    if (timeoutHandle) clearTimeout(timeoutHandle)
+  })
+}
+
+/** Cancel an in-flight executeSession by requestId (kills the connection as drivers allow). */
+export async function cancelQuery(requestId: string): Promise<{ ok: boolean }> {
+  const active = activeQueries.get(requestId)
+  if (!active) return { ok: false }
+  active.reason = 'cancel'
+  active.abort()
+  return { ok: true }
 }
 
 export async function describeSession(target: SqlTarget): Promise<string> {

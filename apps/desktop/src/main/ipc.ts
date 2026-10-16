@@ -21,6 +21,7 @@ import {
   closeAllSessions,
   closeSession,
   describeSession,
+  cancelQuery,
   executeSession,
   probeTarget,
   schemaForSession,
@@ -287,12 +288,27 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
 
   ipcMain.handle('connections:importApply', (_event, plan: ImportPlanItem[]) => applyConnectionImport(plan))
 
-  ipcMain.handle('sql:execute', async (_event, payload: { connectionId: string; sql: string }) => {
+  ipcMain.handle(
+    'sql:execute',
+    async (
+      _event,
+      payload: { connectionId: string; sql: string; requestId?: string; timeoutMs?: number },
+    ) => {
     const row = getConnection(payload.connectionId)
     if (!row) return { error: '连接不存在' }
     if (!dialectInfo(row.dialect).executable) return { error: '这个类型还不能查询。连接已保存在本机。' }
     try {
-      const results = await executeSession(targetFromStored(row), payload.sql)
+      const prefs = loadPrefs()
+      const timeoutMs =
+        payload.timeoutMs !== undefined
+          ? payload.timeoutMs
+          : prefs.queryTimeoutSec > 0
+            ? prefs.queryTimeoutSec * 1000
+            : 0
+      const results = await executeSession(targetFromStored(row), payload.sql, {
+        requestId: payload.requestId,
+        timeoutMs,
+      })
       const failed = results.find((item) => !item.ok)
       const elapsedMs = results.reduce((sum, item) => sum + (item.elapsedMs || 0), 0)
       appendQueryHistory({
@@ -315,14 +331,29 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     }
   })
 
-  ipcMain.handle('sql:explain', async (_event, payload: { connectionId: string; sql: string }) => {
+  ipcMain.handle('sql:cancel', async (_event, requestId: string) => {
+    if (!requestId || typeof requestId !== 'string') return { ok: false }
+    return cancelQuery(requestId)
+  })
+
+  ipcMain.handle('sql:explain', async (_event, payload: { connectionId: string; sql: string; requestId?: string; timeoutMs?: number }) => {
     const row = getConnection(payload.connectionId)
     if (!row) return { error: '连接不存在' }
     if (!dialectInfo(row.dialect).executable) return { error: '这个类型还不能查询执行计划' }
     const built = buildExplainSql(row.dialect, payload.sql)
     if (!built.ok) return { error: built.error }
     try {
-      return { results: await executeSession(targetFromStored(row), built.sql) }
+      const prefs = loadPrefs()
+      const timeoutMs =
+        payload.timeoutMs !== undefined
+          ? payload.timeoutMs
+          : prefs.queryTimeoutSec > 0
+            ? prefs.queryTimeoutSec * 1000
+            : 0
+      return { results: await executeSession(targetFromStored(row), built.sql, {
+        requestId: payload.requestId,
+        timeoutMs,
+      }) }
     } catch (error) {
       return { error: explainDbError(error) }
     }

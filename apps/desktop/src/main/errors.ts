@@ -5,10 +5,14 @@ type ErrorRecord = {
 }
 
 export function explainDbError(error: unknown): string {
+  if (error && typeof error === 'object' && (error as { name?: string }).name === 'QueryCancelledError') {
+    return error instanceof Error ? error.message : '查询已取消'
+  }
   const record = (error ?? {}) as ErrorRecord
   const code = String(record.code ?? '')
   const message = error instanceof Error ? error.message : String(record.message ?? error ?? '连接失败')
 
+  if (/查询已取消|查询已超时/.test(message)) return message
   if (code === 'ECONNREFUSED') return '无法连接：目标端口没有服务在监听。'
   if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return '找不到这台主机。请检查主机名。'
   if (code === 'ETIMEDOUT' || code === 'EHOSTUNREACH' || code === 'ENETUNREACH' || /timeout/i.test(message)) {
@@ -17,8 +21,9 @@ export function explainDbError(error: unknown): string {
   if (
     code === 'ECONNRESET' ||
     code === 'PROTOCOL_CONNECTION_LOST' ||
-    /connection terminated|server closed the connection/i.test(message)
+    /connection terminated|server closed the connection|Connection lost|aborted/i.test(message)
   ) {
+    // Prefer explicit cancel wording when we already threw QueryCancelledError above.
     return '连接已断开。请再试一次。'
   }
   if (code === 'ER_ACCESS_DENIED_ERROR' || code === '28P01' || code === 'ELOGIN' || record.errno === 1045) return '账号或密码不正确。'
