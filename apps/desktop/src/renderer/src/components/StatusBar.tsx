@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { dialectInfo } from '@shared/types'
+import { txnElapsedLabel, txnStatusTitle } from '@shared/transaction'
 import { runningElapsedLabel, runningElapsedTitle } from '@shared/queryRunStatus'
 import {
   statusBarConnectionTitle,
@@ -32,6 +33,7 @@ type StatusBarProps = {
   globalReadOnly: boolean
   connectionReadOnly?: boolean
   txnOpen: boolean
+  txnSince?: number | null
   running: boolean
   runningSince: number | null
   /** Soft timeout seconds (0 = none). */
@@ -73,6 +75,7 @@ export function StatusBar({
   globalReadOnly,
   connectionReadOnly = false,
   txnOpen,
+  txnSince = null,
   running,
   runningSince,
   queryTimeoutSec = 0,
@@ -220,11 +223,7 @@ export function StatusBar({
       >
         {statusBarReadOnlyLabel(readOnlyActive)}
       </button>
-      {txnOpen ? (
-        <span className="status-item is-txn" aria-live="polite" title="当前连接处于手动事务中">
-          事务中
-        </span>
-      ) : null}
+      {txnOpen ? <TxnElapsed since={txnSince ?? null} /> : null}
       {running ? (
         <RunningElapsed since={runningSince} timeoutSec={queryTimeoutSec} />
       ) : lastRunLabel ? (
@@ -298,6 +297,21 @@ export function StatusBar({
       </button>
       <span className="status-item">{version}</span>
     </footer>
+  )
+}
+
+function TxnElapsed({ since }: { since: number | null }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 250)
+    return () => window.clearInterval(id)
+  }, [])
+  const elapsed = since != null ? Math.max(0, now - since) : 0
+  return (
+    <span className="status-item is-txn" aria-live="polite" title={txnStatusTitle(true)}>
+      <span className="status-pulse" />
+      {txnElapsedLabel(elapsed)}
+    </span>
   )
 }
 

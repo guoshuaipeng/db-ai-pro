@@ -261,6 +261,8 @@ type WorkspaceValue = {
   toggleEditorWordWrap: () => Promise<void>
   toggleEditorBracketColorization: () => Promise<void>
   txnOpen: boolean
+  /** Epoch ms when current txn began; null if idle. */
+  txnSince: number | null
   txnSupported: boolean
   readOnlyActive: boolean
   globalReadOnly: boolean
@@ -464,6 +466,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [running, setRunning] = useState(false)
   const [runningSince, setRunningSince] = useState<number | null>(null)
   const [txnOpen, setTxnOpen] = useState(false)
+  const [txnSince, setTxnSince] = useState<number | null>(null)
   const [txnSupported, setTxnSupported] = useState(false)
   const [lastRun, setLastRun] = useState<LastRunStats | null>(null)
   const [cursor, setCursor] = useState({ line: 1, column: 1 })
@@ -1765,21 +1768,25 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const id = connectionId === undefined ? activeConnectionId : connectionId
     if (!id) {
       setTxnOpen(false)
+      setTxnSince(null)
       setTxnSupported(false)
       return
     }
     const conn = connections.find((c) => c.id === id)
     if (!conn || !supportsManualTransaction(conn.dialect)) {
       setTxnOpen(false)
+      setTxnSince(null)
       setTxnSupported(false)
       return
     }
     try {
       const status = await api.sql.txnStatus(id)
       setTxnOpen(status.open)
+      setTxnSince(status.open ? Date.now() : null)
       setTxnSupported(status.supported)
     } catch {
       setTxnOpen(false)
+      setTxnSince(null)
       setTxnSupported(supportsManualTransaction(conn.dialect))
     }
   }
@@ -1797,6 +1804,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       const status = await api.sql.beginTxn(activeConnection.id)
       setTxnOpen(status.open)
+      setTxnSince(status.open ? Date.now() : null)
       setTxnSupported(status.supported)
       pushToast('success', '已开始事务（自动提交已关闭）')
     } catch (error) {
@@ -1812,6 +1820,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       const status = await api.sql.commitTxn(activeConnection.id)
       setTxnOpen(status.open)
+      setTxnSince(status.open ? Date.now() : null)
       setTxnSupported(status.supported)
       pushToast('success', '事务已提交')
     } catch (error) {
@@ -1828,6 +1837,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       const status = await api.sql.rollbackTxn(activeConnection.id)
       setTxnOpen(status.open)
+      setTxnSince(status.open ? Date.now() : null)
       setTxnSupported(status.supported)
       pushToast('info', '事务已回滚')
     } catch (error) {
@@ -2343,6 +2353,7 @@ ${sql.trim()}
     await refreshSchema(rows, activeConnectionId === id ? null : activeConnectionId)
     if (activeConnectionId === id) {
       setTxnOpen(false)
+      setTxnSince(null)
       setTxnSupported(false)
     } else {
       await refreshTxnStatus(activeConnectionId)
@@ -2531,6 +2542,7 @@ ${sql.trim()}
     toggleEditorWordWrap,
     toggleEditorBracketColorization,
     txnOpen,
+    txnSince,
     txnSupported,
     readOnlyActive,
     globalReadOnly,

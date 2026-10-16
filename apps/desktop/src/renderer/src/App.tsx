@@ -767,6 +767,7 @@ export function App() {
         connectionReadOnly={Boolean(ws.activeConnection?.readOnly)}
         onToggleGlobalReadOnly={() => void ws.setGlobalReadOnly(!ws.globalReadOnly)}
         txnOpen={ws.txnOpen}
+        txnSince={ws.txnSince}
         running={ws.running}
         runningSince={ws.runningSince}
         queryTimeoutSec={prefs.queryTimeoutSec}

@@ -33,6 +33,18 @@ import { canChartResult } from '@shared/chartData'
 import { HistoryPanel } from './HistoryPanel'
 import { EmptyState } from './EmptyState'
 import { cancelRunButtonTitle } from '@shared/queryRunStatus'
+import {
+  txnBeginButtonLabel,
+  txnBeginButtonTitle,
+  txnCommitButtonLabel,
+  txnCommitButtonTitle,
+  txnGroupAriaLabel,
+  txnOpenBannerBody,
+  txnOpenBannerTitle,
+  txnRollbackButtonLabel,
+  txnRollbackButtonTitle,
+  txnRollbackConfirmMessage,
+} from '@shared/transaction'
 import { FavoritesPanel } from './FavoritesPanel'
 import { SaveFavoriteDialog } from './SaveFavoriteDialog'
 import { getApi } from '../bridge'
@@ -355,37 +367,41 @@ export function EditorPane() {
           className="editor-toolbar-actions"
           secondary={
           <>
-            {ws.txnSupported && (
-              <>
+                        {ws.txnSupported && (
+              <div className="txn-actions" role="group" aria-label={txnGroupAriaLabel()}>
                 <button
                   type="button"
-                  className="btn btn-ghost run-btn"
+                  className={ws.txnOpen ? 'btn btn-ghost run-btn' : 'btn btn-ghost run-btn is-txn-begin'}
                   onClick={() => void ws.beginTxn()}
                   disabled={ws.running || ws.txnOpen}
-                  title="BEGIN · 开始事务"
+                  title={txnBeginButtonTitle()}
                 >
-                  开始事务
+                  {txnBeginButtonLabel()}
                 </button>
                 <button
                   type="button"
-                  className="btn btn-ghost run-btn"
+                  className={ws.txnOpen ? 'btn btn-primary run-btn' : 'btn btn-ghost run-btn'}
                   onClick={() => void ws.commitTxn()}
                   disabled={ws.running || !ws.txnOpen}
-                  title="COMMIT · 提交事务"
+                  title={txnCommitButtonTitle()}
                 >
-                  提交
+                  {txnCommitButtonLabel()}
                 </button>
                 <button
                   type="button"
                   className="btn btn-ghost run-btn"
-                  onClick={() => void ws.rollbackTxn()}
+                  onClick={() => {
+                    if (!window.confirm(txnRollbackConfirmMessage())) return
+                    void ws.rollbackTxn()
+                  }}
                   disabled={ws.running || !ws.txnOpen}
-                  title="ROLLBACK · 回滚事务"
+                  title={txnRollbackButtonTitle()}
                 >
-                  回滚
+                  {txnRollbackButtonLabel()}
                 </button>
-              </>
+              </div>
             )}
+
             <div className="template-menu" ref={templatesRef}>
               <button
                 type="button"
@@ -507,6 +523,39 @@ export function EditorPane() {
         }
       />
       </div>
+
+      {ws.txnSupported && ws.txnOpen ? (
+        <div className="txn-banner" role="status" aria-live="polite">
+          <div className="txn-banner-copy">
+            <strong>{txnOpenBannerTitle()}</strong>
+            <span>{txnOpenBannerBody()}</span>
+          </div>
+          <div className="txn-banner-actions">
+            <button
+              type="button"
+              className="btn btn-primary tiny-btn"
+              disabled={ws.running}
+              onClick={() => void ws.commitTxn()}
+              title={txnCommitButtonTitle()}
+            >
+              {txnCommitButtonLabel()}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost tiny-btn"
+              disabled={ws.running}
+              onClick={() => {
+                if (!window.confirm(txnRollbackConfirmMessage())) return
+                void ws.rollbackTxn()
+              }}
+              title={txnRollbackButtonTitle()}
+            >
+              {txnRollbackButtonLabel()}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="editor-body">
         {ws.activeEditor && (
           <SqlEditor

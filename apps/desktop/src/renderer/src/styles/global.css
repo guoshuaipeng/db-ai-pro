@@ -5003,3 +5003,46 @@ body.is-col-resizing .grid-col-resizer {
   color: #e0f2fe;
   background: rgba(14, 165, 233, 0.18);
 }
+
+
+.txn-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.txn-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 0 12px 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(120, 53, 15, 0.28);
+  color: #fde68a;
+}
+.txn-banner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+}
+.txn-banner-copy strong {
+  font-size: 13px;
+  color: #fef3c7;
+}
+.txn-banner-copy span {
+  color: #fcd34d;
+  opacity: 0.92;
+}
+.txn-banner-actions {
+  display: inline-flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.btn.is-txn-begin:not(:disabled) {
+  border-color: rgba(56, 189, 248, 0.35);
+}
