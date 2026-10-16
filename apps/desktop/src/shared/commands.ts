@@ -644,6 +644,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: 'NULL 与空字符串', keys: '结果格 NULL / "" 区分显示' },
   { action: '显示 / 隐藏结果列', keys: '工具栏「显示列」· 右键「隐藏此列」/「仅显示此列」· 面板「反选」' },
   { action: '调整列顺序', keys: '显示列面板 ↑↓ · 右键「左移」「右移」' },
+  { action: '固定结果列', keys: '表头「钉」· 右键「固定此列」· 面板「取消固定」' },
   { action: '单元格全文预览', keys: '双击单元格 · 工具栏「查看单元格」' },
   { action: '填写查询参数', keys: '工具栏「填写参数」· Ctrl+K · 运行时自动' },
   { action: '查询标签连接色', keys: '连接颜色标记 → 标签左侧色条' },

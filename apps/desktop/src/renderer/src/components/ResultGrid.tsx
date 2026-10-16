@@ -89,6 +89,13 @@ import {
   orderVisibleColumns,
   resetColumnOrder,
 } from '@shared/resultColumnOrder'
+import {
+  clearPinnedColumns,
+  clearPinnedColumnsToast,
+  pinColumnButtonTitle,
+  pinnedColumnToast,
+  togglePinnedColumns,
+} from '@shared/resultColumnPin'
 
 const ROW_HEIGHT = 32
 
@@ -904,11 +911,17 @@ export function ResultGrid({
   }
 
   const togglePin = (column: string) => {
-    setPinned((current) => {
-      if (current.includes(column)) return current.filter((name) => name !== column)
-      if (current.length >= 2) return [...current.slice(1), column]
-      return [...current, column]
-    })
+    const current = pinned
+    const { next, action, replaced } = togglePinnedColumns(current, column)
+    setPinned(next)
+    setNote(pinnedColumnToast(column, action, replaced))
+    setContextMenu(null)
+  }
+
+  const clearAllPins = () => {
+    if (pinned.length === 0) return
+    setPinned(clearPinnedColumns())
+    setNote(clearPinnedColumnsToast())
   }
 
   const pinIndex = (column: string) => {
@@ -1203,7 +1216,7 @@ export function ResultGrid({
           onMouseDown={(event) => event.stopPropagation()}
         >
           <div className="result-col-visibility-title">显示列</div>
-          <p className="result-col-visibility-hint">至少保留一列；↑↓ 调整顺序；可用「反选」或右键「仅显示此列」/「左移」「右移」。隐藏列不出现在表格与默认导出中。</p>
+          <p className="result-col-visibility-hint">至少保留一列；↑↓ 调整顺序；「钉」/ 右键固定最多 2 列到左侧。隐藏列不出现在表格与默认导出中。</p>
           <ul className="result-col-visibility-list">
             {orderedColumns.map((column, index) => {
               const shown = visibleColumns.includes(column)
@@ -1254,6 +1267,15 @@ export function ResultGrid({
               onClick={invertColumns}
             >
               反选
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost tiny-btn"
+              disabled={pinned.length === 0}
+              title="取消全部左侧固定列"
+              onClick={clearAllPins}
+            >
+              取消固定
             </button>
             <button
               type="button"
@@ -1490,7 +1512,7 @@ export function ResultGrid({
                   <button
                     type="button"
                     className={pinnedAt >= 0 ? 'grid-pin-btn is-on' : 'grid-pin-btn'}
-                    title={pinnedAt >= 0 ? '取消固定列' : '固定到左侧（最多 2 列）'}
+                    title={pinColumnButtonTitle(pinnedAt >= 0)}
                     onClick={(event) => {
                       event.stopPropagation()
                       togglePin(column)
@@ -1702,6 +1724,13 @@ export function ResultGrid({
             onClick={() => shiftColumnInGrid(contextMenu.column, 1)}
           >
             右移此列
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => togglePin(contextMenu.column)}
+          >
+            {pinned.includes(contextMenu.column) ? '取消固定此列' : '固定此列到左侧'}
           </button>
           <button
             type="button"
