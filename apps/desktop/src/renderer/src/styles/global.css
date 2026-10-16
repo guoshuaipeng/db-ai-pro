@@ -2802,6 +2802,33 @@ body.is-col-resizing .grid-col-resizer {
   font-size: 13px;
   line-height: 1.5;
 }
+.danger-kicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #f87171;
+}
+.danger-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+.danger-preview-label {
+  font-size: 12px;
+  color: var(--ink-secondary);
+  font-weight: 600;
+}
+.danger-footnote {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--ink-tertiary);
+  line-height: 1.4;
+}
+
 .danger-preview {
   margin: 0 0 16px;
   padding: 10px 12px;

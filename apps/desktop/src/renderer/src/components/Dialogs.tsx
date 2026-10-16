@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { dirtyDiscardLabel, dirtyKeepLabel } from '@shared/tabDirty'
 import { DIALECTS, dialectInfo, needsServerDatabase } from '@shared/types'
 import { CONN_COLOR_TAGS } from '@shared/connGroups'
@@ -30,6 +30,24 @@ import {
   connectionNamePlaceholder,
   validateConnectionDraft,
 } from '@shared/connectionDraft'
+import {
+  destructiveCancelLabel,
+  destructiveCopyPreviewFailToast,
+  destructiveCopyPreviewLabel,
+  destructiveCopyPreviewToast,
+  destructiveDialogBody,
+  destructiveDialogTitle,
+  destructiveFootnote,
+  destructivePreviewAria,
+  destructivePreviewLabel,
+  destructiveReasonsAria,
+  destructiveReasonsEmptyBody,
+  destructiveReasonsEmptyTitle,
+  destructiveRunLabel,
+  destructiveRunTitle,
+  destructiveSkipSessionLabel,
+  destructiveSkipSessionTitle,
+} from '@shared/destructiveSqlUi'
 import { EmptyState } from './EmptyState'
 
 export function Dialogs() {
@@ -61,38 +79,7 @@ export function Dialogs() {
     )
   }
   if (ws.dialog.type === 'destructive') {
-    const { reasons, preview, onDecide } = ws.dialog
-    return (
-      <div className="overlay" role="presentation" onMouseDown={() => onDecide('cancel')}>
-        <div
-          className="dialog dialog-danger"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="destructive-title"
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          <h2 id="destructive-title">确认执行高风险 SQL</h2>
-          <p className="dialog-copy">检测到可能造成数据丢失的语句，请确认后再执行。</p>
-          <ul className="danger-list">
-            {reasons.map((reason) => (
-              <li key={reason}>{reason}</li>
-            ))}
-          </ul>
-          <pre className="danger-preview">{preview}</pre>
-          <div className="dialog-actions dialog-actions-wrap">
-            <button type="button" className="btn btn-ghost" onClick={() => onDecide('cancel')}>
-              取消
-            </button>
-            <button type="button" className="btn btn-ghost" onClick={() => onDecide('skip-session')}>
-              本次会话不再询问并执行
-            </button>
-            <button type="button" className="btn btn-danger" onClick={() => onDecide('run')}>
-              确认执行
-            </button>
-          </div>
-        </div>
-      </div>
-    )
+    return <DestructiveSqlDialog dialog={ws.dialog} pushToast={ws.pushToast} />
   }
   if (ws.dialog.type === 'delete') {
     const connection = ws.dialog.connection
@@ -733,4 +720,111 @@ function DbVisibilityDialog({ connection }: { connection: ConnectionPublic }) {
   )
 }
 
+function DestructiveSqlDialog({
+  dialog,
+  pushToast,
+}: {
+  dialog: {
+    reasons: string[]
+    preview: string
+    onDecide: (decision: 'run' | 'skip-session' | 'cancel') => void
+  }
+  pushToast: (tone: 'info' | 'success' | 'error', text: string) => void
+}) {
+  const { reasons, preview, onDecide } = dialog
+  const cancelRef = useRef<HTMLButtonElement>(null)
 
+  useEffect(() => {
+    cancelRef.current?.focus()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onDecide('cancel')
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onDecide])
+
+  const copyPreview = () => {
+    const text = preview.trim()
+    if (!text) return
+    void navigator.clipboard.writeText(text).then(
+      () => pushToast('success', destructiveCopyPreviewToast()),
+      () => pushToast('error', destructiveCopyPreviewFailToast()),
+    )
+  }
+
+  return (
+    <div className="overlay" role="presentation" onMouseDown={() => onDecide('cancel')}>
+      <div
+        className="dialog dialog-danger"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="destructive-title"
+        aria-describedby="destructive-copy"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <p className="danger-kicker">高风险操作</p>
+        <h2 id="destructive-title">{destructiveDialogTitle(reasons.length)}</h2>
+        <p id="destructive-copy" className="dialog-copy">
+          {destructiveDialogBody()}
+        </p>
+        {reasons.length === 0 ? (
+          <EmptyState
+            compact
+            title={destructiveReasonsEmptyTitle()}
+            body={destructiveReasonsEmptyBody()}
+          />
+        ) : (
+          <ul className="danger-list" aria-label={destructiveReasonsAria()}>
+            {reasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        )}
+        <div className="danger-preview-head">
+          <span className="danger-preview-label">{destructivePreviewLabel()}</span>
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            disabled={!preview.trim()}
+            onClick={copyPreview}
+          >
+            {destructiveCopyPreviewLabel()}
+          </button>
+        </div>
+        <pre className="danger-preview" aria-label={destructivePreviewAria()} tabIndex={0}>
+          {preview}
+        </pre>
+        <p className="danger-footnote">{destructiveFootnote()}</p>
+        <div className="dialog-actions dialog-actions-wrap">
+          <button
+            ref={cancelRef}
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => onDecide('cancel')}
+          >
+            {destructiveCancelLabel()}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            title={destructiveSkipSessionTitle()}
+            onClick={() => onDecide('skip-session')}
+          >
+            {destructiveSkipSessionLabel()}
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger"
+            title={destructiveRunTitle()}
+            onClick={() => onDecide('run')}
+          >
+            {destructiveRunLabel()}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
