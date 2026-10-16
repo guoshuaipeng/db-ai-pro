@@ -4,6 +4,7 @@ import { conf, language } from 'monaco-editor/languages/definitions/sql/sql'
 import editorWorker from 'monaco-editor/editor/editor.worker?worker'
 import { filterSuggestions, type SchemaSuggestItem } from '@shared/schemaSuggest'
 import { onDataai } from '../appEvents'
+import { formatSql } from '@shared/sqlFormat'
 
 globalThis.MonacoEnvironment = {
   getWorker() {
@@ -51,6 +52,12 @@ function ensureSql() {
       'editorSuggestWidget.border': '#2A3142',
       'editorSuggestWidget.selectedBackground': '#2A3A66',
       'editorSuggestWidget.foreground': '#E8EDF7',
+      'editor.findMatchBackground': '#6B542088',
+      'editor.findMatchHighlightBackground': '#4A3A2088',
+      'editor.findRangeHighlightBackground': '#2A3A6644',
+      'input.background': '#0c0e13',
+      'input.foreground': '#E8EDF7',
+      'input.border': '#2A3142',
     },
   })
 
@@ -152,6 +159,11 @@ export function SqlEditor({ value, onChange, onCursor, suggestions = [] }: SqlEd
         preview: true,
         insertMode: 'replace',
       },
+      find: {
+        seedSearchStringFromSelection: 'selection',
+        autoFindInSelection: 'multiline',
+        addExtraSpaceOnTop: false,
+      },
     })
     instanceRef.current = instance
     const position = instance.getPosition()
@@ -179,6 +191,62 @@ export function SqlEditor({ value, onChange, onCursor, suggestions = [] }: SqlEd
   useEffect(() => onDataai('dataai:focus-editor', () => {
     instanceRef.current?.focus()
   }), [])
+
+  useEffect(
+    () =>
+      onDataai('dataai:format-sql', () => {
+        const instance = instanceRef.current
+        if (!instance) return
+        const model = instance.getModel()
+        if (!model) return
+        const selection = instance.getSelection()
+        const hasSelection =
+          !!selection &&
+          (selection.startLineNumber !== selection.endLineNumber ||
+            selection.startColumn !== selection.endColumn)
+        if (hasSelection && selection) {
+          const selected = model.getValueInRange(selection)
+          const formatted = formatSql(selected)
+          if (formatted !== selected) {
+            instance.executeEdits('format-sql', [
+              { range: selection, text: formatted, forceMoveMarkers: true },
+            ])
+          }
+        } else {
+          const full = model.getValue()
+          const formatted = formatSql(full)
+          if (formatted !== full) {
+            instance.executeEdits('format-sql', [
+              { range: model.getFullModelRange(), text: formatted, forceMoveMarkers: true },
+            ])
+          }
+        }
+        instance.focus()
+      }),
+    [],
+  )
+
+  useEffect(
+    () =>
+      onDataai('dataai:find', () => {
+        const instance = instanceRef.current
+        if (!instance) return
+        instance.focus()
+        void instance.getAction('actions.find')?.run()
+      }),
+    [],
+  )
+
+  useEffect(
+    () =>
+      onDataai('dataai:replace', () => {
+        const instance = instanceRef.current
+        if (!instance) return
+        instance.focus()
+        void instance.getAction('editor.action.startFindReplaceAction')?.run()
+      }),
+    [],
+  )
 
   return (
     <div className="editor-wrap">

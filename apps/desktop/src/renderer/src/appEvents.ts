@@ -4,6 +4,9 @@ export type DataaiEventMap = {
   'dataai:open-ai-settings': undefined
   'dataai:focus-tree-search': undefined
   'dataai:focus-editor': undefined
+  'dataai:format-sql': undefined
+  'dataai:find': undefined
+  'dataai:replace': undefined
 }
 
 export function emitDataai<K extends keyof DataaiEventMap>(name: K): void {

@@ -74,6 +74,15 @@ export function App() {
         case 'query.rollbackTxn':
           void ws.rollbackTxn()
           break
+        case 'query.format':
+          emitDataai('dataai:format-sql')
+          break
+        case 'editor.find':
+          emitDataai('dataai:find')
+          break
+        case 'editor.replace':
+          emitDataai('dataai:replace')
+          break
         case 'view.focusSearch':
           if (!ws.sidebarOpen) ws.toggleSidebar()
           window.setTimeout(() => emitDataai('dataai:focus-tree-search'), 40)
@@ -151,6 +160,11 @@ export function App() {
       if (meta && event.shiftKey && key === 'e') {
         event.preventDefault()
         void ws.explain()
+        return
+      }
+      if (event.altKey && event.shiftKey && !meta && key === 'f') {
+        event.preventDefault()
+        emitDataai('dataai:format-sql')
         return
       }
       if (meta && event.shiftKey && key === 'f') {
@@ -314,7 +328,7 @@ export function App() {
         {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '0.16.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '0.17.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (

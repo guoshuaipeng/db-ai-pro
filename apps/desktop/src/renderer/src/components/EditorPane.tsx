@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { onDataai } from '../appEvents'
+import { emitDataai, onDataai } from '../appEvents'
 import { suggestionsFromSchema } from '@shared/schemaSuggest'
 import { IconClock, IconPlay, IconPlus, IconStar, IconStop } from './icons'
 import { ScrollTabs } from './ScrollTabs'
@@ -99,6 +99,15 @@ export function EditorPane() {
                 </button>
               </>
             )}
+            <button
+              type="button"
+              className="btn btn-ghost run-btn"
+              onClick={() => emitDataai('dataai:format-sql')}
+              disabled={ws.running}
+              title="格式化 SQL（Shift+Alt+F）"
+            >
+              格式化
+            </button>
             <button
               type="button"
               className="btn btn-ghost run-btn"
