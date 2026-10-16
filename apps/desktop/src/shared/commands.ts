@@ -236,6 +236,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'view',
   },
   {
+    id: 'view.focusResult',
+    title: '聚焦结果区',
+    subtitle: '表格 / 输出 / 执行计划',
+    keywords: 'result grid focus 结果 表格',
+    shortcut: 'Ctrl+Shift+2',
+    category: 'view',
+  },
+  {
     id: 'view.toggleSidebar',
     title: '显示/隐藏连接栏',
     keywords: 'sidebar connections',

@@ -8,6 +8,7 @@ export type DataaiEventMap = {
   /** Scroll/select a connection row in the object tree. */
   'dataai:reveal-connection': { connectionId: string }
   'dataai:focus-editor': undefined
+  'dataai:focus-result': undefined
   'dataai:format-sql': undefined
   'dataai:request-run': undefined
   /** SqlEditor responds with selected-or-full SQL for Run. */

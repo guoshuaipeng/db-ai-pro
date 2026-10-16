@@ -22,6 +22,7 @@ import { EmptyState } from './EmptyState'
 import { FavoritesPanel } from './FavoritesPanel'
 import { SaveFavoriteDialog } from './SaveFavoriteDialog'
 import { useWorkspace } from '../state/workspace'
+import { pickFocusResultTarget } from '@shared/focusResult'
 import { isSlowQuery } from '@shared/slowQuery'
 import { QUERY_TEMPLATES, getQueryTemplate, type QueryTemplate } from '@shared/queryTemplates'
 import {
@@ -548,6 +549,24 @@ export function ResultPane() {
     setGridVisibleColumns(null)
   }, [active?.id])
 
+  useEffect(() => {
+    return onDataai('dataai:focus-result', () => {
+      const pane = document.querySelector('.result-pane') as HTMLElement | null
+      const grid = document.querySelector('.result-pane [role="grid"], .result-pane .grid-wrap') as HTMLElement | null
+      const messageLog = document.querySelector('.result-pane .message-log') as HTMLElement | null
+      const target = pickFocusResultTarget({ grid, messageLog, pane })
+      if (!target) return
+      if (target.classList.contains('message-log') && !target.hasAttribute('tabindex')) {
+        target.tabIndex = -1
+      }
+      target.focus()
+      if (target.classList.contains('result-pane')) {
+        target.scrollIntoView({ block: 'nearest' })
+      }
+    })
+  }, [])
+
+
   const copyResultMessage = async () => {
     const kind = resultMessageCopyKind(active?.kind, active?.message)
     const text = resultMessageCopyText(active?.message)
@@ -614,7 +633,7 @@ export function ResultPane() {
     : false
 
   return (
-    <section className="result-pane" aria-label="查询结果">
+    <section className="result-pane" aria-label="查询结果" tabIndex={-1}>
       {browse && (
         <div className="browse-pager" role="toolbar" aria-label="表数据分页">
           <button

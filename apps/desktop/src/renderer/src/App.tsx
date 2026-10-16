@@ -220,6 +220,9 @@ export function App() {
         case 'view.focusEditor':
           emitDataai('dataai:focus-editor')
           break
+        case 'view.focusResult':
+          emitDataai('dataai:focus-result')
+          break
         case 'view.toggleSidebar':
           ws.toggleSidebar()
           break
@@ -375,6 +378,11 @@ export function App() {
       if (meta && event.shiftKey && key === '1') {
         event.preventDefault()
         emitDataai('dataai:focus-editor')
+        return
+      }
+      if (meta && event.shiftKey && key === '2') {
+        event.preventDefault()
+        emitDataai('dataai:focus-result')
         return
       }
       if (meta && !event.shiftKey && key === 't') {

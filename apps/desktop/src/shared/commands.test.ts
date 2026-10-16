@@ -35,6 +35,11 @@ describe('filterCommands', () => {
     expect(filterCommands('小地图').some((item) => item.id === 'view.toggleMinimap')).toBe(true)
   })
 
+  it('finds focus result command', () => {
+    expect(filterCommands('结果').some((item) => item.id === 'view.focusResult')).toBe(true)
+    expect(filterCommands('focus result').some((item) => item.id === 'view.focusResult')).toBe(true)
+  })
+
   it('finds toggle comment command', () => {
     expect(filterCommands('注释').some((item) => item.id === 'editor.toggleComment')).toBe(true)
   })
