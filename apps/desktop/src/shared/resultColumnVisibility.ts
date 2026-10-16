@@ -63,3 +63,37 @@ export function pruneHiddenColumns(columns: string[], hidden: readonly string[])
 export function resetHiddenColumns(): string[] {
   return []
 }
+
+/** Hide every column except `column` (returns new hidden list). */
+export function soloVisibleColumn(columns: string[], column: string): string[] {
+  const base = baseResultColumns(columns)
+  if (!base.includes(column)) return []
+  return base.filter((name) => name !== column)
+}
+
+/**
+ * Invert hidden ↔ visible. Always leaves ≥1 column visible:
+ * if invert would hide all, keep the first base column shown.
+ */
+export function invertHiddenColumns(columns: string[], hidden: readonly string[]): string[] {
+  const base = baseResultColumns(columns)
+  if (base.length === 0) return []
+  if (base.length === 1) return []
+  const hide = hiddenSet(hidden)
+  const nextHidden = base.filter((name) => !hide.has(name))
+  if (nextHidden.length >= base.length) {
+    return base.slice(1)
+  }
+  return nextHidden
+}
+
+/** True when invert would change the hidden set. */
+export function canInvertHiddenColumns(columns: string[], hidden: readonly string[]): boolean {
+  const base = baseResultColumns(columns)
+  if (base.length <= 1) return false
+  const next = invertHiddenColumns(columns, hidden)
+  if (next.length !== hidden.length) return true
+  const a = new Set(hidden)
+  return next.some((name) => !a.has(name))
+}
+

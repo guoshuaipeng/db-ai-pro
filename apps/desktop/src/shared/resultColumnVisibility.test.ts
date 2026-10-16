@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   baseResultColumns,
   canHideColumn,
+  canInvertHiddenColumns,
   countHiddenColumns,
+  invertHiddenColumns,
   pruneHiddenColumns,
   resetHiddenColumns,
   setColumnHidden,
+  soloVisibleColumn,
   visibleResultColumns,
 } from './resultColumnVisibility'
 
@@ -32,5 +35,21 @@ describe('resultColumnVisibility', () => {
     expect(pruneHiddenColumns(['a', 'b'], ['a', 'gone'])).toEqual(['a'])
     expect(countHiddenColumns(columns, ['name', 'gone'])).toBe(1)
     expect(resetHiddenColumns()).toEqual([])
+  })
+
+  it('solos one column by hiding the rest', () => {
+    expect(soloVisibleColumn(columns, 'name')).toEqual(['id', 'city'])
+    expect(visibleResultColumns(columns, soloVisibleColumn(columns, 'name'))).toEqual(['name'])
+    expect(soloVisibleColumn(columns, 'missing')).toEqual([])
+  })
+
+  it('inverts hidden columns and never hides all', () => {
+    expect(invertHiddenColumns(columns, ['name'])).toEqual(['id', 'city'])
+    expect(visibleResultColumns(columns, invertHiddenColumns(columns, ['name']))).toEqual(['name'])
+    // all visible → keep first
+    expect(invertHiddenColumns(columns, [])).toEqual(['name', 'city'])
+    expect(visibleResultColumns(columns, invertHiddenColumns(columns, []))).toEqual(['id'])
+    expect(canInvertHiddenColumns(columns, [])).toBe(true)
+    expect(canInvertHiddenColumns(['only'], [])).toBe(false)
   })
 })

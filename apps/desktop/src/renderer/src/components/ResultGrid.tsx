@@ -67,9 +67,12 @@ import {
 import {
   baseResultColumns,
   canHideColumn,
+  canInvertHiddenColumns,
   countHiddenColumns,
+  invertHiddenColumns,
   resetHiddenColumns,
   setColumnHidden,
+  soloVisibleColumn,
   visibleResultColumns,
 } from '@shared/resultColumnVisibility'
 
@@ -981,6 +984,30 @@ export function ResultGrid({
     setNote('已恢复全部列')
   }
 
+  const soloThisColumn = (column: string) => {
+    const next = soloVisibleColumn(columns, column)
+    if (next.length === 0 && baseResultColumns(columns).length > 1) {
+      setNote('无法仅显示该列')
+      return
+    }
+    setHiddenColumns(next)
+    setPinned((pins) => pins.filter((name) => name === column))
+    setContextMenu(null)
+    setNote(`仅显示列 ${column}`)
+  }
+
+  const invertColumns = () => {
+    if (!canInvertHiddenColumns(columns, hiddenColumns)) {
+      setNote('没有可反选的列')
+      return
+    }
+    const next = invertHiddenColumns(columns, hiddenColumns)
+    setHiddenColumns(next)
+    const shown = new Set(visibleResultColumns(columns, next))
+    setPinned((pins) => pins.filter((name) => shown.has(name)))
+    setNote(next.length === 0 ? '已反选列（全部可见）' : `已反选列（隐藏 ${next.length}）`)
+  }
+
   const commitEdit = async () => {
     if (!editing || !ws.activeConnection) return
     const column = displayColumns[editing.col]
@@ -1097,7 +1124,7 @@ export function ResultGrid({
           onMouseDown={(event) => event.stopPropagation()}
         >
           <div className="result-col-visibility-title">显示列</div>
-          <p className="result-col-visibility-hint">至少保留一列；隐藏列不出现在表格与默认导出中。</p>
+          <p className="result-col-visibility-hint">至少保留一列；可用「反选」或右键「仅显示此列」。隐藏列不出现在表格与默认导出中。</p>
           <ul className="result-col-visibility-list">
             {allBaseColumns.map((column) => {
               const shown = visibleColumns.includes(column)
@@ -1118,6 +1145,15 @@ export function ResultGrid({
             })}
           </ul>
           <div className="result-col-visibility-actions">
+            <button
+              type="button"
+              className="btn btn-ghost tiny-btn"
+              disabled={!canInvertHiddenColumns(columns, hiddenColumns)}
+              title="隐藏 ↔ 显示互换（至少保留一列）"
+              onClick={invertColumns}
+            >
+              反选
+            </button>
             <button
               type="button"
               className="btn btn-ghost tiny-btn"
@@ -1518,6 +1554,14 @@ export function ResultGrid({
           <button
             type="button"
             role="menuitem"
+            disabled={baseResultColumns(columns).length <= 1}
+            onClick={() => soloThisColumn(contextMenu.column)}
+          >
+            仅显示此列
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             onClick={() => autofitOneColumn(contextMenu.column)}
           >
             列宽适应（本列）
@@ -1590,7 +1634,7 @@ export function ResultGrid({
       />
       {note && <p className="result-footnote">{note}</p>}
       <p className="result-footnote">
-        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；「列宽适应」或表头分隔线双击估算列宽；表头「筛」可按列筛选（与上方筛选框叠加）；「显示列」可隐藏列；双击查看单元格全文，Shift+双击复制单元格；NULL 与空字符串 "" 分别显示。
+        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；「列宽适应」或表头分隔线双击估算列宽；表头「筛」可按列筛选（与上方筛选框叠加）；「显示列」/ 右键「仅显示此列」可隐藏列；双击查看单元格全文，Shift+双击复制单元格；NULL 与空字符串 "" 分别显示。
         {sort ? ` 当前排序：${sort.column} ${sort.direction === 'asc' ? '升序' : '降序'}。` : ''}
       </p>
       {canEditSqlite && <p className="result-footnote">SQLite：双击查看 · Shift+双击复制；Enter 进入编辑（需确认）。隐藏列 __rowid__ 用于定位行。</p>}
