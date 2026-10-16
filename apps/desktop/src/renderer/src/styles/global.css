@@ -1345,6 +1345,21 @@ body.is-col-resizing .grid-col-resizer {
 .send-btn { width: 32px; padding: 0; }
 .settings-card { margin: 0 14px 10px; }
 
+.ai-model-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.ai-model-presets-label {
+  font-size: 12px;
+  color: var(--ink-secondary, #94a3b8);
+}
+.ai-model-suggestions {
+  margin: -4px 0 8px;
+}
+
+
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
 .field span { color: var(--ink-secondary); }
 .field input {
@@ -4956,4 +4971,10 @@ body.is-col-resizing .grid-col-resizer {
 }
 .shortcut-row-btn kbd {
   flex: 0 0 auto;
+}
+
+.chip.is-active {
+  border-color: rgba(56, 189, 248, 0.55);
+  color: #e0f2fe;
+  background: rgba(14, 165, 233, 0.18);
 }

@@ -106,7 +106,7 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     id: 'model',
     tab: 'model',
     title: '模型与密钥',
-    keywords: '模型 API Key 接口 密钥 OpenAI baseUrl',
+    keywords: '模型 API Key 接口 密钥 OpenAI baseUrl DeepSeek Ollama 预览 清除密钥',
   },
   {
     id: 'about',

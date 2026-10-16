@@ -21,6 +21,20 @@ import {
 } from '@shared/settingsSearch'
 import { Mark } from './icons'
 import { EmptyState } from './EmptyState'
+import {
+  AI_ENDPOINT_PRESETS,
+  aiModelBaseUrlHint,
+  aiModelClearKeyLabel,
+  aiModelKeyHint,
+  aiModelNameHint,
+  aiModelReadiness,
+  aiModelStatusBody,
+  aiModelStatusKicker,
+  aiModelStatusLabel,
+  matchEndpointPreset,
+  modelSuggestionsFor,
+  validateAiModelDraft,
+} from '@shared/aiModelSettings'
 import { useWorkspace } from '../state/workspace'
 import { getApi } from '../bridge'
 import { RELEASE_NOTES_SNIPPET } from '@shared/releaseNotes'
@@ -205,33 +219,115 @@ function ModelPanel({ onClose }: { onClose: () => void }) {
   const [apiKey, setApiKey] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [clearing, setClearing] = useState(false)
+
+  const draft = {
+    baseUrl,
+    model,
+    apiKeyDraft: apiKey,
+    hasKey: Boolean(ws.settings?.hasKey),
+  }
+  const readiness = aiModelReadiness(draft)
+  const activePreset = matchEndpointPreset(baseUrl)
+  const modelSuggestions = modelSuggestionsFor(baseUrl)
+
+  const persist = (input: { baseUrl: string; model: string; apiKey?: string }, thenClose: boolean) => {
+    setSaving(true)
+    setError('')
+    void ws
+      .saveSettings(input)
+      .then(() => {
+        setApiKey('')
+        setError('')
+        if (thenClose) onClose()
+      })
+      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : '没有保存'))
+      .finally(() => {
+        setSaving(false)
+        setClearing(false)
+      })
+  }
 
   return (
     <form
       className="settings-card"
       onSubmit={(event) => {
         event.preventDefault()
-        setSaving(true)
-        void ws
-          .saveSettings({ baseUrl, model, apiKey: apiKey || undefined })
-          .then(() => {
-            setApiKey('')
-            setError('')
-            onClose()
-          })
-          .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : '没有保存'))
-          .finally(() => setSaving(false))
+        const problem = validateAiModelDraft(draft)
+        if (problem) {
+          setError(problem)
+          return
+        }
+        persist({ baseUrl: baseUrl.trim(), model: model.trim(), apiKey: apiKey || undefined }, true)
       }}
     >
+      <EmptyState
+        compact
+        kicker={aiModelStatusKicker(readiness)}
+        title={aiModelStatusLabel(readiness)}
+        body={aiModelStatusBody(readiness)}
+      />
       <p className="settings-lead">配置 OpenAI 兼容接口。密钥使用系统密钥环密封后写入本机，不会以明文落盘。</p>
+
+      <div className="ai-model-presets" role="group" aria-label="常用接口">
+        <span className="ai-model-presets-label">常用接口</span>
+        <div className="chips">
+          {AI_ENDPOINT_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className={activePreset?.id === preset.id ? 'chip is-active' : 'chip'}
+              onClick={() => {
+                setBaseUrl(preset.baseUrl)
+                if (!model.trim() || (activePreset && activePreset.models.includes(model.trim()))) {
+                  setModel(preset.models[0] ?? model)
+                }
+                setError('')
+              }}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <label className="field">
         <span>接口地址</span>
-        <input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} spellCheck={false} />
+        <input
+          value={baseUrl}
+          onChange={(event) => setBaseUrl(event.target.value)}
+          spellCheck={false}
+          placeholder="https://api.openai.com/v1"
+        />
       </label>
+      <p className="field-hint">{aiModelBaseUrlHint()}</p>
+
       <label className="field">
         <span>模型</span>
-        <input value={model} onChange={(event) => setModel(event.target.value)} spellCheck={false} />
+        <input
+          value={model}
+          onChange={(event) => setModel(event.target.value)}
+          spellCheck={false}
+          placeholder="例如 gpt-4o-mini"
+        />
       </label>
+      <p className="field-hint">{aiModelNameHint()}</p>
+      <div className="chips ai-model-suggestions" role="group" aria-label="常用模型">
+        {modelSuggestions.map((name) => (
+          <button
+            key={name}
+            type="button"
+            className={model.trim() === name ? 'chip is-active' : 'chip'}
+            onClick={() => {
+              setModel(name)
+              setError('')
+            }}
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+
       <label className="field">
         <span>API Key</span>
         <input
@@ -242,16 +338,30 @@ function ModelPanel({ onClose }: { onClose: () => void }) {
           autoComplete="off"
         />
       </label>
+      <p className="field-hint">{aiModelKeyHint(Boolean(ws.settings?.hasKey))}</p>
       <p className="field-hint">
         {ws.meta?.encryption === 'os' ? '加密：系统密钥环（DPAPI / safeStorage）' : '当前系统密钥环不可用，密钥不会写入磁盘。'}
       </p>
       {error && <p className="field-error">{error}</p>}
       <div className="dialog-actions">
-        <button type="button" className="btn btn-ghost" onClick={onClose}>
-          取消
+        {ws.settings?.hasKey ? (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={saving || clearing}
+            onClick={() => {
+              setClearing(true)
+              persist({ baseUrl: baseUrl.trim(), model: model.trim(), apiKey: '' }, false)
+            }}
+          >
+            {clearing ? '清除中…' : aiModelClearKeyLabel()}
+          </button>
+        ) : null}
+        <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving || clearing}>
+          {ws.settings?.hasKey ? '关闭' : '取消'}
         </button>
-        <button type="submit" className="btn btn-primary" disabled={saving}>
-          {saving ? '保存中…' : '保存'}
+        <button type="submit" className="btn btn-primary" disabled={saving || clearing}>
+          {saving && !clearing ? '保存中…' : '保存'}
         </button>
       </div>
     </form>
