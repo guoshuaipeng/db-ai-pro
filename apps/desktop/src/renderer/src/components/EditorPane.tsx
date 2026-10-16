@@ -12,6 +12,7 @@ import { HistoryPanel } from './HistoryPanel'
 import { EmptyState } from './EmptyState'
 import { FavoritesPanel } from './FavoritesPanel'
 import { useWorkspace } from '../state/workspace'
+import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
 
 export function EditorPane() {
   const ws = useWorkspace()
@@ -194,6 +195,8 @@ export function ResultPane() {
   }, [filteredRows])
 
   const exportRows = viewRows.length > 0 || filteredRows.length === 0 ? viewRows : filteredRows
+  const lastRun = ws.lastRun
+  const slow = lastRun ? isSlowQuery(lastRun.elapsedMs, ws.slowQueryMs) : false
 
   return (
     <section className="result-pane" aria-label="查询结果">
@@ -210,6 +213,21 @@ export function ResultPane() {
                   <span className="result-count result-sets">{gridCount} 个结果集</span>
                 )}
                 <span className="result-count">{active.rows?.length ?? 0} 行</span>
+                {lastRun && (
+                  <span
+                    className={slow ? 'timing-chip is-slow' : 'timing-chip'}
+                    title={
+                      slow
+                        ? `超过慢查询阈值 ${ws.slowQueryMs} ms`
+                        : lastRun.kind === 'explain'
+                          ? '执行计划耗时'
+                          : '最近一次运行耗时'
+                    }
+                  >
+                    {formatElapsedMs(lastRun.elapsedMs)}
+                    {slow ? <span className="timing-slow-flag">慢</span> : null}
+                  </span>
+                )}
                 {chartable && (
                   <div className="result-view-toggle" role="group" aria-label="结果视图">
                     <button
@@ -231,12 +249,28 @@ export function ResultPane() {
                 <ResultToolbar columns={active.columns} rows={exportRows} focusColumn={focusColumn} filterQuery={resultFilter} onFilterQuery={setResultFilter} totalRows={(active.rows ?? []).length} />
               </div>
             ) : (
-              <span className="result-count">输出</span>
+              <div className="result-trailing">
+                <span className="result-count">输出</span>
+                {lastRun && (
+                  <span className={slow ? 'timing-chip is-slow' : 'timing-chip'}>
+                    {formatElapsedMs(lastRun.elapsedMs)}
+                    {slow ? <span className="timing-slow-flag">慢</span> : null}
+                  </span>
+                )}
+              </div>
             )
           }
         />
       ) : (
-        <div className="result-head">结果</div>
+        <div className="result-head">
+          <span>结果</span>
+          {lastRun && (
+            <span className={slow ? 'timing-chip is-slow' : 'timing-chip'}>
+              {formatElapsedMs(lastRun.elapsedMs)}
+              {slow ? <span className="timing-slow-flag">慢</span> : null}
+            </span>
+          )}
+        </div>
       )}
       {!results && (
         <EmptyState

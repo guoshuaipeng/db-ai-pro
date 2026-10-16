@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { historyPreview } from '@shared/queryHistory'
+import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
 import type { QueryHistoryEntry } from '@shared/types'
 import { IconClock, IconPlay } from './icons'
 import { useWorkspace } from '../state/workspace'
@@ -96,7 +97,23 @@ export function HistoryPanel({ open, onClose }: { open: boolean; onClose: () => 
                   </span>
                   <span className="history-when">{formatWhen(entry.createdAt)}</span>
                   {typeof entry.elapsedMs === 'number' && (
-                    <span className="history-elapsed">{entry.elapsedMs} ms</span>
+                    <span
+                      className={
+                        isSlowQuery(entry.elapsedMs, ws.slowQueryMs)
+                          ? 'history-elapsed is-slow'
+                          : 'history-elapsed'
+                      }
+                      title={
+                        isSlowQuery(entry.elapsedMs, ws.slowQueryMs)
+                          ? `超过慢查询阈值 ${ws.slowQueryMs} ms`
+                          : undefined
+                      }
+                    >
+                      {formatElapsedMs(entry.elapsedMs)}
+                      {isSlowQuery(entry.elapsedMs, ws.slowQueryMs) ? (
+                        <span className="timing-slow-flag">慢</span>
+                      ) : null}
+                    </span>
                   )}
                 </span>
                 <code className="history-sql">{historyPreview(entry.sql)}</code>

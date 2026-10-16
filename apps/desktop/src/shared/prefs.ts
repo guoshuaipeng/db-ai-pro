@@ -1,3 +1,5 @@
+import { clampSlowQueryMs, DEFAULT_SLOW_QUERY_MS } from './slowQuery'
+
 export type UiDensity = 'comfortable' | 'compact'
 
 export type AppPrefs = {
@@ -10,6 +12,8 @@ export type AppPrefs = {
   restoreTabsOnLaunch: boolean
   /** Global safe mode: block writes / DDL on every connection. */
   globalReadOnly: boolean
+  /** Mark runs slower than this many ms as 慢. Default 1000. */
+  slowQueryMs: number
 }
 
 export const DEFAULT_PREFS: AppPrefs = {
@@ -18,6 +22,7 @@ export const DEFAULT_PREFS: AppPrefs = {
   queryTimeoutSec: 30,
   restoreTabsOnLaunch: true,
   globalReadOnly: false,
+  slowQueryMs: DEFAULT_SLOW_QUERY_MS,
 }
 
 const TIMEOUT_MIN = 0
@@ -40,5 +45,8 @@ export function normalizePrefs(value: unknown): AppPrefs {
     ),
     restoreTabsOnLaunch: row.restoreTabsOnLaunch !== false,
     globalReadOnly: row.globalReadOnly === true,
+    slowQueryMs: clampSlowQueryMs(
+      row.slowQueryMs === undefined ? DEFAULT_SLOW_QUERY_MS : row.slowQueryMs,
+    ),
   }
 }

@@ -19,6 +19,7 @@ import { ShortcutsHelp } from './components/ShortcutsHelp'
 import { SettingsCenter, type SettingsTab } from './components/SettingsCenter'
 import { DEFAULT_PREFS, type AppPrefs } from '@shared/prefs'
 import { LAYOUT } from '@shared/layoutBounds'
+import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
 import { getApi } from './bridge'
 import { useWorkspace } from './state/workspace'
 
@@ -256,10 +257,11 @@ export function App() {
   const encryptionLabel =
     ws.meta?.encryption === 'os' ? '密钥：系统' : ws.meta?.encryption === 'unavailable' ? '密钥：不可用' : null
 
+  const lastRunSlow = ws.lastRun ? isSlowQuery(ws.lastRun.elapsedMs, ws.slowQueryMs) : false
   const lastRunLabel = ws.lastRun
-    ? `${ws.lastRun.kind === 'explain' ? '计划' : '结果'} ${ws.lastRun.rows} 行 · ${ws.lastRun.elapsedMs} ms${
-        ws.lastRun.ok ? '' : ' · 失败'
-      }`
+    ? `${ws.lastRun.kind === 'explain' ? '计划' : '结果'} ${ws.lastRun.rows} 行 · ${formatElapsedMs(ws.lastRun.elapsedMs)}${
+        lastRunSlow ? ' · 慢' : ''
+      }${ws.lastRun.ok ? '' : ' · 失败'}`
     : null
 
   return (
@@ -370,13 +372,23 @@ export function App() {
             执行中…
           </span>
         ) : lastRunLabel ? (
-          <span className={ws.lastRun?.ok === false ? 'status-item is-warn' : 'status-item'}>{lastRunLabel}</span>
+          <span
+            className={
+              ws.lastRun?.ok === false
+                ? 'status-item is-warn'
+                : lastRunSlow
+                  ? 'status-item is-slow'
+                  : 'status-item'
+            }
+          >
+            {lastRunLabel}
+          </span>
         ) : null}
         <span className="status-spacer" />
         {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '2.3.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '2.4.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (

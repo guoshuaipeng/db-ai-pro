@@ -2,6 +2,11 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 2.4.0 — M33 耗时条 + 慢查询标记
+
+- 运行后结果区显示耗时 chip；超过设置阈值（默认 1000ms）标「慢」
+- 历史记录展示耗时与慢标记；设置可改阈值
+
 ## 2.3.0 — M32 只读 / 安全模式
 
 - 全局或单连接「只读」：拦截 INSERT/UPDATE/DELETE/DDL、单元格编辑、导入与样例填充；SELECT/EXPLAIN/导出可用

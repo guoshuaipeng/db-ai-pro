@@ -36,6 +36,7 @@ import {
 import { formatExplainText } from '@shared/explain'
 import { analyzeDestructiveSql } from '@shared/destructiveSql'
 import { analyzeReadOnlySql, isReadOnlyEffective } from '@shared/readOnlySql'
+import { DEFAULT_SLOW_QUERY_MS } from '@shared/slowQuery'
 import type { TableStructure } from '@shared/tableStructure'
 import type { Dialect } from '@shared/types'
 
@@ -139,6 +140,8 @@ type WorkspaceValue = {
   setActiveResult: (id: string) => void
   running: boolean
   lastRun: LastRunStats | null
+  slowQueryMs: number
+  setSlowQueryMs: (ms: number) => Promise<void>
   txnOpen: boolean
   txnSupported: boolean
   readOnlyActive: boolean
@@ -342,6 +345,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setEditorRatioState(clampEditorRatio(value))
   }, [])
   const [globalReadOnly, setGlobalReadOnlyState] = useState(false)
+  const [slowQueryMs, setSlowQueryMsState] = useState(DEFAULT_SLOW_QUERY_MS)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [aiOpen, setAiOpen] = useState(true)
   const requestRef = useRef<string | null>(null)
@@ -406,6 +410,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setSettings(aiSettings)
         applyRecentState(recent)
         setGlobalReadOnlyState(Boolean(prefs.globalReadOnly))
+        setSlowQueryMsState(prefs.slowQueryMs ?? DEFAULT_SLOW_QUERY_MS)
         const connectionIds = new Set(rows.map((row) => row.id))
         let restoreConnectionId = workspace?.activeConnectionId ?? rows[0]?.id ?? null
         if (workspace) {
@@ -826,6 +831,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const next = await api.prefs.save({ globalReadOnly: value })
       setGlobalReadOnlyState(next.globalReadOnly === true)
       pushToast('success', next.globalReadOnly ? '已开启全局只读' : '已关闭全局只读')
+    },
+    [api, pushToast],
+  )
+
+  const setSlowQueryMs = useCallback(
+    async (ms: number) => {
+      const next = await api.prefs.save({ slowQueryMs: ms })
+      setSlowQueryMsState(next.slowQueryMs)
+      pushToast('success', `慢查询阈值已设为 ${next.slowQueryMs} ms`)
     },
     [api, pushToast],
   )
@@ -1519,6 +1533,8 @@ ${sql.trim()}
     },
     running,
     lastRun,
+    slowQueryMs,
+    setSlowQueryMs,
     txnOpen,
     txnSupported,
     readOnlyActive,

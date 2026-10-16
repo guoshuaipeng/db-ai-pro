@@ -31,3 +31,8 @@ describe('normalizePrefs', () => {
     expect(normalizePrefs({ globalReadOnly: true }).globalReadOnly).toBe(true)
   })
 
+  it('defaults slowQueryMs to 1000', () => {
+    expect(normalizePrefs(null).slowQueryMs).toBe(1000)
+    expect(normalizePrefs({ slowQueryMs: 2500 }).slowQueryMs).toBe(2500)
+  })
+

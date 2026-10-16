@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — read-only safe mode",
+  "description": "DataAI TypeScript desktop — slow query timing",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

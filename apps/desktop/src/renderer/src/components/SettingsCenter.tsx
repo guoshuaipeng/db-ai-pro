@@ -84,7 +84,7 @@ export function SettingsCenter({ open, tab, onTab, onClose, prefs, onPrefs }: Se
             {tab === 'model' && <ModelPanel onClose={onClose} />}
             {tab === 'appearance' && <AppearancePanel prefs={prefs} onPrefs={onPrefs} />}
             {tab === 'query' && <QueryPanel prefs={prefs} onPrefs={onPrefs} />}
-            {tab === 'about' && <AboutPanel version={ws.meta?.version ?? '2.3.0'} encryption={ws.meta?.encryption} />}
+            {tab === 'about' && <AboutPanel version={ws.meta?.version ?? '2.4.0'} encryption={ws.meta?.encryption} />}
           </div>
         </section>
       </div>
@@ -156,12 +156,31 @@ function ModelPanel({ onClose }: { onClose: () => void }) {
 function QueryPanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs: AppPrefs) => void }) {
   const api = getApi()
   const [timeoutSec, setTimeoutSec] = useState(String(prefs.queryTimeoutSec))
+  const [slowMs, setSlowMs] = useState(String(prefs.slowQueryMs))
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
 
   useEffect(() => {
     setTimeoutSec(String(prefs.queryTimeoutSec))
   }, [prefs.queryTimeoutSec])
+
+  useEffect(() => {
+    setSlowMs(String(prefs.slowQueryMs))
+  }, [prefs.slowQueryMs])
+
+  const ws = useWorkspace()
+
+  const saveSlow = async () => {
+    setBusy(true)
+    try {
+      await ws.setSlowQueryMs(Number(slowMs))
+      const next = await api.prefs.get()
+      onPrefs(next)
+      setSlowMs(String(next.slowQueryMs))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const saveTimeout = async () => {
     setBusy(true)
@@ -198,7 +217,22 @@ function QueryPanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs: AppP
       </label>
       <p className="field-hint">默认 30 秒。建议在本地大表或慢网关时按需调大；危险语句仍会先弹出确认框。</p>
       {note && <p className="field-ok">{note}</p>}
+      <label className="field" style={{ marginTop: 16 }}>
+        <span>慢查询阈值（毫秒）</span>
+        <input
+          type="number"
+          min={50}
+          max={600000}
+          step={50}
+          value={slowMs}
+          onChange={(event) => setSlowMs(event.target.value)}
+        />
+      </label>
+      <p className="field-hint">超过该耗时在结果区与历史标记「慢」。默认 1000 ms。</p>
       <div className="dialog-actions">
+        <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void saveSlow()}>
+          保存慢查询阈值
+        </button>
         <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveTimeout()}>
           {busy ? '保存中…' : '保存超时'}
         </button>

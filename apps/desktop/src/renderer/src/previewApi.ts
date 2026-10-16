@@ -227,6 +227,7 @@ export function createPreviewApi(): DesktopApi {
         queryTimeoutSec: 30,
         restoreTabsOnLaunch: true,
         globalReadOnly: false,
+        slowQueryMs: 1000,
       }),
       save: async (input) => ({
         density: input.density === 'compact' ? ('compact' as const) : ('comfortable' as const),
@@ -237,6 +238,10 @@ export function createPreviewApi(): DesktopApi {
             : 30,
         restoreTabsOnLaunch: input.restoreTabsOnLaunch !== false,
         globalReadOnly: input.globalReadOnly === true,
+        slowQueryMs:
+          typeof input.slowQueryMs === 'number' && Number.isFinite(input.slowQueryMs)
+            ? Math.min(600000, Math.max(50, Math.round(input.slowQueryMs)))
+            : 1000,
       }),
     },
     app: {
