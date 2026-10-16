@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { historyPreview } from '@shared/queryHistory'
 import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
+import {
+  countSlowQueryHistory,
+  filterSlowQueryHistory,
+  SLOW_QUERY_HISTORY_LIMIT,
+} from '@shared/slowQueryHistory'
 import type { QueryHistoryEntry } from '@shared/types'
 import { IconClock, IconPlay } from './icons'
 import { useWorkspace } from '../state/workspace'
@@ -19,11 +24,25 @@ function formatWhen(iso: string): string {
   return `${day} ${time}`
 }
 
-export function HistoryPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function HistoryPanel({
+  open,
+  onClose,
+  slowOnlyDefault = false,
+}: {
+  open: boolean
+  onClose: () => void
+  /** Open with「仅慢查询」already on (e.g. command palette). */
+  slowOnlyDefault?: boolean
+}) {
   const ws = useWorkspace()
   const [rows, setRows] = useState<QueryHistoryEntry[]>([])
   const [loading, setLoading] = useState(false)
+  const [slowOnly, setSlowOnly] = useState(false)
   const connectionId = ws.activeConnection?.id ?? null
+
+  useEffect(() => {
+    if (open) setSlowOnly(slowOnlyDefault === true)
+  }, [open, slowOnlyDefault])
 
   useEffect(() => {
     if (!open || !connectionId) {
@@ -48,6 +67,16 @@ export function HistoryPanel({ open, onClose }: { open: boolean; onClose: () => 
     }
   }, [open, connectionId, ws])
 
+
+  const slowCount = useMemo(
+    () => countSlowQueryHistory(rows, ws.slowQueryMs),
+    [rows, ws.slowQueryMs],
+  )
+  const visibleRows = useMemo(
+    () => (slowOnly ? filterSlowQueryHistory(rows, ws.slowQueryMs, SLOW_QUERY_HISTORY_LIMIT) : rows),
+    [rows, slowOnly, ws.slowQueryMs],
+  )
+
   if (!open) return null
 
   return (
@@ -59,6 +88,16 @@ export function HistoryPanel({ open, onClose }: { open: boolean; onClose: () => 
           {ws.activeConnection && <span className="history-conn">{ws.activeConnection.name}</span>}
         </div>
         <div className="history-actions">
+          <button
+            type="button"
+            className={slowOnly ? 'tiny-btn btn is-active' : 'tiny-btn btn'}
+            disabled={!connectionId}
+            aria-pressed={slowOnly}
+            title={`仅显示 ≥ ${ws.slowQueryMs} ms 的执行（最多 ${SLOW_QUERY_HISTORY_LIMIT} 条）`}
+            onClick={() => setSlowOnly((value) => !value)}
+          >
+            仅慢查询{slowCount > 0 ? ` ${slowCount}` : ''}
+          </button>
           <button
             type="button"
             className="tiny-btn btn"
@@ -78,9 +117,14 @@ export function HistoryPanel({ open, onClose }: { open: boolean; onClose: () => 
       {!connectionId && <p className="history-empty">先选择一个连接。</p>}
       {connectionId && loading && <p className="history-empty">载入中…</p>}
       {connectionId && !loading && rows.length === 0 && <p className="history-empty">还没有执行记录。</p>}
-      {connectionId && !loading && rows.length > 0 && (
+      {connectionId && !loading && rows.length > 0 && slowOnly && visibleRows.length === 0 && (
+        <p className="history-empty">
+          没有超过 {ws.slowQueryMs.toLocaleString('zh-CN')} ms 的慢查询（阈值可在设置中调整）。
+        </p>
+      )}
+      {connectionId && !loading && visibleRows.length > 0 && (
         <ul className="history-list">
-          {rows.map((entry) => (
+          {visibleRows.map((entry) => (
             <li key={entry.id} className={entry.ok ? 'history-item' : 'history-item is-bad'}>
               <button
                 type="button"

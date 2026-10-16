@@ -3623,3 +3623,9 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   flex: 0 0 auto;
   box-shadow: 0 0 0 1px color-mix(in srgb, #fff 12%, transparent);
 }
+
+.history-actions .tiny-btn.is-active {
+  color: var(--warn, #e6c35c);
+  background: rgba(230, 195, 92, 0.12);
+  border-color: rgba(230, 195, 92, 0.35);
+}

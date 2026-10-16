@@ -39,6 +39,7 @@ import { resolveTabConnectionColor } from '@shared/tabConnectionColor'
 export function EditorPane() {
   const ws = useWorkspace()
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [historySlowOnly, setHistorySlowOnly] = useState(false)
   const [favoritesOpen, setFavoritesOpen] = useState(false)
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [pendingTemplate, setPendingTemplate] = useState<QueryTemplate | null>(null)
@@ -53,6 +54,12 @@ export function EditorPane() {
     setHistoryOpen(false)
   }), [])
   useEffect(() => onDataai('dataai:open-history', () => {
+    setHistorySlowOnly(false)
+    setHistoryOpen(true)
+    setFavoritesOpen(false)
+  }), [])
+  useEffect(() => onDataai('dataai:open-history-slow', () => {
+    setHistorySlowOnly(true)
     setHistoryOpen(true)
     setFavoritesOpen(false)
   }), [])
@@ -232,7 +239,11 @@ export function EditorPane() {
               aria-label="查询历史"
               aria-pressed={historyOpen}
               onClick={() => {
-                setHistoryOpen((open) => !open)
+                setHistoryOpen((open) => {
+                  const next = !open
+                  if (next) setHistorySlowOnly(false)
+                  return next
+                })
                 if (!historyOpen) setFavoritesOpen(false)
               }}
             >
@@ -376,7 +387,7 @@ export function EditorPane() {
             bracketColorization={ws.editorBracketColorization}
           />
         )}
-        <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} />
+        <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} slowOnlyDefault={historySlowOnly} />
         <FavoritesPanel open={favoritesOpen} onClose={() => setFavoritesOpen(false)} />
         {pendingTemplate && (
           <div

@@ -140,6 +140,9 @@ export function App() {
         case 'query.history':
           emitDataai('dataai:open-history')
           break
+        case 'query.slowHistory':
+          emitDataai('dataai:open-history-slow')
+          break
         case 'query.beginTxn':
           void ws.beginTxn()
           break

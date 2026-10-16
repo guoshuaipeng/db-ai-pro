@@ -74,6 +74,13 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'query.slowHistory',
+    title: '慢查询历史',
+    subtitle: '仅显示超过阈值的执行记录',
+    keywords: 'slow query history 慢查询 历史',
+    category: 'query',
+  },
+  {
     id: 'query.beginTxn',
     title: '开始事务',
     subtitle: 'BEGIN · 关闭自动提交',
@@ -413,4 +420,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '填写查询参数', keys: '工具栏「填写参数」· Ctrl+K · 运行时自动' },
   { action: '查询标签连接色', keys: '连接颜色标记 → 标签左侧色条' },
   { action: '括号配对着色', keys: '设置 → 外观 · Ctrl+K「括号」' },
+  { action: '慢查询历史', keys: '历史面板「仅慢查询」· Ctrl+K' },
 ]
