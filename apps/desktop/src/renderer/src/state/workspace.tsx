@@ -137,6 +137,8 @@ export type LastRunStats = {
   elapsedMs: number
   ok: boolean
   kind: 'run' | 'explain'
+  /** Sum of DML rowsAffected when statements returned no result grid. */
+  affectedRows?: number
 }
 
 type DestructiveDecision = 'run' | 'skip-session' | 'cancel'
@@ -1415,7 +1417,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const next = resultsFrom(statements)
       const elapsedMs = statements.reduce((sum, item) => sum + (item.elapsedMs || 0), 0)
       const rowCount = statements.reduce((sum, item) => sum + (item.rows?.length ?? 0), 0)
-      setLastRun({ rows: rowCount, elapsedMs, ok: statements.every((item) => item.ok), kind: 'run' })
+      setLastRun({
+        rows: rowCount,
+        elapsedMs,
+        ok: statements.every((item) => item.ok),
+        kind: 'run',
+        affectedRows: statements
+          .filter((item) => item.ok && !item.columns)
+          .reduce((sum, item) => sum + (item.rowsAffected ?? 0), 0),
+      })
       if (editorId) setResultMap((current) => ({ ...current, [editorId]: next }))
       const failed = statements.find((statement) => !statement.ok)
       if (failed) {
@@ -1630,7 +1640,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const next = resultsFrom(statements)
       const elapsedMs = statements.reduce((sum, item) => sum + (item.elapsedMs || 0), 0)
       const rowCount = statements.reduce((sum, item) => sum + (item.rows?.length ?? 0), 0)
-      setLastRun({ rows: rowCount, elapsedMs, ok: statements.every((item) => item.ok), kind: 'run' })
+      setLastRun({
+        rows: rowCount,
+        elapsedMs,
+        ok: statements.every((item) => item.ok),
+        kind: 'run',
+        affectedRows: statements
+          .filter((item) => item.ok && !item.columns)
+          .reduce((sum, item) => sum + (item.rowsAffected ?? 0), 0),
+      })
       setResultMap((current) => ({ ...current, [activeEditor.id]: next }))
       const failed = statements.find((statement) => !statement.ok)
       if (failed) {

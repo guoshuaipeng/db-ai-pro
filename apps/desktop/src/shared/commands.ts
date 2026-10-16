@@ -421,4 +421,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '查询标签连接色', keys: '连接颜色标记 → 标签左侧色条' },
   { action: '括号配对着色', keys: '设置 → 外观 · Ctrl+K「括号」' },
   { action: '慢查询历史', keys: '历史面板「仅慢查询」· Ctrl+K' },
+  { action: '结果摘要条', keys: '结果区标签下方自动显示' },
 ]

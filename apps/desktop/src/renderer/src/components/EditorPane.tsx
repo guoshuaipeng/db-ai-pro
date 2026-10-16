@@ -5,6 +5,7 @@ import { IconClock, IconPlay, IconPlus, IconStar, IconStop } from './icons'
 import { ScrollTabs, type TabContextAction } from './ScrollTabs'
 import { SqlEditor } from './SqlEditor'
 import { ResultGrid, ResultToolbar } from './ResultGrid'
+import { ResultSummaryBar } from './ResultSummaryBar'
 import { filterResultRows } from '@shared/resultFilter'
 import { ResultChart } from './ResultChart'
 import { canChartResult } from '@shared/chartData'
@@ -12,7 +13,7 @@ import { HistoryPanel } from './HistoryPanel'
 import { EmptyState } from './EmptyState'
 import { FavoritesPanel } from './FavoritesPanel'
 import { useWorkspace } from '../state/workspace'
-import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
+import { isSlowQuery } from '@shared/slowQuery'
 import { QUERY_TEMPLATES, getQueryTemplate, type QueryTemplate } from '@shared/queryTemplates'
 import {
   defaultSnippetValues,
@@ -584,25 +585,6 @@ export function ResultPane() {
           trailing={
             active?.kind === 'grid' && active.columns ? (
               <div className="result-trailing">
-                {gridCount > 1 && (
-                  <span className="result-count result-sets">{gridCount} 个结果集</span>
-                )}
-                <span className="result-count">{active.rows?.length ?? 0} 行</span>
-                {lastRun && (
-                  <span
-                    className={slow ? 'timing-chip is-slow' : 'timing-chip'}
-                    title={
-                      slow
-                        ? `超过慢查询阈值 ${ws.slowQueryMs} ms`
-                        : lastRun.kind === 'explain'
-                          ? '执行计划耗时'
-                          : '最近一次运行耗时'
-                    }
-                  >
-                    {formatElapsedMs(lastRun.elapsedMs)}
-                    {slow ? <span className="timing-slow-flag">慢</span> : null}
-                  </span>
-                )}
                 {chartable && (
                   <div className="result-view-toggle" role="group" aria-label="结果视图">
                     <button
@@ -626,12 +608,6 @@ export function ResultPane() {
             ) : (
               <div className="result-trailing">
                 <span className="result-count">输出</span>
-                {lastRun && (
-                  <span className={slow ? 'timing-chip is-slow' : 'timing-chip'}>
-                    {formatElapsedMs(lastRun.elapsedMs)}
-                    {slow ? <span className="timing-slow-flag">慢</span> : null}
-                  </span>
-                )}
               </div>
             )
           }
@@ -639,14 +615,35 @@ export function ResultPane() {
       ) : (
         <div className="result-head">
           <span>结果</span>
-          {lastRun && (
-            <span className={slow ? 'timing-chip is-slow' : 'timing-chip'}>
-              {formatElapsedMs(lastRun.elapsedMs)}
-              {slow ? <span className="timing-slow-flag">慢</span> : null}
-            </span>
-          )}
         </div>
       )}
+
+      {results && (
+        <ResultSummaryBar
+          kind={
+            !active
+              ? 'empty'
+              : active.kind === 'grid'
+                ? 'grid'
+                : active.kind === 'plan'
+                  ? 'plan'
+                  : 'message'
+          }
+          returnedRows={active?.kind === 'grid' ? (active.rows?.length ?? 0) : undefined}
+          shownRows={
+            active?.kind === 'grid'
+              ? (viewRows.length > 0 || filteredRows.length === 0 ? viewRows.length : filteredRows.length)
+              : undefined
+          }
+          selectedRows={selectedRows.length}
+          elapsedMs={lastRun?.elapsedMs}
+          slow={slow}
+          slowThresholdMs={ws.slowQueryMs}
+          affectedRows={lastRun?.affectedRows}
+          resultSetCount={gridCount}
+        />
+      )}
+
       {!results && (
         <EmptyState
           compact
