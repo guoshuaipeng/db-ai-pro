@@ -460,6 +460,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '查找', keys: 'Ctrl+F' },
   { action: '替换', keys: 'Ctrl+H' },
   { action: '新建查询', keys: 'Ctrl+T' },
+  { action: '新建查询（标签栏）', keys: '双击标签栏空白处' },
   { action: '保存 SQL 到文件', keys: 'Ctrl+S' },
   { action: '从文件打开 SQL', keys: 'Ctrl+O' },
   { action: '拖入 .sql 文件打开', keys: '拖到编辑器（可多选）' },

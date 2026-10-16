@@ -482,6 +482,12 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   overflow-y: hidden;
   scrollbar-width: none;
 }
+.tabstrip-empty {
+  flex: 1 1 56px;
+  min-width: 56px;
+  align-self: stretch;
+  cursor: default;
+}
 .tabstrip-scroll::-webkit-scrollbar { display: none; }
 .tabstrip-scroll[data-fade-left="true"] {
   mask-image: linear-gradient(90deg, transparent, #000 16px);

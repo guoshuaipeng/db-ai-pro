@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { filterTabsForPicker } from '@shared/tabPicker'
+import { isTabstripBackgroundDoubleClick } from '@shared/tabstripNewTab'
 
 type TabItem = {
   id: string
@@ -27,6 +28,9 @@ type ScrollTabsProps = {
   onRename?: (id: string, title: string) => void
   /** Move tab to insert-before index (clamped by pin group in workspace). */
   onReorder?: (fromId: string, insertBeforeIndex: number) => void
+  /** Double-click empty strip area (Chrome / VS Code style). */
+  onEmptyDoubleClick?: () => void
+  emptyDoubleClickTitle?: string
   trailing?: ReactNode
 }
 
@@ -41,6 +45,8 @@ export function ScrollTabs({
   onContextAction,
   onRename,
   onReorder,
+  onEmptyDoubleClick,
+  emptyDoubleClickTitle = '双击空白处新建查询',
   trailing,
 }: ScrollTabsProps) {
   const scroller = useRef<HTMLDivElement>(null)
@@ -227,6 +233,13 @@ export function ScrollTabs({
         aria-label={label}
         data-fade-left={overflow.left}
         data-fade-right={overflow.right}
+        title={onEmptyDoubleClick ? emptyDoubleClickTitle : undefined}
+        onDoubleClick={(event) => {
+          if (!onEmptyDoubleClick) return
+          if (!isTabstripBackgroundDoubleClick(event.target as Element)) return
+          event.preventDefault()
+          onEmptyDoubleClick()
+        }}
       >
         {tabs.map((tab, index) => {
           const selected = tab.id === activeId
@@ -394,6 +407,18 @@ export function ScrollTabs({
             </div>
           )
         })}
+        {onEmptyDoubleClick ? (
+          <div
+            className="tabstrip-empty"
+            title={emptyDoubleClickTitle}
+            aria-hidden="true"
+            onDoubleClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onEmptyDoubleClick()
+            }}
+          />
+        ) : null}
       </div>
       {hasOverflow && (
         <button type="button" className="tab-nav" aria-label="向右滚动标签" disabled={!overflow.right} onClick={() => move(1)}>
