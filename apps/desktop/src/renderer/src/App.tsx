@@ -600,6 +600,8 @@ export function App() {
           if (statusBarRerunAction(ws.lastRun?.kind) === 'explain') void ws.explain()
           else emitDataai('dataai:request-run')
         }}
+        wordWrap={ws.editorWordWrap}
+        onToggleWordWrap={() => void ws.toggleEditorWordWrap()}
         onZoomReset={zoomReset}
       />
       <div className="toast-viewport" aria-live="polite">

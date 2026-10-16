@@ -5,6 +5,7 @@ import { statusHealthView } from '@shared/statusBar'
 import { statusBarConnectionTitle } from '@shared/revealConnection'
 import { statusBarRerunTitle } from '@shared/statusBarRerun'
 import { editorSelectionStatusTitle } from '@shared/editorSelection'
+import { statusBarWordWrapLabel, statusBarWordWrapTitle } from '@shared/statusBarWordWrap'
 import type { ConnHealth } from '@shared/connHealth'
 import type { ConnectionPublic } from '@shared/types'
 
@@ -30,6 +31,7 @@ type StatusBarProps = {
   encryptionLabel: string | null
   modeLabel: string
   zoomLabel: string
+  wordWrap: boolean
   version: string
   onProbeHealth: () => void
   onRevealConnection: () => void
@@ -39,6 +41,7 @@ type StatusBarProps = {
   onRerunLast: () => void
   lastRunKind?: 'run' | 'explain' | null
   onZoomReset: () => void
+  onToggleWordWrap: () => void
 }
 
 export function StatusBar({
@@ -61,6 +64,7 @@ export function StatusBar({
   encryptionLabel,
   modeLabel,
   zoomLabel,
+  wordWrap,
   version,
   onProbeHealth,
   onRevealConnection,
@@ -70,6 +74,7 @@ export function StatusBar({
   onRerunLast,
   lastRunKind,
   onZoomReset,
+  onToggleWordWrap,
 }: StatusBarProps) {
   const healthView = statusHealthView(health)
 
@@ -181,6 +186,19 @@ export function StatusBar({
       <span className="status-spacer" />
       {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
       <span className="status-item">{modeLabel}</span>
+      <button
+        type="button"
+        className={
+          wordWrap
+            ? 'status-item status-btn is-wrap-on'
+            : 'status-item status-muted status-btn'
+        }
+        title={statusBarWordWrapTitle(wordWrap)}
+        aria-pressed={wordWrap}
+        onClick={onToggleWordWrap}
+      >
+        {statusBarWordWrapLabel(wordWrap)}
+      </button>
       <button
         type="button"
         className="status-item status-muted status-zoom status-btn"
