@@ -2,6 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { emitDataai, onDataai } from '../appEvents'
 import { dialectInfo } from '@shared/types'
 import { formatLatency } from '@shared/connHealth'
+import {
+  healthBadgeFailLabel,
+  healthBadgeIdleLabel,
+  healthBadgeIdleTitle,
+  healthBadgeTitle,
+  healthBadgeUnsupportedLabel,
+  healthProbeMenuLabel,
+  healthProbeMenuTitle,
+} from '@shared/connHealthUi'
 import { bucketSchemaByGroup, colorForTag, CONN_COLOR_TAGS } from '@shared/connGroups'
 import { quoteIdentIfNeeded } from '@shared/sql'
 import { countOpenExpands, isTreeNodeExpanded } from '@shared/schemaTreeRefresh'
@@ -638,12 +647,13 @@ function TreeNode({
             <button
               type="button"
               role="menuitem"
+              title={healthProbeMenuTitle()}
               onClick={() => {
                 onMenu(null)
                 void ws.checkConnectionHealth(connection.id, false)
               }}
             >
-              检测延迟
+              {healthProbeMenuLabel()}
             </button>
             {connection.dialect !== 'sqlite' && connection.dialect !== 'redis' && (
               <button
@@ -844,20 +854,23 @@ function TreeNode({
 }
 
 function HealthBadge({ health }: { health?: import('@shared/connHealth').ConnHealth }) {
-  if (!health) return null
-  if (health.unsupported) {
+  if (!health) {
     return (
-      <span className="health-badge is-unsupported" title={health.error ?? '暂不支持探测'}>
-        —
+      <span className="health-badge is-idle" title={healthBadgeIdleTitle()}>
+        {healthBadgeIdleLabel()}
       </span>
     )
   }
-  const label = health.ok ? formatLatency(health.latencyMs) : '失败'
-  const title = health.ok
-    ? `延迟 ${health.latencyMs} ms · ${new Date(health.checkedAt).toLocaleTimeString()}`
-    : health.error ?? '探测失败'
+  if (health.unsupported) {
+    return (
+      <span className="health-badge is-unsupported" title={healthBadgeTitle(health)}>
+        {healthBadgeUnsupportedLabel()}
+      </span>
+    )
+  }
+  const label = health.ok ? formatLatency(health.latencyMs) : healthBadgeFailLabel()
   return (
-    <span className={`health-badge is-${health.tone}`} title={title}>
+    <span className={`health-badge is-${health.tone}`} title={healthBadgeTitle(health)}>
       {label}
     </span>
   )

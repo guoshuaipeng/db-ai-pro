@@ -90,7 +90,13 @@ import {
 } from '@shared/closedTabStack'
 import { countTreeNodes, extrasFromConnections, filterNodes } from '@shared/tree'
 import { dialectInfo, isKvDialect } from '@shared/types'
-import { buildConnHealth, type ConnHealth } from '@shared/connHealth'
+import { buildConnHealth, summarizeHealthProbes, type ConnHealth } from '@shared/connHealth'
+import {
+  healthProbeBatchToast,
+  healthProbeFailToast,
+  healthProbeOkToast,
+  healthProbeUnsupportedToast,
+} from '@shared/connHealthUi'
 import { supportsManualTransaction } from '@shared/transaction'
 import { trimAiTurns } from '@shared/aiMemory'
 import { settleCancelledTurn } from '@shared/aiStream'
@@ -1120,9 +1126,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         })
       }
       if (!silent) {
-        if (health.unsupported) pushToast('info', health.error ?? '暂不支持探测')
-        else if (health.ok) pushToast('success', `延迟 ${health.latencyMs} ms`)
-        else pushToast('error', health.error ?? '探测失败')
+        if (health.unsupported) {
+          pushToast('info', healthProbeUnsupportedToast(connection.name, health.error))
+        } else if (health.ok) {
+          pushToast('success', healthProbeOkToast(connection.name, health.latencyMs))
+        } else {
+          pushToast('error', healthProbeFailToast(connection.name, health.error))
+        }
       }
       return health
     } catch (error) {
@@ -1148,8 +1158,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const info = dialectInfo(row.dialect)
       return info.executable || Boolean(info.kv)
     })
-    await Promise.all(rows.map((row) => checkConnectionHealth(row.id, true)))
-    pushToast('success', `已检测 ${rows.length} 个连接`)
+    const results = await Promise.all(rows.map((row) => checkConnectionHealth(row.id, true)))
+    const summary = summarizeHealthProbes(results)
+    const tone = summary.bad > 0 ? 'error' : summary.total <= 0 ? 'info' : 'success'
+    pushToast(tone, healthProbeBatchToast(summary))
   }
 
   const collapseObjectTree = () => {

@@ -42,3 +42,28 @@ export function buildConnHealth(input: {
     unsupported: input.unsupported,
   }
 }
+
+export type HealthProbeSummary = {
+  total: number
+  ok: number
+  bad: number
+  unsupported: number
+}
+
+/** Aggregate results from a batch probe (null entries ignored). */
+export function summarizeHealthProbes(
+  rows: readonly (ConnHealth | null | undefined)[],
+): HealthProbeSummary {
+  let ok = 0
+  let bad = 0
+  let unsupported = 0
+  let total = 0
+  for (const row of rows) {
+    if (!row) continue
+    total += 1
+    if (row.unsupported) unsupported += 1
+    else if (row.ok) ok += 1
+    else bad += 1
+  }
+  return { total, ok, bad, unsupported }
+}

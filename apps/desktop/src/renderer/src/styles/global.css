@@ -3869,6 +3869,12 @@ body.is-col-resizing .grid-col-resizer {
   color: var(--ink-tertiary);
   background: rgba(255, 255, 255, 0.04);
 }
+.health-badge.is-idle {
+  color: var(--ink-tertiary);
+  background: color-mix(in srgb, var(--ink-tertiary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--ink-tertiary) 25%, transparent);
+}
+
 
 .fav-var-hint { margin: 4px 0 8px; }
 .snippet-var-overlay { z-index: 80; }
