@@ -271,6 +271,10 @@ export function createPreviewApi(): DesktopApi {
     },
     sql: {
       cancel: async (_requestId: string) => ({ ok: true as const }),
+      importPick: async () => ({ cancelled: true as const }),
+      importRead: async () => {
+        throw new Error('预览模式不支持导入文件')
+      },
       tableStructure: async ({ table }) => ({
         connectionId: 'preview',
         tableName: table,

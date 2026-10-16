@@ -17,6 +17,7 @@ import type {
 import type { ConnectionBundle, ImportPlanItem } from './connectionTransfer'
 import type { AppPrefs } from './prefs'
 import type { TableStructure } from './tableStructure'
+import type { ImportSheetData } from './importPlan'
 
 export type DesktopApi = {
   meta: () => Promise<AppMeta>
@@ -63,6 +64,8 @@ export type DesktopApi = {
     }) => Promise<StatementResult[]>
     cancel: (requestId: string) => Promise<{ ok: boolean }>
     tableStructure: (payload: { connectionId: string; table: string }) => Promise<TableStructure>
+    importPick: () => Promise<{ path: string } | { cancelled: true }>
+    importRead: (filePath: string) => Promise<ImportSheetData>
     updateSqliteCell: (payload: {
       connectionId: string
       table: string

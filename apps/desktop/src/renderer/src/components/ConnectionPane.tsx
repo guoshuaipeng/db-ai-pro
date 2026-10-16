@@ -217,6 +217,16 @@ function TreeNode({
             >
               打开查询
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onMenu(null)
+                ws.openImportWizard({ connectionId: node.connectionId!, tableName: node.tableName! })
+              }}
+            >
+              导入 CSV/Excel
+            </button>
           </div>
         )}
       </div>

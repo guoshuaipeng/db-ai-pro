@@ -64,6 +64,12 @@ const api: DesktopApi = {
       if (result?.error) throw new Error(result.error)
       return result.structure
     },
+    importPick: () => ipcRenderer.invoke('sql:importPick'),
+    importRead: async (filePath: string) => {
+      const result = await ipcRenderer.invoke('sql:importRead', filePath)
+      if (result?.error) throw new Error(result.error)
+      return result.data
+    },
     updateSqliteCell: async (payload) => {
       const result = await ipcRenderer.invoke('sql:updateSqliteCell', payload)
       if (result?.error) throw new Error(result.error)

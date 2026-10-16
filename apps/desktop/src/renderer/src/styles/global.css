@@ -1998,3 +1998,86 @@ button:disabled { cursor: default; opacity: 0.45; }
   border: 1px solid rgba(148, 163, 184, 0.1);
 }
 .stats-samples code { font-size: 12px; color: #cbd5e1; word-break: break-all; }
+
+
+/* M15 — CSV / Excel import wizard */
+.import-overlay { z-index: 72; }
+.import-shell {
+  width: min(880px, calc(100vw - 40px));
+  max-height: min(860px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #111827 0%, #0b1220 100%);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+.import-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+.import-head h2 { margin: 0; font-size: 18px; color: #f8fafc; }
+.import-steps {
+  display: flex;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  overflow: auto;
+}
+.import-steps li {
+  font-size: 12px;
+  color: #64748b;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.import-steps li.is-active {
+  color: #e0f2fe;
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.28);
+}
+.import-body {
+  padding: 14px 18px 18px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.import-card { display: flex; flex-direction: column; gap: 12px; }
+.import-map-wrap {
+  max-height: 320px;
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+.import-map-wrap select {
+  width: 100%;
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+.import-progress-label {
+  margin: 8px 0;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+.import-progress-track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  overflow: hidden;
+}
+.import-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #818cf8);
+  transition: width 160ms ease;
+}

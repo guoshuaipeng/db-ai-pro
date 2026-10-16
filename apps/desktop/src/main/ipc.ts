@@ -30,6 +30,7 @@ import {
 import type { SqlTarget } from './target'
 import { readRedisValue, scanRedisKeys } from './redis'
 import { databaseExists, openDatabase } from './sqlite'
+import { readImportFile } from './importFile'
 import {
   appendQueryHistory,
   applyConnectionImport,
@@ -347,7 +348,34 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     },
   )
 
-    ipcMain.handle('sql:cancel', async (_event, requestId: string) => {
+    
+  ipcMain.handle('sql:importPick', async () => {
+    const win = getWindow()
+    const options = {
+      title: '导入 CSV / Excel',
+      properties: ['openFile'] as Array<'openFile'>,
+      filters: [
+        { name: '表格文件', extensions: ['csv', 'txt', 'xlsx'] },
+        { name: 'CSV', extensions: ['csv', 'txt'] },
+        { name: 'Excel', extensions: ['xlsx'] },
+      ],
+    }
+    const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+    if (result.canceled || !result.filePaths[0]) return { cancelled: true as const }
+    return { path: result.filePaths[0] }
+  })
+
+  ipcMain.handle('sql:importRead', async (_event, filePath: string) => {
+    if (!filePath || typeof filePath !== 'string') return { error: '无效文件路径' }
+    try {
+      const data = await readImportFile(filePath)
+      return { data }
+    } catch (error) {
+      return { error: explainDbError(error) }
+    }
+  })
+
+ipcMain.handle('sql:cancel', async (_event, requestId: string) => {
     if (!requestId || typeof requestId !== 'string') return { ok: false }
     return cancelQuery(requestId)
   })

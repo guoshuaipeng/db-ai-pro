@@ -20,6 +20,13 @@ import { analyzeDestructiveSql } from '@shared/destructiveSql'
 import type { TableStructure } from '@shared/tableStructure'
 import type { Dialect } from '@shared/types'
 
+export type ImportTarget = {
+  connectionId: string
+  tableName?: string
+  dialect?: Dialect
+  nonce: number
+}
+
 export type ColumnStatsTarget =
   | { source: 'result'; column: string; rows: Record<string, unknown>[] }
   | {
@@ -166,6 +173,10 @@ type WorkspaceValue = {
   closeColumnStats: () => void
   runSqlText: (sql: string) => Promise<void>
   openSqlTab: (title: string, sql: string) => void
+  importTarget: ImportTarget | null
+  openImportWizard: (input: { connectionId: string; tableName?: string }) => void
+  closeImportWizard: () => void
+  refreshConnections: (preferredId?: string | null) => Promise<void>
   sidebarWidth: number
   aiWidth: number
   editorRatio: number
@@ -260,6 +271,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [dialog, setDialog] = useState<DialogState>(null)
   const [structureTarget, setStructureTarget] = useState<{ connectionId: string; tableName: string } | null>(null)
   const [columnStatsTarget, setColumnStatsTarget] = useState<ColumnStatsTarget | null>(null)
+  const [importTarget, setImportTarget] = useState<ImportTarget | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(252)
   const [aiWidth, setAiWidth] = useState(360)
   const [editorRatio, setEditorRatio] = useState(1.35)
@@ -461,6 +473,27 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const openColumnStats = (target: ColumnStatsTarget) => setColumnStatsTarget(target)
   const closeColumnStats = () => setColumnStatsTarget(null)
+
+  const openImportWizard = (input: { connectionId: string; tableName?: string }) => {
+    const connection = connections.find((item) => item.id === input.connectionId)
+    setActiveConnectionId(input.connectionId)
+    setImportTarget({
+      connectionId: input.connectionId,
+      tableName: input.tableName,
+      dialect: connection?.dialect,
+      nonce: Date.now(),
+    })
+  }
+
+  const closeImportWizard = () => setImportTarget(null)
+
+  const refreshConnections = async (preferredId?: string | null) => {
+    const rows = await api.connections.list()
+    setConnections(rows)
+    await refreshSchema(rows, preferredId ?? activeConnectionId)
+    pushToast('success', '导入完成，对象树已刷新')
+  }
+
 
   const openSqlTab = (title: string, sql: string) => {
     const id = crypto.randomUUID()
@@ -1127,6 +1160,10 @@ ${sql.trim()}
     closeColumnStats,
     runSqlText,
     openSqlTab,
+    importTarget,
+    openImportWizard,
+    closeImportWizard,
+    refreshConnections,
     sidebarWidth,
     aiWidth,
     editorRatio,
