@@ -31,6 +31,12 @@ import {
   togglePinnedFlag,
 } from '@shared/tabPin'
 import { duplicateTabTitle, sanitizeTabTitle } from '@shared/tabTitle'
+import {
+  popClosedTab,
+  pushClosedTab,
+  snapshotClosedTab,
+  type ClosedTabSnapshot,
+} from '@shared/closedTabStack'
 import { countTreeNodes, extrasFromConnections, filterNodes } from '@shared/tree'
 import { dialectInfo, isKvDialect } from '@shared/types'
 import { buildConnHealth, type ConnHealth } from '@shared/connHealth'
@@ -189,6 +195,8 @@ type WorkspaceValue = {
   closeTabsToRight: (id: string) => void
   renameTab: (id: string, title: string) => void
   duplicateTab: (id: string) => void
+  reopenClosedTab: () => void
+  canReopenClosedTab: boolean
   results: ResultState | null
   setActiveResult: (id: string) => void
   running: boolean
@@ -386,6 +394,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [activeConnectionId, setActiveConnectionId] = useState<string | null>(null)
   const [editorTabs, setEditorTabs] = useState<EditorTabState[]>(seedTabs)
   const [activeEditorId, setActiveEditorId] = useState('query-1')
+  const closedStackRef = useRef<ClosedTabSnapshot[]>([])
+  const [closedStackLen, setClosedStackLen] = useState(0)
   const [resultMap, setResultMap] = useState<Record<string, ResultState>>({})
   const [running, setRunning] = useState(false)
   const [txnOpen, setTxnOpen] = useState(false)
@@ -1031,7 +1041,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setActiveEditorId(id)
   }
 
+  const rememberClosedTab = (tab: EditorTabState) => {
+    closedStackRef.current = pushClosedTab(closedStackRef.current, snapshotClosedTab(tab))
+    setClosedStackLen(closedStackRef.current.length)
+  }
+
   const closeTabNow = (id: string) => {
+    const closing = editorTabs.find((tab) => tab.id === id)
+    if (closing) rememberClosedTab(closing)
     const remaining = editorTabs.filter((tab) => tab.id !== id)
     if (remaining.length === 0) {
       setEditorTabs([
@@ -1114,6 +1131,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (targets.length === 0) return
     const dirty = targets.filter(isTabDirty)
     const apply = () => {
+      for (const tab of targets) rememberClosedTab(tab)
       const ids = new Set(targets.map((tab) => tab.id))
       const remaining = editorTabs.filter((tab) => !ids.has(tab.id))
       setResultMap((current) => {
@@ -1188,6 +1206,33 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       return sortPinnedFirst(next)
     })
     setActiveEditorId(newId)
+  }
+
+
+  const reopenClosedTab = () => {
+    const { stack, item } = popClosedTab(closedStackRef.current)
+    if (!item) {
+      pushToast('info', '没有可重新打开的标签')
+      return
+    }
+    closedStackRef.current = stack
+    setClosedStackLen(stack.length)
+    const connOk =
+      Boolean(item.connectionId) && connections.some((row) => row.id === item.connectionId)
+    const newId = crypto.randomUUID()
+    const restored = withCleanBaseline({
+      id: newId,
+      title: sanitizeTabTitle(item.title),
+      sql: item.sql,
+      connectionId: connOk ? item.connectionId : null,
+      ...(item.pinned ? { pinned: true } : {}),
+      ...(item.browse && connOk ? { browse: { ...item.browse } } : {}),
+    })
+    setEditorTabs((tabs) => sortPinnedFirst([...tabs, restored]))
+    setActiveEditorId(newId)
+    if (item.connectionId && !connOk) {
+      pushToast('info', '原连接已不存在，已以断开状态打开')
+    }
   }
 
 
@@ -2067,6 +2112,8 @@ ${sql.trim()}
     closeTabsToRight,
     renameTab,
     duplicateTab,
+    reopenClosedTab,
+    canReopenClosedTab: closedStackLen > 0,
     results: activeEditor ? (resultMap[activeEditor.id] ?? null) : null,
     setActiveResult: (id) => {
       if (!activeEditor) return

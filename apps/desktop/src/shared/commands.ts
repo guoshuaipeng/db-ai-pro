@@ -28,6 +28,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'query.reopenClosed',
+    title: '重新打开已关闭标签',
+    subtitle: '恢复最近关闭的查询（仅本会话）',
+    keywords: 'reopen closed tab undo close',
+    shortcut: 'Ctrl+Shift+T',
+    category: 'query',
+  },
+  {
     id: 'query.run',
     title: '运行当前 SQL',
     subtitle: '执行编辑器中的语句',
@@ -354,4 +362,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '固定查询标签', keys: '标签右键 · 固定/取消固定' },
   { action: '重命名查询标签', keys: '右键 / 双击 / F2' },
   { action: '复制查询标签', keys: 'Ctrl+Shift+D · 右键' },
+  { action: '重新打开已关闭标签', keys: 'Ctrl+Shift+T' },
 ]

@@ -121,6 +121,9 @@ export function App() {
         case 'query.duplicate':
           if (ws.activeEditor) ws.duplicateTab(ws.activeEditor.id)
           break
+        case 'query.reopenClosed':
+          ws.reopenClosedTab()
+          break
         case 'query.run':
           void ws.run()
           break
