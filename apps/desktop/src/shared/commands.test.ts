@@ -108,6 +108,11 @@ describe('filterCommands', () => {
     expect(filterCommands('清空结果').some((item) => item.id === 'result.clearTabs')).toBe(true)
   })
 
+  it('finds close other/right result tab commands', () => {
+    expect(filterCommands('关闭其他结果').some((item) => item.id === 'result.closeOtherTabs')).toBe(true)
+    expect(filterCommands('关闭右侧结果').some((item) => item.id === 'result.closeTabsToRight')).toBe(true)
+  })
+
   it('finds query templates', () => {
     expect(filterCommands('模板').some((item) => item.id === 'query.templates')).toBe(true)
     expect(filterCommands('COUNT').some((item) => item.id === 'query.tpl.selectCount')).toBe(true)

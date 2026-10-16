@@ -690,6 +690,11 @@ export function ResultPane() {
           activeId={results.activeId}
           onSelect={ws.setActiveResult}
           onClose={(id) => ws.closeResultTab(id)}
+          contextActions={['close-others', 'close-right']}
+          onContextAction={(id, action) => {
+            if (action === 'close-others') ws.closeOtherResultTabs(id)
+            else if (action === 'close-right') ws.closeResultTabsToRight(id)
+          }}
           trailing={
             <button
               type="button"

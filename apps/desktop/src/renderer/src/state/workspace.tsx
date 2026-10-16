@@ -22,7 +22,11 @@ import {
 } from '@shared/schemaTreeRefresh'
 import {
   clearResultTabsToast,
+  closeOtherResultTabsState,
+  closeOtherResultTabsToast,
   closeResultTabState,
+  closeResultTabsToRightState,
+  closeResultTabsToRightToast,
 } from '@shared/resultTabs'
 import { changesSchema, quoteIdentIfNeeded, statementTitle } from '@shared/sql'
 import {
@@ -238,6 +242,8 @@ type WorkspaceValue = {
   results: ResultState | null
   setActiveResult: (id: string) => void
   closeResultTab: (id: string) => void
+  closeOtherResultTabs: (keepId: string) => void
+  closeResultTabsToRight: (fromId: string) => void
   clearResultTabs: () => void
   running: boolean
   lastRun: LastRunStats | null
@@ -2465,7 +2471,36 @@ ${sql.trim()}
         return { ...current, [editorId]: next }
       })
     },
-    clearResultTabs: () => {
+    closeOtherResultTabs: (keepId) => {
+      if (!activeEditor) return
+      const editorId = activeEditor.id
+      const state = resultMap[editorId]
+      if (!state) return
+      const before = state.tabs.length
+      const next = closeOtherResultTabsState(state, keepId)
+      if (!next || next.tabs.length === before) {
+        pushToast('info', closeOtherResultTabsToast(0))
+        return
+      }
+      setResultMap((current) => ({ ...current, [editorId]: next }))
+      pushToast('success', closeOtherResultTabsToast(before - next.tabs.length))
+    },
+    closeResultTabsToRight: (fromId) => {
+      if (!activeEditor) return
+      const editorId = activeEditor.id
+      const state = resultMap[editorId]
+      if (!state) return
+      const before = state.tabs.length
+      const next = closeResultTabsToRightState(state, fromId)
+      const closed = before - next.tabs.length
+      if (closed <= 0) {
+        pushToast('info', closeResultTabsToRightToast(0))
+        return
+      }
+      setResultMap((current) => ({ ...current, [editorId]: next }))
+      pushToast('success', closeResultTabsToRightToast(closed))
+    },
+        clearResultTabs: () => {
       if (!activeEditor) return
       const editorId = activeEditor.id
       const count = resultMap[editorId]?.tabs.length ?? 0

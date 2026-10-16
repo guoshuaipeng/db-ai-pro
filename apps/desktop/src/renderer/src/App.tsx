@@ -219,6 +219,12 @@ export function App() {
         case 'result.clearTabs':
           ws.clearResultTabs()
           break
+        case 'result.closeOtherTabs':
+          if (ws.results?.activeId) ws.closeOtherResultTabs(ws.results.activeId)
+          break
+        case 'result.closeTabsToRight':
+          if (ws.results?.activeId) ws.closeResultTabsToRight(ws.results.activeId)
+          break
         case 'editor.replace':
           emitDataai('dataai:replace')
           break

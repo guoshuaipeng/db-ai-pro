@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   clearResultTabsToast,
+  closeOtherResultTabsState,
+  closeOtherResultTabsToast,
   closeResultTabState,
   closeResultTabToast,
+  closeResultTabsToRightState,
+  closeResultTabsToRightToast,
 } from './resultTabs'
 
 describe('closeResultTabState', () => {
@@ -35,3 +39,29 @@ describe('toasts', () => {
     expect(closeResultTabToast()).toContain('关闭')
   })
 })
+
+describe('closeOtherResultTabsState', () => {
+  it('keeps only the target tab', () => {
+    const state = { tabs: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], activeId: 'a' }
+    expect(closeOtherResultTabsState(state, 'b')).toEqual({ tabs: [{ id: 'b' }], activeId: 'b' })
+    expect(closeOtherResultTabsState(state, 'a')?.tabs).toHaveLength(1)
+  })
+})
+
+describe('closeResultTabsToRightState', () => {
+  it('drops tabs after fromId', () => {
+    const state = { tabs: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], activeId: 'c' }
+    expect(closeResultTabsToRightState(state, 'a')).toEqual({ tabs: [{ id: 'a' }], activeId: 'a' })
+    expect(closeResultTabsToRightState(state, 'b').tabs.map((t) => t.id)).toEqual(['a', 'b'])
+  })
+})
+
+describe('batch toasts', () => {
+  it('reports counts', () => {
+    expect(closeOtherResultTabsToast(0)).toContain('没有')
+    expect(closeOtherResultTabsToast(2)).toContain('2')
+    expect(closeResultTabsToRightToast(0)).toContain('右侧')
+    expect(closeResultTabsToRightToast(1)).toContain('1')
+  })
+})
+

@@ -25,6 +25,8 @@ type ScrollTabsProps = {
   onSelect: (id: string) => void
   onClose?: (id: string) => void
   onContextAction?: (id: string, action: TabContextAction) => void
+  /** When set, only these context actions appear (close still needs onClose). */
+  contextActions?: TabContextAction[]
   onRename?: (id: string, title: string) => void
   /** Move tab to insert-before index (clamped by pin group in workspace). */
   onReorder?: (fromId: string, insertBeforeIndex: number) => void
@@ -43,12 +45,15 @@ export function ScrollTabs({
   onSelect,
   onClose,
   onContextAction,
+  contextActions,
   onRename,
   onReorder,
   onEmptyDoubleClick,
   emptyDoubleClickTitle = '双击空白处新建查询',
   trailing,
 }: ScrollTabsProps) {
+  const allowContext = (action: TabContextAction) =>
+    !contextActions || contextActions.includes(action)
   const scroller = useRef<HTMLDivElement>(null)
   const renameInputRef = useRef<HTMLInputElement>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
@@ -525,12 +530,12 @@ export function ScrollTabs({
               重命名
             </button>
           )}
-          {onContextAction && (
+          {onContextAction && allowContext('duplicate') && (
             <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'duplicate')}>
               复制标签
             </button>
           )}
-          {onContextAction && (
+          {onContextAction && (allowContext('pin') || allowContext('unpin')) && (
             <button
               type="button"
               role="menuitem"
@@ -544,15 +549,15 @@ export function ScrollTabs({
               关闭
             </button>
           )}
-          {onContextAction && (
-            <>
-              <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'close-others')}>
-                关闭其他
-              </button>
-              <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'close-right')}>
-                关闭右侧
-              </button>
-            </>
+          {onContextAction && allowContext('close-others') && (
+            <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'close-others')}>
+              关闭其他
+            </button>
+          )}
+          {onContextAction && allowContext('close-right') && (
+            <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'close-right')}>
+              关闭右侧
+            </button>
           )}
         </div>
       )}
