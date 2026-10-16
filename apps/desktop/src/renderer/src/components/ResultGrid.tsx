@@ -355,13 +355,31 @@ export function ResultToolbar({
             className="result-filter-input"
             value={filterQuery ?? ''}
             onChange={(e) => onFilterQuery(e.target.value)}
-            placeholder="过滤当前结果…"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && (filterQuery ?? '').trim()) {
+                e.preventDefault()
+                e.stopPropagation()
+                onFilterQuery('')
+              }
+            }}
+            placeholder="过滤当前结果…（Esc 清除）"
             aria-label="过滤结果行"
           />
           {(filterQuery ?? '').trim() && (
-            <span className="result-filter-count">
-              {rows.length}/{allCount}
-            </span>
+            <>
+              <span className="result-filter-count">
+                {rows.length}/{allCount}
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost tiny-btn result-filter-clear"
+                title="清除结果筛选（Esc）"
+                aria-label="清除结果筛选"
+                onClick={() => onFilterQuery('')}
+              >
+                清除
+              </button>
+            </>
           )}
         </label>
       )}

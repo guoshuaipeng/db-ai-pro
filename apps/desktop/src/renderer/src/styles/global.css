@@ -2858,6 +2858,11 @@ body.is-col-resizing .grid-col-resizer {
   color: #94a3b8;
   font-variant-numeric: tabular-nums;
 }
+.result-filter-clear {
+  flex: 0 0 auto;
+  margin-left: 2px;
+}
+
 .result-grid-root {
   position: relative;
   display: flex;

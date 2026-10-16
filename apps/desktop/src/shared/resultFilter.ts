@@ -18,3 +18,20 @@ export function filterResultRows(
     })
   })
 }
+
+export function resultFilterActive(query: string): boolean {
+  return query.trim().length > 0
+}
+
+/** Empty-state body when a text filter matches no rows. */
+export function resultFilterEmptyBody(query: string): string {
+  const q = query.trim()
+  if (!q) return '没有匹配的行。'
+  const shown = q.length > 24 ? `${q.slice(0, 24)}…` : q
+  return `没有包含「${shown}」的行。可清除筛选或换个关键字。`
+}
+
+export function resultFilterClearedToast(): string {
+  return '已清除结果筛选'
+}
+

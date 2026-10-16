@@ -632,6 +632,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '重新打开已关闭标签', keys: 'Ctrl+Shift+T' },
   { action: '拖拽调整标签顺序', keys: '标签栏拖拽（固定组内/未固定组内）' },
   { action: '在结果中查找', keys: '结果区 Ctrl+F · 工具栏「查找」' },
+  { action: '清除结果筛选', keys: '结果工具栏「清除」· 筛选框 Esc' },
   { action: '复制单元格', keys: 'Ctrl+C · Shift+双击单元格' },
   { action: '复制结果列名', keys: '结果工具栏「复制列名」· Ctrl+K' },
   { action: '复制结果为 INSERT', keys: '结果工具栏「复制 INSERT」' },

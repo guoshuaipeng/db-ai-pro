@@ -19,7 +19,11 @@ import {
   resultMessageCopyKind,
   resultMessageCopyText,
 } from '@shared/resultMessageCopy'
-import { filterResultRows } from '@shared/resultFilter'
+import {
+  filterResultRows,
+  resultFilterActive,
+  resultFilterEmptyBody,
+} from '@shared/resultFilter'
 import { ResultChart } from './ResultChart'
 import { canChartResult } from '@shared/chartData'
 import { HistoryPanel } from './HistoryPanel'
@@ -842,9 +846,41 @@ export function ResultPane() {
       )}
       {active?.kind === 'plan' && <pre className="message-log plan-log">{active.message}</pre>}
       {active?.kind === 'message' && <pre className="message-log">{active.message}</pre>}
-      {active?.kind === 'grid' && active.columns && view === 'table' && (
-        <ResultGrid columns={active.columns} rows={filteredRows} key={`${active.id}:table`} onFocusColumn={setFocusColumn} onViewRowsChange={setViewRows} onSelectedRowsChange={setSelectedRows} onVisibleColumnsChange={setGridVisibleColumns} />
-      )}
+      {active?.kind === 'grid' &&
+        active.columns &&
+        view === 'table' &&
+        resultFilterActive(resultFilter) &&
+        filteredRows.length === 0 &&
+        (active.rows?.length ?? 0) > 0 && (
+          <EmptyState
+            compact
+            title="没有匹配的行"
+            body={resultFilterEmptyBody(resultFilter)}
+            actions={
+              <button type="button" className="btn btn-ghost" onClick={() => setResultFilter('')}>
+                清除筛选
+              </button>
+            }
+          />
+        )}
+      {active?.kind === 'grid' &&
+        active.columns &&
+        view === 'table' &&
+        !(
+          resultFilterActive(resultFilter) &&
+          filteredRows.length === 0 &&
+          (active.rows?.length ?? 0) > 0
+        ) && (
+          <ResultGrid
+            columns={active.columns}
+            rows={filteredRows}
+            key={`${active.id}:table`}
+            onFocusColumn={setFocusColumn}
+            onViewRowsChange={setViewRows}
+            onSelectedRowsChange={setSelectedRows}
+            onVisibleColumnsChange={setGridVisibleColumns}
+          />
+        )}
       {active?.kind === 'grid' && active.columns && view === 'chart' && chartable && (
         <ResultChart columns={active.columns} rows={active.rows ?? []} key={`${active.id}:chart`} />
       )}

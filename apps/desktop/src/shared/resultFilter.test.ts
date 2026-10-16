@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { filterResultRows } from './resultFilter'
+import {
+  filterResultRows,
+  resultFilterActive,
+  resultFilterClearedToast,
+  resultFilterEmptyBody,
+} from './resultFilter'
 
 describe('filterResultRows', () => {
   const rows = [
@@ -17,3 +22,13 @@ describe('filterResultRows', () => {
     expect(filterResultRows(rows, '仓').map((r) => r.id)).toEqual([3])
   })
 })
+
+describe('resultFilter empty / active helpers', () => {
+  it('detects active filter and builds Chinese empty copy', () => {
+    expect(resultFilterActive('  ')).toBe(false)
+    expect(resultFilterActive('abc')).toBe(true)
+    expect(resultFilterEmptyBody('Beijing')).toContain('Beijing')
+    expect(resultFilterClearedToast()).toContain('清除')
+  })
+})
+
