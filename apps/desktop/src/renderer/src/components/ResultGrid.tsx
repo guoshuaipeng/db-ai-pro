@@ -39,6 +39,8 @@ import {
   type ColumnFilters,
 } from '@shared/resultColumnFilter'
 import { emitDataai, onDataai } from '../appEvents'
+import { ExportColumnDialog } from './ExportColumnDialog'
+import { type ExportFormat } from '@shared/exportColumnPick'
 
 const ROW_HEIGHT = 32
 
@@ -100,6 +102,7 @@ export function ResultToolbar({
   const ws = useWorkspace()
   const [busy, setBusy] = useState(false)
   const [copyNote, setCopyNote] = useState('')
+  const [exportDialog, setExportDialog] = useState<ExportFormat | null>(null)
   const visible = columns.filter((column) => column !== '__rowid__')
   const exportColumns = visible.length > 0 ? visible : columns
   const statsColumn = focusColumn && visible.includes(focusColumn) ? focusColumn : visible[0] ?? null
@@ -144,14 +147,54 @@ export function ResultToolbar({
     )
   }
 
-  const exportCapped = (kind: 'markdown' | 'html' | 'excel') => {
-    const { rows: capped, truncated, total } = capExportRows(rows)
+  const exportCapped = (kind: 'markdown' | 'html' | 'excel', sourceRows: Record<string, unknown>[]) => {
+    const { rows: capped, truncated, total } = capExportRows(sourceRows)
     if (truncated) {
       window.alert(
         `${kind === 'excel' ? 'Excel' : kind === 'markdown' ? 'Markdown' : 'HTML'} 导出已截断为前 ${capped.length.toLocaleString('zh-CN')} 行（共 ${total.toLocaleString('zh-CN')} 行）`,
       )
     }
     return capped
+  }
+
+  const runExportWithColumns = (format: ExportFormat, pickedColumns: string[]) => {
+    if (pickedColumns.length === 0) return
+    setExportDialog(null)
+    if (format === 'csv') {
+      downloadText(`dataai-result-${Date.now()}.csv`, rowsToCsv(pickedColumns, rows), 'text/csv;charset=utf-8')
+      return
+    }
+    if (format === 'json') {
+      downloadText(
+        `dataai-result-${Date.now()}.json`,
+        rowsToJson(pickedColumns, rows),
+        'application/json;charset=utf-8',
+      )
+      return
+    }
+    if (format === 'markdown') {
+      const capped = exportCapped('markdown', rows)
+      downloadText(
+        `dataai-result-${Date.now()}.md`,
+        rowsToMarkdown(pickedColumns, capped),
+        'text/markdown;charset=utf-8',
+      )
+      return
+    }
+    if (format === 'html') {
+      const capped = exportCapped('html', rows)
+      downloadText(
+        `dataai-result-${Date.now()}.html`,
+        rowsToHtml(pickedColumns, capped),
+        'text/html;charset=utf-8',
+      )
+      return
+    }
+    setBusy(true)
+    const capped = exportCapped('excel', rows)
+    void downloadExcel(pickedColumns, capped)
+      .catch((error: unknown) => window.alert(error instanceof Error ? error.message : '导出 Excel 失败'))
+      .finally(() => setBusy(false))
   }
 
   return (
@@ -207,9 +250,8 @@ export function ResultToolbar({
         type="button"
         className="btn btn-ghost tiny-btn"
         disabled={rows.length === 0}
-        onClick={() =>
-          downloadText(`dataai-result-${Date.now()}.csv`, rowsToCsv(exportColumns, rows), 'text/csv;charset=utf-8')
-        }
+        title="选择列后导出 CSV（当前筛选结果）"
+        onClick={() => setExportDialog('csv')}
       >
         导出 CSV
       </button>
@@ -217,13 +259,8 @@ export function ResultToolbar({
         type="button"
         className="btn btn-ghost tiny-btn"
         disabled={rows.length === 0}
-        onClick={() =>
-          downloadText(
-            `dataai-result-${Date.now()}.json`,
-            rowsToJson(exportColumns, rows),
-            'application/json;charset=utf-8',
-          )
-        }
+        title="选择列后导出 JSON（当前筛选结果）"
+        onClick={() => setExportDialog('json')}
       >
         导出 JSON
       </button>
@@ -231,14 +268,8 @@ export function ResultToolbar({
         type="button"
         className="btn btn-ghost tiny-btn"
         disabled={rows.length === 0}
-        onClick={() => {
-          const capped = exportCapped('markdown')
-          downloadText(
-            `dataai-result-${Date.now()}.md`,
-            rowsToMarkdown(exportColumns, capped),
-            'text/markdown;charset=utf-8',
-          )
-        }}
+        title="选择列后导出 Markdown（当前筛选结果）"
+        onClick={() => setExportDialog('markdown')}
       >
         导出 MD
       </button>
@@ -246,14 +277,8 @@ export function ResultToolbar({
         type="button"
         className="btn btn-ghost tiny-btn"
         disabled={rows.length === 0}
-        onClick={() => {
-          const capped = exportCapped('html')
-          downloadText(
-            `dataai-result-${Date.now()}.html`,
-            rowsToHtml(exportColumns, capped),
-            'text/html;charset=utf-8',
-          )
-        }}
+        title="选择列后导出 HTML（当前筛选结果）"
+        onClick={() => setExportDialog('html')}
       >
         导出 HTML
       </button>
@@ -261,13 +286,8 @@ export function ResultToolbar({
         type="button"
         className="btn btn-ghost tiny-btn"
         disabled={busy || rows.length === 0}
-        onClick={() => {
-          setBusy(true)
-          const capped = exportCapped('excel')
-          void downloadExcel(exportColumns, capped)
-            .catch((error: unknown) => window.alert(error instanceof Error ? error.message : '导出 Excel 失败'))
-            .finally(() => setBusy(false))
-        }}
+        title="选择列后导出 Excel（当前筛选结果）"
+        onClick={() => setExportDialog('excel')}
       >
         {busy ? '导出中…' : '导出 Excel'}
       </button>
@@ -316,6 +336,17 @@ export function ResultToolbar({
         复制 VALUES
       </button>
       {copyNote && <span className="result-copy-note">{copyNote}</span>}
+
+      <ExportColumnDialog
+        open={exportDialog != null}
+        format={exportDialog ?? 'csv'}
+        columns={exportColumns}
+        rowCount={rows.length}
+        onCancel={() => setExportDialog(null)}
+        onConfirm={(picked) => {
+          if (exportDialog) runExportWithColumns(exportDialog, picked)
+        }}
+      />
     </div>
   )
 }

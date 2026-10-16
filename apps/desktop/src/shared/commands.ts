@@ -392,4 +392,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '在结果中查找', keys: '结果区 Ctrl+F · 工具栏「查找」' },
   { action: '列宽适应', keys: '工具栏「列宽适应」· Ctrl+K · 表头分隔线双击' },
   { action: '结果列筛选', keys: '表头「筛」· 右键「列筛选…」' },
+  { action: '导出列选择', keys: '导出 CSV/JSON/MD/HTML/Excel 前勾选列' },
 ]

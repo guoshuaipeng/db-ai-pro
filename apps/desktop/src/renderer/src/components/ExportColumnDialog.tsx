@@ -1,0 +1,119 @@
+import { useEffect, useMemo, useState } from 'react'
+import {
+  EXPORT_FORMAT_LABELS,
+  defaultExportColumns,
+  normalizePickedColumns,
+  selectAllExportColumns,
+  selectNoneExportColumns,
+  togglePickedColumn,
+  type ExportFormat,
+} from '@shared/exportColumnPick'
+
+export function ExportColumnDialog({
+  open,
+  format,
+  columns,
+  rowCount,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean
+  format: ExportFormat
+  columns: string[]
+  rowCount: number
+  onCancel: () => void
+  onConfirm: (picked: string[]) => void
+}) {
+  const available = useMemo(() => defaultExportColumns(columns), [columns])
+  const [picked, setPicked] = useState<string[]>(() => available)
+
+  useEffect(() => {
+    if (!open) return
+    setPicked(selectAllExportColumns(columns))
+  }, [open, columns])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onCancel()
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [open, onCancel])
+
+  if (!open) return null
+
+  const selectedCount = normalizePickedColumns(columns, picked).length
+  const label = EXPORT_FORMAT_LABELS[format]
+
+  return (
+    <div className="overlay export-column-overlay" role="presentation" onMouseDown={onCancel}>
+      <div
+        className="dialog dialog-wide export-column-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="export-column-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <h2 id="export-column-title">导出 {label} · 选择列</h2>
+        <p className="dialog-copy">
+          将导出当前表格中的 {rowCount.toLocaleString('zh-CN')} 行（已应用筛选与列筛选）。默认全选可见列。
+        </p>
+        <div className="export-column-toolbar">
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            onClick={() => setPicked(selectAllExportColumns(columns))}
+          >
+            全选
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            onClick={() => setPicked(selectNoneExportColumns())}
+          >
+            全不选
+          </button>
+          <span className="export-column-count">
+            已选 {selectedCount}/{available.length}
+          </span>
+        </div>
+        <ul className="export-column-list" role="listbox" aria-label="导出列" aria-multiselectable="true">
+          {available.map((column) => {
+            const checked = picked.includes(column)
+            return (
+              <li key={column}>
+                <label className={checked ? 'export-column-item is-on' : 'export-column-item'}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) =>
+                      setPicked((current) => togglePickedColumn(current, column, event.target.checked))
+                    }
+                  />
+                  <span>{column}</span>
+                </label>
+              </li>
+            )
+          })}
+        </ul>
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>
+            取消
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={selectedCount === 0}
+            onClick={() => onConfirm(normalizePickedColumns(columns, picked))}
+          >
+            导出 {label}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
