@@ -18,6 +18,7 @@ import {
   buildResultJsonClipboard,
   resultJsonCopiedToast,
 } from '@shared/resultJsonCopy'
+import { cellCopyClickHint, cellValueCopiedNote } from '@shared/cellCopy'
 import {
   columnValues,
   rowsToValuesSql,
@@ -766,7 +767,16 @@ export function ResultGrid({
     if (!column) return
     const raw = displayRows[focus.row]?.[column]
     await navigator.clipboard.writeText(cellClipboardText(raw))
-    setNote('已复制单元格')
+    setNote(cellValueCopiedNote())
+  }
+
+  const copyCellAt = async (rowIndex: number, colIndex: number) => {
+    const column = displayColumns[colIndex]
+    if (!column) return
+    const raw = displayRows[rowIndex]?.[column]
+    await navigator.clipboard.writeText(cellClipboardText(raw))
+    setFocus({ row: rowIndex, col: colIndex })
+    setNote(cellValueCopiedNote())
   }
 
   const copyColumnAsIn = async (column: string) => {
@@ -1360,9 +1370,7 @@ export function ResultGrid({
                       title={
                         (() => {
                           const hint = cellDisplayHint(value)
-                          return canEditSqlite
-                            ? `${hint}（双击查看 · Enter 编辑 / Ctrl+C 复制）`
-                            : `${hint}（双击查看 / Ctrl+C 复制）`
+                          return `${hint}（${cellCopyClickHint(canEditSqlite)}）`
                         })()
                       }
                       className={[
@@ -1387,7 +1395,14 @@ export function ResultGrid({
                         selectRow(rowIndex, event)
                         setFocus({ row: rowIndex, col: colIndex })
                       }}
-                      onDoubleClick={() => openCellPreview(rowIndex, colIndex)}
+                      onDoubleClick={(event) => {
+                        if (event.shiftKey) {
+                          event.preventDefault()
+                          void copyCellAt(rowIndex, colIndex)
+                          return
+                        }
+                        openCellPreview(rowIndex, colIndex)
+                      }}
                     >
                       {isEditing ? (
                         <input
@@ -1522,10 +1537,10 @@ export function ResultGrid({
       />
       {note && <p className="result-footnote">{note}</p>}
       <p className="result-footnote">
-        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；「列宽适应」或表头分隔线双击估算列宽；表头「筛」可按列筛选（与上方筛选框叠加）；「显示列」可隐藏列；双击或「查看单元格」只读预览全文；NULL 与空字符串 "" 分别显示。
+        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；「列宽适应」或表头分隔线双击估算列宽；表头「筛」可按列筛选（与上方筛选框叠加）；「显示列」可隐藏列；双击查看单元格全文，Shift+双击复制单元格；NULL 与空字符串 "" 分别显示。
         {sort ? ` 当前排序：${sort.column} ${sort.direction === 'asc' ? '升序' : '降序'}。` : ''}
       </p>
-      {canEditSqlite && <p className="result-footnote">SQLite：双击查看单元格；Enter 进入编辑（需确认）。隐藏列 __rowid__ 用于定位行。</p>}
+      {canEditSqlite && <p className="result-footnote">SQLite：双击查看 · Shift+双击复制；Enter 进入编辑（需确认）。隐藏列 __rowid__ 用于定位行。</p>}
     </div>
     </div>
   )
