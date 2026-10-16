@@ -1,18 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import {
   PAGE_SIZES,
+  browsePageIndexFromInput,
   buildBrowseSql,
   buildCountSql,
-  qualifyBrowseTable,
+  canFirstPage,
+  canLastPage,
   canNextPage,
   canPrevPage,
   clampBrowsePage,
+  formatBrowseRowRange,
+  formatBrowseTableLabel,
   formatPageInfo,
   normalizeBrowseState,
   normalizePageSize,
   pageCount,
   pageOffset,
+  parseBrowsePageInput,
   parseCountValue,
+  qualifyBrowseTable,
 } from './tablePaging'
 
 describe('tablePaging', () => {
@@ -99,5 +105,28 @@ describe('tablePaging', () => {
       totalRows: 10,
     })
     expect(normalizeBrowseState({ connectionId: 'c1' })).toBeUndefined()
+  })
+})
+
+
+describe('browse polish helpers', () => {
+  const base = {
+    connectionId: 'c',
+    tableName: 'orders',
+    databaseName: 'shop',
+    page: 1,
+    pageSize: 100 as const,
+    totalRows: 250,
+  }
+
+  it('jump / first-last / range / label', () => {
+    expect(parseBrowsePageInput('3')).toBe(3)
+    expect(parseBrowsePageInput('0')).toBeNull()
+    expect(browsePageIndexFromInput(base, 99)).toBe(2)
+    expect(canFirstPage(base)).toBe(true)
+    expect(canLastPage({ ...base, page: 2 })).toBe(false)
+    expect(formatBrowseRowRange(base, 100)).toBe('显示 101–200')
+    expect(formatBrowseRowRange(base, 0)).toBe('本页 0 行')
+    expect(formatBrowseTableLabel(base)).toBe('shop / orders')
   })
 })

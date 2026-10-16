@@ -52,9 +52,19 @@ import {
 import { QueryParamDialog } from './QueryParamDialog'
 import {
   PAGE_SIZES,
+  browseEmptyTableBody,
+  browseEmptyTableTitle,
+  browseJumpToast,
+  browsePageIndexFromInput,
+  browseTableCopiedToast,
+  canFirstPage,
+  canLastPage,
   canNextPage,
   canPrevPage,
+  formatBrowseRowRange,
+  formatBrowseTableLabel,
   formatPageInfo,
+  parseBrowsePageInput,
   type PageSize,
 } from '@shared/tablePaging'
 import { isTabDirty, tabTitleWithDirty } from '@shared/tabDirty'
@@ -580,6 +590,7 @@ export function ResultPane() {
   const active = results?.tabs.find((tab) => tab.id === results.activeId) ?? null
   const [view, setView] = useState<'table' | 'chart'>('table')
   const [focusColumn, setFocusColumn] = useState<string | null>(null)
+  const [browseJump, setBrowseJump] = useState('')
   const [resultFilter, setResultFilter] = useState('')
   const [viewRows, setViewRows] = useState<Record<string, unknown>[]>([])
   const [selectedRows, setSelectedRows] = useState<Record<string, unknown>[]>([])
@@ -676,15 +687,65 @@ export function ResultPane() {
 
   const browse = ws.activeEditor?.browse
   const browseInfo = browse ? formatPageInfo(browse) : ''
+  const browseLabel = browse ? formatBrowseTableLabel(browse) : ''
   const pageRows = active?.kind === 'grid' ? (active.rows?.length ?? 0) : 0
+  const browseRange = browse ? formatBrowseRowRange(browse, pageRows) : ''
   const nextEnabled = browse
     ? canNextPage(browse) && !(browse.totalRows == null && pageRows < browse.pageSize)
     : false
+  const lastEnabled = browse ? canLastPage(browse) : false
+
+  const jumpBrowsePage = () => {
+    if (!browse) return
+    const oneBased = parseBrowsePageInput(browseJump)
+    if (oneBased == null) {
+      ws.pushToast('info', '请输入有效页码')
+      return
+    }
+    const index = browsePageIndexFromInput(browse, oneBased)
+    setBrowseJump(String(index + 1))
+    ws.setBrowsePage(index)
+    ws.pushToast('success', browseJumpToast(index + 1))
+  }
+
+  const copyBrowseTable = () => {
+    if (!browse) return
+    const text = browseLabel || browse.tableName
+    void navigator.clipboard.writeText(text).then(
+      () => ws.pushToast('success', browseTableCopiedToast(text)),
+      () => ws.pushToast('error', '复制失败'),
+    )
+  }
+
+  useEffect(() => {
+    if (!browse) {
+      setBrowseJump('')
+      return
+    }
+    setBrowseJump(String(browse.page + 1))
+  }, [browse?.connectionId, browse?.tableName, browse?.page, browse?.pageSize])
 
   return (
     <section className="result-pane" aria-label="查询结果" tabIndex={-1}>
       {browse && (
         <div className="browse-pager" role="toolbar" aria-label="表数据分页">
+          <button
+            type="button"
+            className="browse-table-chip"
+            title="复制表名"
+            onClick={copyBrowseTable}
+          >
+            {browseLabel}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            disabled={ws.running || !canFirstPage(browse)}
+            onClick={() => ws.setBrowsePage(0)}
+            title="首页"
+          >
+            首页
+          </button>
           <button
             type="button"
             className="btn btn-ghost tiny-btn"
@@ -703,6 +764,46 @@ export function ResultPane() {
           >
             下一页
           </button>
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            disabled={ws.running || !lastEnabled}
+            onClick={() => {
+              if (browse.totalRows == null) return
+              const pages = Math.max(1, Math.ceil(browse.totalRows / browse.pageSize))
+              ws.setBrowsePage(pages - 1)
+            }}
+            title="末页"
+          >
+            末页
+          </button>
+          <label className="browse-jump">
+            <span>跳至</span>
+            <input
+              className="browse-jump-input"
+              value={browseJump}
+              placeholder={String(browse.page + 1)}
+              disabled={ws.running}
+              inputMode="numeric"
+              aria-label="跳转到页码"
+              onChange={(event) => setBrowseJump(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  jumpBrowsePage()
+                }
+              }}
+            />
+            <span>页</span>
+            <button
+              type="button"
+              className="btn btn-ghost tiny-btn"
+              disabled={ws.running}
+              onClick={jumpBrowsePage}
+            >
+              前往
+            </button>
+          </label>
           <label className="browse-page-size">
             <span>每页</span>
             <select
@@ -718,8 +819,9 @@ export function ResultPane() {
               ))}
             </select>
           </label>
-          <span className="browse-page-info" title={browseInfo}>
+          <span className="browse-page-info" title={`${browseInfo} · ${browseRange}`}>
             {browseInfo}
+            {browseRange ? ` · ${browseRange}` : ''}
           </span>
           <button
             type="button"
@@ -910,9 +1012,21 @@ export function ResultPane() {
       {active?.kind === 'grid' && active.rows?.length === 0 && view === 'table' && (
         <EmptyState
           compact
-          kicker="结果"
-          title={resultGridEmptyTitle()}
-          body={resultGridEmptyBody()}
+          kicker={browse ? '表浏览' : '结果'}
+          title={browse ? browseEmptyTableTitle() : resultGridEmptyTitle()}
+          body={browse ? browseEmptyTableBody() : resultGridEmptyBody()}
+          actions={
+            browse ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={ws.running}
+                onClick={() => ws.refreshBrowse()}
+              >
+                刷新本页
+              </button>
+            ) : null
+          }
         />
       )}
     </section>

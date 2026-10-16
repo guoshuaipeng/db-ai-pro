@@ -157,3 +157,71 @@ export function canNextPage(browse: TableBrowseState): boolean {
   // Unknown total: allow next (caller may disable when last page returned < pageSize)
   return true
 }
+
+
+export function canFirstPage(browse: TableBrowseState): boolean {
+  return browse.page > 0
+}
+
+export function canLastPage(browse: TableBrowseState): boolean {
+  const pages = pageCount(browse.totalRows ?? null, browse.pageSize)
+  if (pages == null) return false
+  return browse.page < pages - 1
+}
+
+/** 1-based page number from user input; null if invalid. */
+export function parseBrowsePageInput(raw: string): number | null {
+  const s = raw.trim()
+  if (!s) return null
+  if (!/^\d+$/.test(s)) return null
+  const n = Number(s)
+  if (!Number.isFinite(n) || n < 1) return null
+  return Math.floor(n)
+}
+
+/** Convert 1-based page label to 0-based index, clamped when total known. */
+export function browsePageIndexFromInput(
+  browse: TableBrowseState,
+  oneBasedPage: number,
+): number {
+  const page = Math.max(0, Math.floor(oneBasedPage) - 1)
+  const pages = pageCount(browse.totalRows ?? null, browse.pageSize)
+  if (pages == null) return page
+  return Math.min(page, pages - 1)
+}
+
+/** e.g. 「显示 1–100」 or 「本页 0 行」. */
+export function formatBrowseRowRange(
+  browse: TableBrowseState,
+  pageRowCount: number,
+): string {
+  const count = Math.max(0, Math.floor(pageRowCount))
+  if (count === 0) return '本页 0 行'
+  const start = pageOffset(browse.page, browse.pageSize) + 1
+  const end = start + count - 1
+  return `显示 ${start.toLocaleString('zh-CN')}–${end.toLocaleString('zh-CN')}`
+}
+
+export function formatBrowseTableLabel(browse: TableBrowseState): string {
+  const db = browse.databaseName?.trim()
+  const table = browse.tableName.trim()
+  return db ? `${db} / ${table}` : table
+}
+
+export function browseEmptyTableTitle(): string {
+  return '表中没有数据'
+}
+
+export function browseEmptyTableBody(): string {
+  return '当前表总行数为 0，或本页没有行。可刷新，或在编辑器中写入 INSERT 后再浏览。'
+}
+
+export function browseJumpToast(oneBasedPage: number): string {
+  return `已跳到第 ${Math.max(1, Math.floor(oneBasedPage))} 页`
+}
+
+export function browseTableCopiedToast(label: string): string {
+  const name = label.trim() || '表'
+  const clipped = name.length > 32 ? `${name.slice(0, 31)}…` : name
+  return `已复制「${clipped}」`
+}
