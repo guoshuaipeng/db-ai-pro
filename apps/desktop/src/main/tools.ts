@@ -1,7 +1,7 @@
 import type { TableSpec } from '@shared/schema'
 import { enumHints, schemaForTables, searchRelevantTables } from '@shared/tableCatalog'
 
-export type ToolName = 'search_relevant_tables' | 'get_table_schema' | 'get_column_enums'
+export type ToolName = 'search_relevant_tables' | 'get_table_schema' | 'get_column_enums' | 'generate_sample_inserts'
 
 export type ToolCall = {
   name: ToolName
@@ -67,6 +67,16 @@ export function runTool(tables: TableSpec[], call: ToolCall): ToolResult {
     }
   }
 
+  if (call.name === 'generate_sample_inserts') {
+    return {
+      name: call.name,
+      ok: true,
+      summary: '请在表结构面板使用「样例数据」生成可预览的 INSERT',
+      detail:
+        'DataAI 桌面端在表结构面板提供样例数据填充：按列类型生成 N 行 INSERT，支持深色预览、写入编辑器或确认执行。参数提示：table、count(默认5)。',
+    }
+  }
+
   return { name: call.name, ok: false, summary: '未知工具', detail: '' }
 }
 
@@ -114,4 +124,20 @@ export const OPENAI_TOOLS = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'generate_sample_inserts',
+      description: '为指定表生成样例 INSERT（桌面端表结构面板可预览执行）',
+      parameters: {
+        type: 'object',
+        properties: {
+          table: { type: 'string' },
+          count: { type: 'number' },
+        },
+        required: ['table'],
+      },
+    },
+  },
 ]
+

@@ -18,6 +18,17 @@ import { trimAiTurns } from '@shared/aiMemory'
 import { formatExplainText } from '@shared/explain'
 import { analyzeDestructiveSql } from '@shared/destructiveSql'
 import type { TableStructure } from '@shared/tableStructure'
+import type { Dialect } from '@shared/types'
+
+export type ColumnStatsTarget =
+  | { source: 'result'; column: string; rows: Record<string, unknown>[] }
+  | {
+      source: 'table'
+      connectionId: string
+      tableName: string
+      column: string
+      dialect: Dialect
+    }
 import type { ImportPlanItem } from '@shared/connectionTransfer'
 import type { AiIntent } from '@shared/types'
 import type {
@@ -150,6 +161,11 @@ type WorkspaceValue = {
   closeTableStructure: () => void
   openTableQuery: (connectionId: string, tableName: string) => void
   loadTableStructure: (connectionId: string, tableName: string) => Promise<TableStructure>
+  columnStatsTarget: ColumnStatsTarget | null
+  openColumnStats: (target: ColumnStatsTarget) => void
+  closeColumnStats: () => void
+  runSqlText: (sql: string) => Promise<void>
+  openSqlTab: (title: string, sql: string) => void
   sidebarWidth: number
   aiWidth: number
   editorRatio: number
@@ -243,6 +259,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
   const [dialog, setDialog] = useState<DialogState>(null)
   const [structureTarget, setStructureTarget] = useState<{ connectionId: string; tableName: string } | null>(null)
+  const [columnStatsTarget, setColumnStatsTarget] = useState<ColumnStatsTarget | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(252)
   const [aiWidth, setAiWidth] = useState(360)
   const [editorRatio, setEditorRatio] = useState(1.35)
@@ -442,6 +459,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const loadTableStructure = async (connectionId: string, tableName: string) =>
     api.sql.tableStructure({ connectionId, table: tableName })
 
+  const openColumnStats = (target: ColumnStatsTarget) => setColumnStatsTarget(target)
+  const closeColumnStats = () => setColumnStatsTarget(null)
+
+  const openSqlTab = (title: string, sql: string) => {
+    const id = crypto.randomUUID()
+    setEditorTabs((tabs) => [...tabs, { id, title, sql }])
+    setActiveEditorId(id)
+  }
+
   const selectNode = (node: SchemaNode) => {
     setSelectedId(node.id)
     if (node.connectionId) setActiveConnectionId(node.connectionId)
@@ -511,6 +537,62 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       })
     })
   }
+
+  const runSqlText = async (sql: string) => {
+    if (running) return
+    if (!activeConnection) {
+      pushToast('info', '先在左侧选择一个连接')
+      return
+    }
+    if (isKvDialect(activeConnection.dialect)) {
+      pushToast('info', 'Redis 请使用键浏览器，而不是 SQL 运行')
+      return
+    }
+    if (!(await confirmIfDestructive(sql))) {
+      pushToast('info', '已取消执行')
+      return
+    }
+    const requestId = crypto.randomUUID()
+    sqlRequestRef.current = requestId
+    setRunning(true)
+    try {
+      const prefs = await api.prefs.get()
+      const timeoutMs = prefs.queryTimeoutSec > 0 ? prefs.queryTimeoutSec * 1000 : 0
+      const statements = await api.sql.execute({
+        connectionId: activeConnection.id,
+        sql,
+        requestId,
+        timeoutMs,
+      })
+      const next = resultsFrom(statements)
+      const elapsedMs = statements.reduce((sum, item) => sum + (item.elapsedMs || 0), 0)
+      const rowCount = statements.reduce((sum, item) => sum + (item.rows?.length ?? 0), 0)
+      setLastRun({ rows: rowCount, elapsedMs, ok: statements.every((item) => item.ok), kind: 'run' })
+      if (activeEditor) setResultMap((current) => ({ ...current, [activeEditor.id]: next }))
+      const failed = statements.find((statement) => !statement.ok)
+      if (failed) {
+        pushToast('error', failed.error ?? '执行失败')
+      } else pushToast('success', '执行完成')
+      if (statements.some((statement) => statement.ok && changesSchema(statement.statement))) {
+        const rows = await api.connections.list()
+        setConnections(rows)
+        await refreshSchema(rows, activeConnection.id)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '执行失败'
+      if (/查询已取消|查询已超时/.test(message)) {
+        setLastRun({ rows: 0, elapsedMs: 0, ok: false, kind: 'run' })
+        pushToast('info', message)
+      } else {
+        pushToast('error', message)
+      }
+    } finally {
+      if (sqlRequestRef.current === requestId) sqlRequestRef.current = null
+      setRunning(false)
+    }
+  }
+
+
 
   const cancelRun = () => {
     const requestId = sqlRequestRef.current
@@ -1040,6 +1122,11 @@ ${sql.trim()}
     closeTableStructure,
     openTableQuery,
     loadTableStructure,
+    columnStatsTarget,
+    openColumnStats,
+    closeColumnStats,
+    runSqlText,
+    openSqlTab,
     sidebarWidth,
     aiWidth,
     editorRatio,

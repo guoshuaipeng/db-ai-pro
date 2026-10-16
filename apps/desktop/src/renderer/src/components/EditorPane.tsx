@@ -117,6 +117,7 @@ export function ResultPane() {
   const results = ws.results
   const active = results?.tabs.find((tab) => tab.id === results.activeId) ?? null
   const [view, setView] = useState<'table' | 'chart'>('table')
+  const [focusColumn, setFocusColumn] = useState<string | null>(null)
 
   const chartable =
     active?.kind === 'grid' && active.columns
@@ -166,7 +167,7 @@ export function ResultPane() {
                     </button>
                   </div>
                 )}
-                <ResultToolbar columns={active.columns} rows={active.rows ?? []} />
+                <ResultToolbar columns={active.columns} rows={active.rows ?? []} focusColumn={focusColumn} />
               </div>
             ) : (
               <span className="result-count">输出</span>
@@ -187,7 +188,7 @@ export function ResultPane() {
       {active?.kind === 'plan' && <pre className="message-log plan-log">{active.message}</pre>}
       {active?.kind === 'message' && <pre className="message-log">{active.message}</pre>}
       {active?.kind === 'grid' && active.columns && view === 'table' && (
-        <ResultGrid columns={active.columns} rows={active.rows ?? []} key={`${active.id}:table`} />
+        <ResultGrid columns={active.columns} rows={active.rows ?? []} key={`${active.id}:table`} onFocusColumn={setFocusColumn} />
       )}
       {active?.kind === 'grid' && active.columns && view === 'chart' && chartable && (
         <ResultChart columns={active.columns} rows={active.rows ?? []} key={`${active.id}:chart`} />

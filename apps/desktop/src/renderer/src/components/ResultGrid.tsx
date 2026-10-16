@@ -49,11 +49,16 @@ async function downloadExcel(columns: string[], rows: Record<string, unknown>[])
 export function ResultToolbar({
   columns,
   rows,
+  focusColumn,
 }: {
   columns: string[]
   rows: Record<string, unknown>[]
+  focusColumn?: string | null
 }) {
+  const ws = useWorkspace()
   const [busy, setBusy] = useState(false)
+  const visible = columns.filter((column) => column !== '__rowid__')
+  const statsColumn = focusColumn && visible.includes(focusColumn) ? focusColumn : visible[0] ?? null
 
   const copyAll = async () => {
     await navigator.clipboard.writeText(rowsToCsv(columns, rows))
@@ -61,6 +66,18 @@ export function ResultToolbar({
 
   return (
     <div className="result-tools">
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
+        disabled={!statsColumn || rows.length === 0}
+        title={statsColumn ? `统计列：${statsColumn}` : '无可统计列'}
+        onClick={() => {
+          if (!statsColumn) return
+          ws.openColumnStats({ source: 'result', column: statsColumn, rows })
+        }}
+      >
+        列统计
+      </button>
       <button
         type="button"
         className="btn btn-ghost tiny-btn"
@@ -97,7 +114,15 @@ export function ResultToolbar({
   )
 }
 
-export function ResultGrid({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
+export function ResultGrid({
+  columns,
+  rows,
+  onFocusColumn,
+}: {
+  columns: string[]
+  rows: Record<string, unknown>[]
+  onFocusColumn?: (column: string | null) => void
+}) {
   const ws = useWorkspace()
   const parentRef = useRef<HTMLDivElement>(null)
   const numeric = Object.fromEntries(columns.map((column) => [column, isNumericColumn(rows, column)]))
@@ -124,6 +149,10 @@ export function ResultGrid({ columns, rows }: { columns: string[]; rows: Record<
     setEditing(null)
     setNote(rows.length > 500 ? `已虚拟滚动渲染 ${rows.length.toLocaleString('zh-CN')} 行` : '')
   }, [columns, rows])
+
+  useEffect(() => {
+    onFocusColumn?.(visibleColumns[focus.col] ?? null)
+  }, [focus.col, visibleColumns, onFocusColumn])
 
   useEffect(() => {
     if (editing) return

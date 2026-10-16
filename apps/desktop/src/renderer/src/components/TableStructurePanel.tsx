@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { TableStructure } from '@shared/tableStructure'
 import { useWorkspace } from '../state/workspace'
+import { SampleFillDialog } from './SampleFillDialog'
 
 type Tab = 'columns' | 'ddl' | 'indexes'
 
@@ -12,6 +13,7 @@ export function TableStructurePanel() {
   const [error, setError] = useState('')
   const [structure, setStructure] = useState<TableStructure | null>(null)
   const [copied, setCopied] = useState(false)
+  const [sampleOpen, setSampleOpen] = useState(false)
 
   useEffect(() => {
     if (!target) {
@@ -79,6 +81,14 @@ export function TableStructurePanel() {
             <button
               type="button"
               className="btn btn-ghost tiny-btn"
+              disabled={!structure}
+              onClick={() => setSampleOpen(true)}
+            >
+              样例数据
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost tiny-btn"
               onClick={() => {
                 ws.openTableQuery(target.connectionId, target.tableName)
                 ws.closeTableStructure()
@@ -125,6 +135,7 @@ export function TableStructurePanel() {
                     <th scope="col">可空</th>
                     <th scope="col">默认值</th>
                     <th scope="col">主键</th>
+                    <th scope="col">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -138,6 +149,23 @@ export function TableStructurePanel() {
                       <td>{column.nullable ? 'YES' : 'NO'}</td>
                       <td className="is-default">{column.defaultValue ?? '—'}</td>
                       <td>{column.primaryKey ? 'PK' : ''}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-ghost tiny-btn"
+                          onClick={() =>
+                            ws.openColumnStats({
+                              source: 'table',
+                              connectionId: structure.connectionId,
+                              tableName: structure.tableName,
+                              column: column.name,
+                              dialect: structure.dialect,
+                            })
+                          }
+                        >
+                          统计
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -176,6 +204,9 @@ export function TableStructurePanel() {
           )}
         </div>
       </div>
+      {sampleOpen && structure && (
+        <SampleFillDialog structure={structure} onClose={() => setSampleOpen(false)} />
+      )}
     </div>
   )
 }
