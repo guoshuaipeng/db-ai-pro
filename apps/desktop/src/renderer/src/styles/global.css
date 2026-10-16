@@ -4386,3 +4386,26 @@ body.is-col-resizing .grid-col-resizer {
 .fav-filter {
   margin-top: 4px;
 }
+
+.shortcut-row-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 4px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.shortcut-row-btn:hover {
+  background: color-mix(in srgb, var(--accent, #3b82f6) 12%, transparent);
+}
+.shortcut-row-btn .shortcut-action {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.shortcut-row-btn kbd {
+  flex: 0 0 auto;
+}

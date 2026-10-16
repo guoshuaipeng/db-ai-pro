@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { filterShortcutHelp } from './shortcutHelp'
+import {
+  filterShortcutHelp,
+  formatShortcutHelpClipboard,
+  shortcutHelpEmptyBody,
+  shortcutKeysCopiedToast,
+  shortcutListCopiedToast,
+} from './shortcutHelp'
 
 const rows = [
   { action: '运行 SQL', keys: 'Ctrl+Enter · F5' },
@@ -27,3 +33,14 @@ describe('filterShortcutHelp', () => {
     expect(filterShortcutHelp(rows, 'zzz')).toEqual([])
   })
 })
+
+describe('shortcut clipboard helpers', () => {
+  it('formats TSV lines and Chinese toasts', () => {
+    expect(formatShortcutHelpClipboard(rows)).toContain('运行 SQL')
+    expect(formatShortcutHelpClipboard(rows)).toContain('\t')
+    expect(shortcutKeysCopiedToast('运行 SQL')).toContain('运行 SQL')
+    expect(shortcutListCopiedToast(3)).toContain('3')
+    expect(shortcutHelpEmptyBody()).toContain('匹配')
+  })
+})
+

@@ -607,7 +607,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '展开对象树下一级', keys: '连接栏「展开」· Ctrl+K' },
   { action: '折叠对象树', keys: '连接栏「折叠」· Ctrl+K' },
   { action: '聚焦编辑器', keys: 'Ctrl+Shift+1' },
-  { action: '快捷键说明', keys: 'F1' },
+  { action: '快捷键说明', keys: 'F1 · 点击行复制按键 ·「复制列表」' },
   { action: '收藏片段变量 {{table}} / {{limit}}', keys: '插入时填写' },
   { action: '最近表 / 最近查询', keys: '标题栏「最近」· Ctrl+K' },
   { action: '全局搜索表 / 列 / 收藏', keys: 'Ctrl+K · Ctrl+P 输入关键字' },
