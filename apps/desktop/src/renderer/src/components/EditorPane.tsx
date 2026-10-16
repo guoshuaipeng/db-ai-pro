@@ -14,6 +14,7 @@ import { TabConnectionSelect } from './TabConnectionSelect'
 import { SqlEditor } from './SqlEditor'
 import { ResultGrid, ResultToolbar } from './ResultGrid'
 import { ResultSummaryBar } from './ResultSummaryBar'
+import { resultGridEmptyBody, resultGridEmptyTitle } from '@shared/resultSummary'
 import {
   resultMessageCopiedToast,
   resultMessageCopyKind,
@@ -828,11 +829,13 @@ export function ResultPane() {
               : undefined
           }
           selectedRows={selectedRows.length}
+          columnCount={active?.kind === 'grid' ? (active.columns?.length ?? 0) : undefined}
           elapsedMs={lastRun?.elapsedMs}
           slow={slow}
           slowThresholdMs={ws.slowQueryMs}
           affectedRows={lastRun?.affectedRows}
           resultSetCount={gridCount}
+          onToast={ws.pushToast}
         />
       )}
 
@@ -885,7 +888,12 @@ export function ResultPane() {
         <ResultChart columns={active.columns} rows={active.rows ?? []} key={`${active.id}:chart`} />
       )}
       {active?.kind === 'grid' && active.rows?.length === 0 && view === 'table' && (
-        <p className="result-footnote">这条语句没有返回行。</p>
+        <EmptyState
+          compact
+          kicker="结果"
+          title={resultGridEmptyTitle()}
+          body={resultGridEmptyBody()}
+        />
       )}
     </section>
   )

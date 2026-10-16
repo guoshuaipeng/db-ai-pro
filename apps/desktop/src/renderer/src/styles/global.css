@@ -4381,14 +4381,23 @@ body.is-col-resizing .grid-col-resizer {
 
 .result-summary-bar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
   padding: 4px 10px;
-  border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.02);
-  font-size: 12px;
-  color: var(--ink-secondary);
+  border-bottom: 1px solid var(--hairline);
+}
+.result-summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+.result-summary-copy {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 .result-summary-chip {
   display: inline-flex;

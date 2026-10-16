@@ -9,6 +9,8 @@ export type ResultSummaryInput = {
   /** Rows currently shown (after global + column filters). */
   shownRows?: number
   selectedRows?: number
+  /** Visible / returned column count for grids. */
+  columnCount?: number
   elapsedMs?: number | null
   slow?: boolean
   affectedRows?: number | null
@@ -40,6 +42,13 @@ export function buildResultSummaryParts(input: ResultSummaryInput): ResultSummar
       parts.push({
         key: 'selected',
         text: `已选 ${input.selectedRows!.toLocaleString('zh-CN')}`,
+        tone: 'muted',
+      })
+    }
+    if (typeof input.columnCount === 'number' && input.columnCount > 0) {
+      parts.push({
+        key: 'cols',
+        text: `${input.columnCount.toLocaleString('zh-CN')} 列`,
         tone: 'muted',
       })
     }
@@ -76,4 +85,23 @@ export function buildResultSummaryParts(input: ResultSummaryInput): ResultSummar
   }
 
   return parts
+}
+
+/** Plain clipboard line for the summary bar. */
+export function formatResultSummaryClipboard(parts: readonly ResultSummaryPart[]): string {
+  return parts.map((part) => part.text).join(' · ')
+}
+
+export function resultSummaryCopiedToast(partCount: number): string {
+  const n = Math.max(0, partCount)
+  if (n === 0) return '没有可复制的摘要'
+  return '已复制结果摘要'
+}
+
+export function resultGridEmptyTitle(): string {
+  return '没有返回行'
+}
+
+export function resultGridEmptyBody(): string {
+  return '查询已成功执行，但结果集为空。可检查 WHERE / JOIN，或改用 COUNT(*) 确认是否有匹配数据。'
 }
