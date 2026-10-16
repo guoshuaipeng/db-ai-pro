@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { dirtyTabCount, isTabDirty, tabTitleWithDirty, withCleanBaseline } from './tabDirty'
+import {
+  dirtyBannerTitle,
+  dirtyCloseTabDetail,
+  dirtyMarkCleanLabel,
+  dirtyTabCount,
+  dirtyTabCountLabel,
+  isTabDirty,
+  tabTitleWithDirty,
+  withCleanBaseline,
+} from './tabDirty'
 
 describe('tabDirty', () => {
   it('treats missing baseline as clean', () => {
@@ -21,5 +30,13 @@ describe('tabDirty', () => {
   it('prefixes dirty titles with a bullet', () => {
     expect(tabTitleWithDirty('客户', false)).toBe('客户')
     expect(tabTitleWithDirty('客户', true)).toBe('• 客户')
+  })
+
+  it('exposes unsaved UI copy', () => {
+    expect(dirtyBannerTitle()).toContain('未保存')
+    expect(dirtyCloseTabDetail('客户')).toContain('客户')
+    expect(dirtyMarkCleanLabel()).toContain('已保存')
+    expect(dirtyTabCountLabel(0)).toBeNull()
+    expect(dirtyTabCountLabel(2)).toBe('2 个未保存')
   })
 })

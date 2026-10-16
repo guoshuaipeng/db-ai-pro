@@ -5076,3 +5076,38 @@ body.is-col-resizing .grid-col-resizer {
 .btn.is-selection-run:not(:disabled) {
   box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.45);
 }
+
+
+.dirty-tab-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 0 12px 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(127, 29, 29, 0.28);
+  color: #fecaca;
+}
+.dirty-tab-banner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+}
+.dirty-tab-banner-copy strong {
+  font-size: 13px;
+  color: #fee2e2;
+}
+.dirty-tab-banner-copy span {
+  opacity: 0.92;
+}
+.tab.is-dirty:not(.is-active) {
+  box-shadow: inset 3px 0 0 rgba(248, 113, 113, 0.75);
+}
+.tab.is-dirty.is-active {
+  box-shadow: inset 3px 0 0 rgba(252, 165, 165, 0.95);
+}

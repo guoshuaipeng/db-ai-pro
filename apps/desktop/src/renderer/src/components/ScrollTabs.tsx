@@ -12,6 +12,8 @@ type TabItem = {
   badge?: string
   tone?: 'warn' | 'muted'
   pinned?: boolean
+  /** Unsaved SQL relative to clean baseline. */
+  dirty?: boolean
   /** Connection colorTag hex (left stripe); omit/null = neutral. */
   color?: string | null
 }
@@ -253,6 +255,7 @@ export function ScrollTabs({
             'tab',
             selected ? 'is-active' : '',
             tab.pinned ? 'is-pinned' : '',
+            tab.dirty ? 'is-dirty' : '',
             renaming ? 'is-renaming' : '',
             draggingId === tab.id ? 'is-dragging' : '',
             dropBeforeIndex === index ? 'is-drop-before' : '',

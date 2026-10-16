@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { dirtyDiscardLabel, dirtyKeepLabel } from '@shared/tabDirty'
 import { DIALECTS, dialectInfo, needsServerDatabase } from '@shared/types'
 import { CONN_COLOR_TAGS } from '@shared/connGroups'
 import type { ConnectionInput, ConnectionPublic, Dialect } from '@shared/types'
@@ -36,10 +37,10 @@ export function Dialogs() {
           <p className="dialog-copy">{detail}</p>
           <div className="dialog-actions">
             <button type="button" className="btn btn-ghost" onClick={() => onDecide('keep')}>
-              继续编辑
+              {dirtyKeepLabel()}
             </button>
             <button type="button" className="btn btn-danger" onClick={() => onDecide('discard')}>
-              丢弃更改
+              {dirtyDiscardLabel()}
             </button>
           </div>
         </div>

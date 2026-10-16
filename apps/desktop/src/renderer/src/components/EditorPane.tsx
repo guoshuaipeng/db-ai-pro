@@ -90,7 +90,16 @@ import {
   parseBrowsePageInput,
   type PageSize,
 } from '@shared/tablePaging'
-import { isTabDirty, tabTitleWithDirty } from '@shared/tabDirty'
+import {
+  dirtyBannerBody,
+  dirtyBannerTitle,
+  dirtyMarkCleanLabel,
+  dirtyMarkCleanTitle,
+  dirtyTabCount,
+  dirtyTabCountLabel,
+  isTabDirty,
+  tabTitleWithDirty,
+} from '@shared/tabDirty'
 import { resolveTabConnectionColor } from '@shared/tabConnectionColor'
 
 export function EditorPane() {
@@ -309,6 +318,9 @@ export function EditorPane() {
   )
 
   const runStatementCount = runBufferStatementCount(ws.activeEditor?.sql)
+  const activeTabDirty = ws.activeEditor ? isTabDirty(ws.activeEditor) : false
+  const unsavedCountLabel = dirtyTabCountLabel(dirtyTabCount(ws.editorTabs))
+
   const selectionActive = hasEditorSelection(ws.editorSelection)
   const runLabel = selectionRunButtonLabel(selectionActive, runStatementCount)
   const runTitle = selectionRunButtonTitle(selectionActive, ws.editorSelection, runStatementCount)
@@ -324,6 +336,7 @@ export function EditorPane() {
           badge: ws.tabDisconnected(tab) ? '断开' : undefined,
           tone: ws.tabDisconnected(tab) ? ('warn' as const) : undefined,
           pinned: tab.pinned === true,
+          dirty: isTabDirty(tab),
           color: resolveTabConnectionColor(tab.connectionId, ws.connections),
         }))}
         activeId={ws.activeEditor?.id ?? ''}
@@ -581,6 +594,26 @@ export function EditorPane() {
             <strong>{selectionRunBannerTitle()}</strong>
             <span>{selectionRunBannerBody(ws.editorSelection)}</span>
           </div>
+        </div>
+      ) : null}
+
+      {activeTabDirty ? (
+        <div className="dirty-tab-banner" role="status" aria-live="polite">
+          <div className="dirty-tab-banner-copy">
+            <strong>{dirtyBannerTitle()}</strong>
+            <span>
+              {dirtyBannerBody()}
+              {unsavedCountLabel ? `（${unsavedCountLabel}）` : ''}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            title={dirtyMarkCleanTitle()}
+            onClick={() => ws.activeEditor && ws.markTabClean(ws.activeEditor.id)}
+          >
+            {dirtyMarkCleanLabel()}
+          </button>
         </div>
       ) : null}
 

@@ -48,7 +48,16 @@ import {
   type TableBrowseState,
 } from '@shared/tablePaging'
 import { INITIAL_TABS } from '@shared/session'
-import { isTabDirty, withCleanBaseline } from '@shared/tabDirty'
+import {
+  dirtyBatchCloseDetail,
+  dirtyCloseTabDetail,
+  dirtyCloseTabTitle,
+  dirtyCloseWindowDetail,
+  dirtyCloseWindowTitle,
+  dirtyMarkCleanToast,
+  isTabDirty,
+  withCleanBaseline,
+} from '@shared/tabDirty'
 import { suggestedSqlFileName, tabTitleFromSqlPath } from '@shared/sqlFileName'
 import {
   connectionEndpointCopiedToast,
@@ -237,6 +246,8 @@ type WorkspaceValue = {
   openSqlTabsFromTexts: (items: { title: string; sql: string }[]) => void
   newTab: () => void
   closeTab: (id: string) => void
+  /** Accept current SQL as clean baseline for a tab. */
+  markTabClean: (id: string) => void
   isEditorDirty: (id: string) => boolean
   requestCloseWindow: () => void
   togglePinTab: (id: string) => void
@@ -1333,8 +1344,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setDialog({
       type: 'unsaved',
       scope: 'tab',
-      title: '关闭未保存的标签？',
-      detail: `「${tab.title}」的 SQL 已修改，关闭后将丢弃这些更改。`,
+      title: dirtyCloseTabTitle(),
+      detail: dirtyCloseTabDetail(tab.title),
       onDecide: (decision) => {
         setDialog(null)
         if (decision === 'discard') closeTabNow(id)
@@ -1342,7 +1353,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  const isEditorDirty = (id: string) => {
+  const markTabClean = (id: string) => {
+    setEditorTabs((tabs) =>
+      tabs.map((tab) => (tab.id === id ? withCleanBaseline({ ...tab, sql: tab.sql }) : tab)),
+    )
+    pushToast('success', dirtyMarkCleanToast())
+  }
+
+    const isEditorDirty = (id: string) => {
     const tab = editorTabs.find((row) => row.id === id)
     return tab ? isTabDirty(tab) : false
   }
@@ -1361,8 +1379,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setDialog({
       type: 'unsaved',
       scope: 'window',
-      title: '有未保存的查询标签',
-      detail: `以下标签的 SQL 已修改：${names}${more}。关闭前请确认是否丢弃这些编辑。`,
+      title: dirtyCloseWindowTitle(dirty.length),
+      detail: dirtyCloseWindowDetail(names, more),
       onDecide: (decision) => {
         setDialog(null)
         if (decision === 'discard') void api.window.close().catch(() => undefined)
@@ -1413,7 +1431,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       type: 'unsaved',
       scope: 'tab',
       title: dialogTitle,
-      detail: `将关闭 ${targets.length} 个未固定标签，其中未保存：${names}${more}。固定标签会保留。`,
+      detail: `${dirtyBatchCloseDetail(targets.length, names, more)} 固定标签会保留。`,
       onDecide: (decision) => {
         setDialog(null)
         if (decision === 'discard') apply()
@@ -2459,6 +2477,7 @@ ${sql.trim()}
     openSqlTabsFromTexts,
     newTab,
     closeTab,
+    markTabClean,
     isEditorDirty,
     requestCloseWindow,
     togglePinTab,
