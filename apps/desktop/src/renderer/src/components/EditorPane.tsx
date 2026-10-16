@@ -5,6 +5,8 @@ import { IconClock, IconPlay, IconPlus, IconStar, IconStop } from './icons'
 import { ScrollTabs } from './ScrollTabs'
 import { SqlEditor } from './SqlEditor'
 import { ResultGrid, ResultToolbar } from './ResultGrid'
+import { ResultChart } from './ResultChart'
+import { canChartResult } from '@shared/chartData'
 import { HistoryPanel } from './HistoryPanel'
 import { EmptyState } from './EmptyState'
 import { FavoritesPanel } from './FavoritesPanel'
@@ -114,6 +116,22 @@ export function ResultPane() {
   const ws = useWorkspace()
   const results = ws.results
   const active = results?.tabs.find((tab) => tab.id === results.activeId) ?? null
+  const [view, setView] = useState<'table' | 'chart'>('table')
+
+  const chartable =
+    active?.kind === 'grid' && active.columns
+      ? canChartResult(active.columns, active.rows ?? [])
+      : false
+
+  useEffect(() => {
+    setView('table')
+  }, [active?.id])
+
+  useEffect(() => {
+    if (!chartable && view === 'chart') setView('table')
+  }, [chartable, view])
+
+  const gridCount = results?.tabs.filter((tab) => tab.kind === 'grid').length ?? 0
 
   return (
     <section className="result-pane" aria-label="查询结果">
@@ -126,7 +144,28 @@ export function ResultPane() {
           trailing={
             active?.kind === 'grid' && active.columns ? (
               <div className="result-trailing">
+                {gridCount > 1 && (
+                  <span className="result-count result-sets">{gridCount} 个结果集</span>
+                )}
                 <span className="result-count">{active.rows?.length ?? 0} 行</span>
+                {chartable && (
+                  <div className="result-view-toggle" role="group" aria-label="结果视图">
+                    <button
+                      type="button"
+                      className={view === 'table' ? 'btn btn-ghost tiny-btn is-active' : 'btn btn-ghost tiny-btn'}
+                      onClick={() => setView('table')}
+                    >
+                      表格
+                    </button>
+                    <button
+                      type="button"
+                      className={view === 'chart' ? 'btn btn-ghost tiny-btn is-active' : 'btn btn-ghost tiny-btn'}
+                      onClick={() => setView('chart')}
+                    >
+                      图表
+                    </button>
+                  </div>
+                )}
                 <ResultToolbar columns={active.columns} rows={active.rows ?? []} />
               </div>
             ) : (
@@ -147,10 +186,15 @@ export function ResultPane() {
       )}
       {active?.kind === 'plan' && <pre className="message-log plan-log">{active.message}</pre>}
       {active?.kind === 'message' && <pre className="message-log">{active.message}</pre>}
-      {active?.kind === 'grid' && active.columns && (
-        <ResultGrid columns={active.columns} rows={active.rows ?? []} key={active.id} />
+      {active?.kind === 'grid' && active.columns && view === 'table' && (
+        <ResultGrid columns={active.columns} rows={active.rows ?? []} key={`${active.id}:table`} />
       )}
-      {active?.kind === 'grid' && active.rows?.length === 0 && <p className="result-footnote">这条语句没有返回行。</p>}
+      {active?.kind === 'grid' && active.columns && view === 'chart' && chartable && (
+        <ResultChart columns={active.columns} rows={active.rows ?? []} key={`${active.id}:chart`} />
+      )}
+      {active?.kind === 'grid' && active.rows?.length === 0 && view === 'table' && (
+        <p className="result-footnote">这条语句没有返回行。</p>
+      )}
     </section>
   )
 }

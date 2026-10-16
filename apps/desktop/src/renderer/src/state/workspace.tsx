@@ -40,6 +40,8 @@ export type ResultTab = {
   columns?: string[]
   rows?: Record<string, unknown>[]
   message?: string
+  statementIndex?: number
+  rowCount?: number
 }
 
 export type ResultState = { tabs: ResultTab[]; activeId: string }
@@ -168,26 +170,35 @@ function seedTabs(): EditorTabState[] {
 function resultsFrom(statements: StatementResult[]): ResultState {
   const tabs: ResultTab[] = []
   const lines: string[] = []
+  const gridTotal = statements.filter((result) => result.ok && result.columns).length
   statements.forEach((result, index) => {
-    const title = statementTitle(result.statement, index)
+    const base = statementTitle(result.statement, index)
     if (result.ok && result.columns) {
+      const rowCount = result.rows?.length ?? 0
+      const title =
+        gridTotal > 1 ? `${base} · ${rowCount} 行` : rowCount > 0 ? `${base} · ${rowCount} 行` : base
       tabs.push({
         id: `grid-${index}`,
         title,
         kind: 'grid',
         columns: result.columns,
         rows: result.rows ?? [],
+        statementIndex: index,
+        rowCount,
       })
-      lines.push(`${title} · ${result.rows?.length ?? 0} 行 · ${result.elapsedMs} ms`)
+      lines.push(`【${index + 1}】${base} · ${rowCount} 行 · ${result.elapsedMs} ms`)
     } else if (result.ok) {
-      lines.push(`${title} · 已影响 ${result.rowsAffected ?? 0} 行 · ${result.elapsedMs} ms`)
+      lines.push(
+        `【${index + 1}】${base} · 已影响 ${result.rowsAffected ?? 0} 行 · ${result.elapsedMs} ms`,
+      )
     } else {
-      lines.push(`${title} · ${result.error ?? '执行失败'}`)
+      lines.push(`【${index + 1}】${base} · ${result.error ?? '执行失败'}`)
     }
   })
+  const messageTitle = gridTotal > 1 ? `消息 · ${gridTotal} 个结果集` : '消息'
   tabs.push({
     id: 'messages',
-    title: '消息',
+    title: messageTitle,
     kind: 'message',
     message: lines.join('\n') || '没有可执行的语句',
   })
