@@ -648,6 +648,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '查询标签连接色', keys: '连接颜色标记 → 标签左侧色条' },
   { action: '括号配对着色', keys: '设置 → 外观 · Ctrl+K「括号」' },
   { action: '慢查询历史', keys: '历史面板「仅慢查询」· Ctrl+K' },
+  { action: '历史筛选 / 复制 SQL', keys: '历史面板筛选框 · 条目「复制」' },
   { action: '结果摘要条', keys: '结果区标签下方自动显示' },
   { action: '拖拽插入 SQL', keys: '收藏/历史/对象树 → 拖到编辑器' },
   { action: '显示的库', keys: '连接菜单「显示的库」· 筛选 / 反选' },

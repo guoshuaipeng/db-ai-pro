@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { historyPreview } from '@shared/queryHistory'
+import {
+  filterQueryHistory,
+  historyFilterEmptyBody,
+  historyPreview,
+  historySqlCopiedToast,
+} from '@shared/queryHistory'
 import { setSqlDragData } from '@shared/sqlDragDrop'
 import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
 import {
@@ -8,6 +13,7 @@ import {
   SLOW_QUERY_HISTORY_LIMIT,
 } from '@shared/slowQueryHistory'
 import type { QueryHistoryEntry } from '@shared/types'
+import { EmptyState } from './EmptyState'
 import { IconClock, IconPlay } from './icons'
 import { useWorkspace } from '../state/workspace'
 
@@ -39,10 +45,16 @@ export function HistoryPanel({
   const [rows, setRows] = useState<QueryHistoryEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [slowOnly, setSlowOnly] = useState(false)
+  const [filterQuery, setFilterQuery] = useState('')
+  const [copyNote, setCopyNote] = useState('')
   const connectionId = ws.activeConnection?.id ?? null
 
   useEffect(() => {
-    if (open) setSlowOnly(slowOnlyDefault === true)
+    if (open) {
+      setSlowOnly(slowOnlyDefault === true)
+      setFilterQuery('')
+      setCopyNote('')
+    }
   }, [open, slowOnlyDefault])
 
   useEffect(() => {
@@ -68,15 +80,28 @@ export function HistoryPanel({
     }
   }, [open, connectionId, ws])
 
-
   const slowCount = useMemo(
     () => countSlowQueryHistory(rows, ws.slowQueryMs),
     [rows, ws.slowQueryMs],
   )
-  const visibleRows = useMemo(
+  const scopedRows = useMemo(
     () => (slowOnly ? filterSlowQueryHistory(rows, ws.slowQueryMs, SLOW_QUERY_HISTORY_LIMIT) : rows),
     [rows, slowOnly, ws.slowQueryMs],
   )
+  const visibleRows = useMemo(
+    () => filterQueryHistory(scopedRows, filterQuery),
+    [scopedRows, filterQuery],
+  )
+
+  const copySql = async (sql: string) => {
+    try {
+      await navigator.clipboard.writeText(sql)
+      setCopyNote(historySqlCopiedToast())
+      window.setTimeout(() => setCopyNote(''), 2000)
+    } catch {
+      ws.pushToast('error', '复制失败')
+    }
+  }
 
   if (!open) return null
 
@@ -115,13 +140,68 @@ export function HistoryPanel({
           </button>
         </div>
       </header>
-      {!connectionId && <p className="history-empty">先选择一个连接。</p>}
+
+      {connectionId && !loading && rows.length > 0 && (
+        <label className="history-filter">
+          <span className="history-filter-label">筛选</span>
+          <input
+            className="history-filter-input"
+            value={filterQuery}
+            onChange={(event) => setFilterQuery(event.target.value)}
+            placeholder="按 SQL / 错误关键字过滤…"
+            aria-label="筛选查询历史"
+          />
+          {filterQuery.trim() && (
+            <span className="history-filter-count">
+              {visibleRows.length}/{scopedRows.length}
+            </span>
+          )}
+        </label>
+      )}
+      {copyNote && <p className="history-copy-note" role="status">{copyNote}</p>}
+
+      {!connectionId && (
+        <EmptyState
+          compact
+          title="未选择连接"
+          body="先在对象树或标签上选一个连接，再查看该连接的执行历史。"
+        />
+      )}
       {connectionId && loading && <p className="history-empty">载入中…</p>}
-      {connectionId && !loading && rows.length === 0 && <p className="history-empty">还没有执行记录。</p>}
-      {connectionId && !loading && rows.length > 0 && slowOnly && visibleRows.length === 0 && (
-        <p className="history-empty">
-          没有超过 {ws.slowQueryMs.toLocaleString('zh-CN')} ms 的慢查询（阈值可在设置中调整）。
-        </p>
+      {connectionId && !loading && rows.length === 0 && (
+        <EmptyState
+          compact
+          title="还没有执行记录"
+          body="在此连接上运行 SQL 后，成功与失败的语句会出现在这里，可点开重跑或拖到编辑器。"
+        />
+      )}
+      {connectionId &&
+        !loading &&
+        rows.length > 0 &&
+        scopedRows.length === 0 &&
+        !filterQuery.trim() && (
+          <EmptyState
+            compact
+            title="没有慢查询"
+            body={`没有超过 ${ws.slowQueryMs.toLocaleString('zh-CN')} ms 的记录（阈值可在设置中调整）。`}
+            actions={
+              <button type="button" className="btn btn-ghost" onClick={() => setSlowOnly(false)}>
+                显示全部历史
+              </button>
+            }
+          />
+        )}
+      {connectionId && !loading && rows.length > 0 && scopedRows.length > 0 && visibleRows.length === 0 && (
+        <EmptyState
+          compact
+          title="没有匹配的记录"
+          body={historyFilterEmptyBody(slowOnly)}
+          actions={
+            <button type="button" className="btn btn-ghost" onClick={() => setFilterQuery('')}>
+              清除筛选
+            </button>
+          }
+        />
       )}
       {connectionId && !loading && visibleRows.length > 0 && (
         <ul className="history-list">
@@ -169,6 +249,15 @@ export function HistoryPanel({
                 {!entry.ok && entry.error && <span className="history-error">{entry.error}</span>}
               </button>
               <div className="history-item-actions">
+                <button
+                  type="button"
+                  className="tiny-btn btn"
+                  aria-label="复制 SQL"
+                  title="复制 SQL"
+                  onClick={() => void copySql(entry.sql)}
+                >
+                  复制
+                </button>
                 <button
                   type="button"
                   className="icon-btn"

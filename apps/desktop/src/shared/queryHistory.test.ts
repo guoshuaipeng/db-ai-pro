@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { historyPreview, pushQueryHistory } from './queryHistory'
+import {
+  filterQueryHistory,
+  historyFilterEmptyBody,
+  historyPreview,
+  historySqlCopiedToast,
+  pushQueryHistory,
+} from './queryHistory'
 import type { QueryHistoryEntry } from './types'
 
 function entry(partial: Partial<QueryHistoryEntry> & Pick<QueryHistoryEntry, 'id' | 'sql'>): QueryHistoryEntry {
@@ -44,3 +50,25 @@ describe('historyPreview', () => {
     expect(historyPreview('x'.repeat(50), 10)).toBe(`${'x'.repeat(9)}…`)
   })
 })
+
+describe('filterQueryHistory', () => {
+  it('filters by sql and error case-insensitively', () => {
+    const rows = [
+      entry({ id: '1', sql: 'SELECT * FROM orders' }),
+      entry({ id: '2', sql: 'select 1', ok: false, error: 'syntax error near FROM' }),
+      entry({ id: '3', sql: 'update users set x=1' }),
+    ]
+    expect(filterQueryHistory(rows, 'order').map((r) => r.id)).toEqual(['1'])
+    expect(filterQueryHistory(rows, 'FROM').map((r) => r.id)).toEqual(['1', '2'])
+    expect(filterQueryHistory(rows, '  ')).toHaveLength(3)
+  })
+})
+
+describe('history copy / empty copy', () => {
+  it('returns Chinese strings', () => {
+    expect(historySqlCopiedToast()).toContain('复制')
+    expect(historyFilterEmptyBody(false)).toContain('匹配')
+    expect(historyFilterEmptyBody(true)).toContain('慢查询')
+  })
+})
+

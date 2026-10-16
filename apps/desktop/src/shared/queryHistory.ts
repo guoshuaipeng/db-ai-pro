@@ -19,3 +19,27 @@ export function historyPreview(sql: string, max = 96): string {
   if (compact.length <= max) return compact
   return `${compact.slice(0, max - 1)}…`
 }
+
+/** Case-insensitive filter by SQL (and error text). Empty query → copy of input. */
+export function filterQueryHistory(
+  entries: readonly QueryHistoryEntry[],
+  query: string,
+): QueryHistoryEntry[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return entries.slice()
+  return entries.filter((entry) => {
+    if (entry.sql.toLowerCase().includes(q)) return true
+    if (entry.error && entry.error.toLowerCase().includes(q)) return true
+    return false
+  })
+}
+
+export function historySqlCopiedToast(): string {
+  return '已复制 SQL 到剪贴板'
+}
+
+export function historyFilterEmptyBody(slowOnly: boolean): string {
+  if (slowOnly) return '没有同时匹配筛选关键字与慢查询条件的记录。可清除关键字或关闭「仅慢查询」。'
+  return '没有匹配的历史记录。试试更短的关键字，或清除筛选。'
+}
+
