@@ -193,9 +193,9 @@ Synchronize table structures between multiple databases with batch operations su
 
 **Note**: Language settings are stored in the Windows Registry (Windows) or configuration file (other platforms).
 
-## TypeScript desktop (Milestone 1)
+## TypeScript desktop (Milestone 2)
 
-The PyQt6 app is still the full product: `python src/main.py`. The new shell lives in `apps/desktop` (Electron, Vite, React, TypeScript). This milestone runs SQLite and streams natural-language SQL. The window is a dark IDE: connection tree, Monaco, horizontally scrolling tabs, and elevated assistant cards.
+The PyQt6 app is still the full product: `python src/main.py`. The new shell lives in `apps/desktop` (Electron, Vite, React, TypeScript). SQLite, MySQL / MariaDB, and PostgreSQL run in the main process, including table and column trees. The window is a dark IDE: connection tree, dialect badges, Monaco, horizontally scrolling tabs, and elevated assistant cards. `npm run pack:tip` builds a Linux tip archive and does not replace the PyInstaller installer.
 
 ```bash
 cd apps/desktop

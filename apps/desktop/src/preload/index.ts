@@ -17,6 +17,7 @@ const api: DesktopApi = {
       if (result?.error) throw new Error(result.error)
       return result.schema
     },
+    test: (input: ConnectionInput) => ipcRenderer.invoke('connections:test', input),
     seedSample: async () => {
       const result = await ipcRenderer.invoke('connections:seedSample')
       if (result?.error) throw new Error(result.error)

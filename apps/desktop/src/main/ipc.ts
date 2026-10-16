@@ -1,19 +1,22 @@
+import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { BrowserWindow, dialog, ipcMain } from 'electron'
+
+const require = createRequire(import.meta.url)
+const pkg = require('../../package.json') as { version: string }
+import { connectionErrorNode } from '@shared/schema'
 import { SAMPLE_CONNECTION_ID, SAMPLE_CONNECTION_NAME } from '@shared/session'
 import type { AiEvent, AiSettingsInput, ConnectionInput, SchemaNode, WorkspaceState } from '@shared/types'
 import { dialectInfo } from '@shared/types'
 import { streamAnswer } from './ai'
+import { explainDbError } from './errors'
 import { ensureParent, seedRetailDatabase } from './sampleDb'
 import { encryptionAvailable } from './secrets'
+import { closeAllSessions, closeSession, describeSession, executeSession, probeTarget, schemaForSession } from './sessions'
+import type { SqlTarget } from './target'
+import { databaseExists, openDatabase } from './sqlite'
 import {
-  databaseExists,
-  describeSchema,
-  executeScript,
-  listSchema,
-  openDatabase,
-} from './sqlite'
-import {
+  connectionPassword,
   getConnection,
   hasConnectionStore,
   listConnections,
@@ -25,24 +28,45 @@ import {
   settingsPublic,
   settingsSecrets,
 } from './store'
-import type Database from 'better-sqlite3'
 
-const handles = new Map<string, Database.Database>()
 const aborts = new Map<string, AbortController>()
 
-function closeHandle(id: string): void {
-  const handle = handles.get(id)
-  if (!handle) return
-  handle.close()
-  handles.delete(id)
+function targetFromStored(row: NonNullable<ReturnType<typeof getConnection>>): SqlTarget {
+  const secret = connectionPassword(row)
+  if (secret.locked) throw new Error('系统密钥环不可用，无法读取已保存的密码。')
+  return {
+    id: row.id,
+    name: row.name,
+    dialect: row.dialect,
+    filePath: row.filePath,
+    host: row.host,
+    port: row.port ?? dialectInfo(row.dialect).defaultPort,
+    database: row.database,
+    username: row.username,
+    password: secret.password,
+  }
 }
 
-function sqliteHandle(id: string, filePath: string): Database.Database {
-  const cached = handles.get(id)
-  if (cached) return cached
-  const db = openDatabase(filePath)
-  handles.set(id, db)
-  return db
+function targetFromInput(input: ConnectionInput): SqlTarget {
+  const stored = input.id ? getConnection(input.id) : undefined
+  const typed = input.password ?? ''
+  let password = typed
+  if (!typed && stored) {
+    const secret = connectionPassword(stored)
+    if (secret.locked) throw new Error('系统密钥环不可用，无法读取已保存的密码。')
+    password = secret.password
+  }
+  return {
+    id: input.id ?? 'probe',
+    name: input.name,
+    dialect: input.dialect,
+    filePath: input.filePath,
+    host: input.host,
+    port: input.port ?? dialectInfo(input.dialect).defaultPort,
+    database: input.database,
+    username: input.username,
+    password,
+  }
 }
 
 export function sampleFilePath(userData: string): string {
@@ -57,7 +81,7 @@ export function createSample(userData: string) {
     seedRetailDatabase(db)
     db.close()
   }
-  closeHandle(SAMPLE_CONNECTION_ID)
+  void closeSession(SAMPLE_CONNECTION_ID)
   return saveConnection({
     id: SAMPLE_CONNECTION_ID,
     name: SAMPLE_CONNECTION_NAME,
@@ -95,7 +119,7 @@ function savedNote(connectionId: string, name: string, dialect: SchemaNode['dial
 
 export function registerIpc(getWindow: () => BrowserWindow | null, userData: string): void {
   ipcMain.handle('meta:get', () => ({
-    version: '0.1.0',
+    version: pkg.version,
     encryption: encryptionAvailable() ? 'os' : 'unavailable',
     mode: 'desktop' as const,
   }))
@@ -112,14 +136,14 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
         created.close()
       }
     }
-    if (input.id) closeHandle(input.id)
+    if (input.id) void closeSession(input.id)
     const saved = saveConnection(input)
     if ('error' in saved) return saved
     return { connection: saved.connection }
   })
 
   ipcMain.handle('connections:remove', (_event, id: string) => {
-    closeHandle(id)
+    void closeSession(id)
     removeConnection(id)
   })
 
@@ -129,18 +153,24 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     return { connection: created.connection }
   })
 
-  ipcMain.handle('connections:schema', (_event, id: string) => {
+  ipcMain.handle('connections:test', async (_event, input: ConnectionInput) => {
+    try {
+      await probeTarget(targetFromInput(input))
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: explainDbError(error) }
+    }
+  })
+
+  ipcMain.handle('connections:schema', async (_event, id: string) => {
     const row = getConnection(id)
     if (!row) return { error: '连接不存在' }
     const info = dialectInfo(row.dialect)
     if (!info.executable) return { schema: savedNote(row.id, row.name, row.dialect) }
-    if (!row.filePath || !databaseExists(row.filePath)) return { error: '找不到数据库文件' }
     try {
-      const db = sqliteHandle(row.id, row.filePath)
-      return { schema: listSchema(row.id, row.name, row.filePath, db) }
+      return { schema: await schemaForSession(targetFromStored(row)) }
     } catch (error) {
-      const message = error instanceof Error ? error.message : '无法读取对象'
-      return { error: message }
+      return { schema: connectionErrorNode(row.id, row.name, row.dialect, explainDbError(error)) }
     }
   })
 
@@ -157,19 +187,14 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     return result.canceled ? null : (result.filePaths[0] ?? null)
   })
 
-  ipcMain.handle('sql:execute', (_event, payload: { connectionId: string; sql: string }) => {
+  ipcMain.handle('sql:execute', async (_event, payload: { connectionId: string; sql: string }) => {
     const row = getConnection(payload.connectionId)
     if (!row) return { error: '连接不存在' }
-    if (row.dialect !== 'sqlite' || !row.filePath) {
-      return { error: '这个里程碑只执行 SQLite。连接已保存，驱动将在后续版本接入。' }
-    }
-    if (!databaseExists(row.filePath)) return { error: '找不到数据库文件' }
+    if (!dialectInfo(row.dialect).executable) return { error: '这个类型还不能查询。连接已保存在本机。' }
     try {
-      const db = sqliteHandle(row.id, row.filePath)
-      return { results: executeScript(db, payload.sql) }
+      return { results: await executeSession(targetFromStored(row), payload.sql) }
     } catch (error) {
-      const message = error instanceof Error ? error.message : '执行失败'
-      return { error: message }
+      return { error: explainDbError(error) }
     }
   })
 
@@ -192,8 +217,12 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
       try {
         const row = payload.connectionId ? getConnection(payload.connectionId) : undefined
         let schema = ''
-        if (row?.dialect === 'sqlite' && row.filePath && databaseExists(row.filePath)) {
-          schema = describeSchema(sqliteHandle(row.id, row.filePath))
+        if (row && dialectInfo(row.dialect).executable) {
+          try {
+            schema = await describeSession(targetFromStored(row))
+          } catch {
+            schema = ''
+          }
         }
         const settings = settingsSecrets()
         await streamAnswer({
@@ -229,7 +258,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
 }
 
 export function closeAllHandles(): void {
-  for (const id of handles.keys()) closeHandle(id)
+  void closeAllSessions()
   for (const controller of aborts.values()) controller.abort()
   aborts.clear()
 }

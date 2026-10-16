@@ -66,12 +66,24 @@ export function statementTitle(sql: string, index: number): string {
   return `结果 ${index + 1}`
 }
 
-export function quoteIdent(name: string): string {
+export type IdentStyle = 'ansi' | 'mysql'
+
+export function identStyle(dialect: string): IdentStyle {
+  return dialect === 'mysql' || dialect === 'mariadb' ? 'mysql' : 'ansi'
+}
+
+export function quoteIdent(name: string, style: IdentStyle = 'ansi'): string {
+  if (style === 'mysql') return `\`${name.replace(/`/g, '``')}\``
   return `"${name.replace(/"/g, '""')}"`
 }
 
-export function selectAll(table: string): string {
-  return `SELECT *\nFROM ${quoteIdent(table)}\nLIMIT 200;`
+export function selectAll(table: string, style: IdentStyle = 'ansi'): string {
+  return `SELECT *\nFROM ${quoteIdent(table, style)}\nLIMIT 200;`
+}
+
+export function changesSchema(sql: string): boolean {
+  const stripped = sql.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')
+  return /^\s*(create|drop|alter|rename|truncate)\b/i.test(stripped)
 }
 
 export type ContentBlock =

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { DIALECTS, dialectInfo } from '@shared/types'
+import { DIALECTS, dialectInfo, needsServerDatabase } from '@shared/types'
 import type { ConnectionInput, Dialect } from '@shared/types'
 import { useWorkspace } from '../state/workspace'
 
@@ -49,6 +49,8 @@ function ConnectionDialog() {
   const [username, setUsername] = useState(existing?.username ?? '')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [probe, setProbe] = useState('')
+  const [probing, setProbing] = useState(false)
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -61,7 +63,7 @@ function ConnectionDialog() {
   const info = dialectInfo(dialect)
   const databaseLabel = dialect === 'redis' ? '数据库号' : dialect === 'oracle' ? '服务名' : '数据库'
 
-  const submit = async () => {
+  const buildInput = (): ConnectionInput => {
     const input: ConnectionInput = {
       id: existing?.id,
       name,
@@ -76,10 +78,31 @@ function ConnectionDialog() {
       input.database = database
       input.username = username
     }
+    return input
+  }
+
+  const submit = async () => {
+    setError('')
+    setProbe('')
     try {
-      await ws.saveConnection(input)
+      await ws.saveConnection(buildInput())
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '没有保存')
+    }
+  }
+
+  const test = async () => {
+    setProbing(true)
+    setError('')
+    setProbe('')
+    try {
+      const result = await ws.testConnection(buildInput())
+      if (result.ok) setProbe('可以连接。')
+      else setError(result.error ?? '连接失败')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '连接失败')
+    } finally {
+      setProbing(false)
     }
   }
 
@@ -108,8 +131,14 @@ function ConnectionDialog() {
                 aria-selected={dialect === item.id}
                 className={dialect === item.id ? 'dialect is-selected' : 'dialect'}
                 onClick={() => {
+                  const previous = dialectInfo(dialect)
                   setDialect(item.id)
-                  if (!existing) setPort(item.defaultPort ? String(item.defaultPort) : '')
+                  setPort((current) => {
+                    if (!current || current === String(previous.defaultPort ?? '')) {
+                      return item.defaultPort ? String(item.defaultPort) : ''
+                    }
+                    return current
+                  })
                 }}
               >
                 <span>{item.label}</span>
@@ -176,12 +205,17 @@ function ConnectionDialog() {
           {ws.meta?.encryption === 'os'
             ? '密码用系统密钥环加密后保存在本机。'
             : '当前系统没有可用的密钥环，密码不会写入磁盘。'}
-          {!info.executable && ' 此类型在本里程碑只保存，不执行。'}
+          {needsServerDatabase(dialect) && ' 服务器暂时连不上也可以先保存，失败原因会留在连接下面。'}
+          {!info.executable && ' 此类型只保存连接，还不能查询。'}
         </p>
+        {probe && <p className="field-ok">{probe}</p>}
         {error && <p className="field-error">{error}</p>}
         <div className="dialog-actions">
           <button type="button" className="btn btn-ghost" onClick={ws.closeDialog}>
             取消
+          </button>
+          <button type="button" className="btn btn-ghost" disabled={probing} onClick={() => void test()}>
+            {probing ? '测试中' : '测试'}
           </button>
           <button type="button" className="btn btn-primary" onClick={() => void submit()}>
             保存

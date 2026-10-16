@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
 import Database from 'better-sqlite3'
-import { tableLabel } from '@shared/labels'
+import { buildObjectTree } from '@shared/schema'
 import { quoteIdent, splitSql } from '@shared/sql'
 import type { SchemaNode, StatementResult } from '@shared/types'
 
@@ -26,31 +26,21 @@ export function listSchema(connectionId: string, connectionName: string, filePat
     )
     .all() as { name: string }[]
 
-  return {
-    id: connectionId,
-    kind: 'connection',
-    name: connectionName,
-    displayName: connectionName,
-    dialect: 'sqlite',
+  const detailed = tables.map((table) => {
+    const columns = db.prepare(`PRAGMA table_info(${quoteIdent(table.name)})`).all() as { name: string; type: string }[]
+    return {
+      name: table.name,
+      columns: columns.map((column) => ({ name: column.name, dataType: column.type || 'TEXT' })),
+    }
+  })
+
+  return buildObjectTree({
     connectionId,
-    children: [
-      {
-        id: `${connectionId}:db`,
-        kind: 'database',
-        name: basename(filePath),
-        displayName: basename(filePath),
-        connectionId,
-        children: tables.map((table) => ({
-          id: `${connectionId}:table:${table.name}`,
-          kind: 'table' as const,
-          name: table.name,
-          displayName: tableLabel(table.name),
-          connectionId,
-          tableName: table.name,
-        })),
-      },
-    ],
-  }
+    connectionName,
+    dialect: 'sqlite',
+    databaseName: basename(filePath),
+    tables: detailed,
+  })
 }
 
 export function describeSchema(db: Database.Database): string {

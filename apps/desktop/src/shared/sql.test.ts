@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { draftLocalAnswer, INITIAL_TABS } from '@shared/session'
-import { extractSql, parseBlocks, splitSql, statementTitle } from '@shared/sql'
+import { changesSchema, extractSql, identStyle, parseBlocks, quoteIdent, selectAll, splitSql, statementTitle } from '@shared/sql'
 import { filterNodes } from '@shared/tree'
 import type { SchemaNode } from '@shared/types'
 
@@ -48,6 +48,22 @@ describe('workspace seeds', () => {
     const answer = draftLocalAnswer('近 90 天金额最高的订单')
     expect(answer).toContain('大额订单')
     expect(extractSql(answer)).toMatch(/total_cents >= 50000/)
+  })
+})
+
+describe('identifiers', () => {
+  it('quotes mysql tables with backticks and the others with double quotes', () => {
+    expect(identStyle('mysql')).toBe('mysql')
+    expect(identStyle('mariadb')).toBe('mysql')
+    expect(identStyle('postgresql')).toBe('ansi')
+    expect(quoteIdent('a`b', 'mysql')).toBe('`a``b`')
+    expect(quoteIdent('a"b')).toBe('"a""b"')
+    expect(selectAll('orders', 'mysql')).toBe('SELECT *\nFROM `orders`\nLIMIT 200;')
+  })
+
+  it('notices statements that change the object tree', () => {
+    expect(changesSchema('-- keep\nCREATE TABLE t (id int);')).toBe(true)
+    expect(changesSchema('SELECT create_time FROM orders')).toBe(false)
   })
 })
 

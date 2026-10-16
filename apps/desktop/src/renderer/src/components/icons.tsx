@@ -87,6 +87,14 @@ export function IconSpark() {
   )
 }
 
+export function IconColumn() {
+  return (
+    <Svg size={14}>
+      <path d="M4 3.2h8M4 8h8M4 12.8h5" {...stroke} />
+    </Svg>
+  )
+}
+
 export function IconMore() {
   return (
     <Svg>

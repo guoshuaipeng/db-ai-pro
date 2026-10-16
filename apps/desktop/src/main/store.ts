@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
-import { dialectInfo } from '@shared/types'
+import { dialectInfo, needsServerDatabase } from '@shared/types'
 import type { AiSettingsInput, AiSettingsPublic, ConnectionInput, ConnectionPublic, Dialect, WorkspaceState } from '@shared/types'
 import { createId } from './sampleDb'
-import { openSecret, sealSecret } from './secrets'
+import { encryptionAvailable, openSecret, sealSecret } from './secrets'
 
 type StoredConnection = {
   id: string
@@ -81,6 +81,7 @@ export function saveConnection(input: ConnectionInput): { connection: Connection
   const info = dialectInfo(input.dialect)
   if (info.id === 'sqlite' && !input.filePath?.trim()) return { error: '请选择 SQLite 文件' }
   if (info.id !== 'sqlite' && !input.host?.trim()) return { error: '请填写主机' }
+  if (needsServerDatabase(info.id) && !input.database?.trim()) return { error: '请填写数据库名' }
 
   const rows = readJson<StoredConnection[]>('connections.json', [])
   const now = new Date().toISOString()
@@ -114,6 +115,13 @@ export function saveConnection(input: ConnectionInput): { connection: Connection
   const without = rows.filter((row) => row.id !== next.id)
   writeJson('connections.json', [...without, next])
   return { connection: toPublic(next) }
+}
+
+export function connectionPassword(row: StoredConnection): { password: string; locked: boolean } {
+  if (!row.passwordCipher) return { password: '', locked: false }
+  const password = openSecret(row.passwordCipher)
+  if (!password && !encryptionAvailable()) return { password: '', locked: true }
+  return { password, locked: false }
 }
 
 export function removeConnection(id: string): void {

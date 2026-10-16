@@ -17,6 +17,7 @@ export type DesktopApi = {
     save: (input: ConnectionInput) => Promise<ConnectionPublic>
     remove: (id: string) => Promise<void>
     schema: (id: string) => Promise<SchemaNode>
+    test: (input: ConnectionInput) => Promise<{ ok: boolean; error?: string }>
     seedSample: () => Promise<ConnectionPublic>
     pickFile: (mode: 'open' | 'save') => Promise<string | null>
   }
