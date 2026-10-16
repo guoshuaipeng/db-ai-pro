@@ -107,3 +107,56 @@ export function buildInsertBatches(input: {
   }
   return batches
 }
+
+
+export type ImportMappingStats = {
+  total: number
+  mapped: number
+  skipped: number
+}
+
+export function importMappingStats(mapping: readonly ImportColumnMapping[]): ImportMappingStats {
+  const total = mapping.length
+  const mapped = mapping.filter((item) => Boolean(item.target)).length
+  return { total, mapped, skipped: Math.max(0, total - mapped) }
+}
+
+export function importMappingSummaryLabel(stats: ImportMappingStats): string {
+  return `已映射 ${stats.mapped} / ${stats.total} 列` + (stats.skipped ? ` · 跳过 ${stats.skipped}` : '')
+}
+
+/** Reset every source column to skipped. */
+export function skipAllMappings(mapping: readonly ImportColumnMapping[]): ImportColumnMapping[] {
+  return mapping.map((item) => ({ ...item, target: null }))
+}
+
+/** Map source→target by identical names when possible; otherwise keep source name (create mode). */
+export function remapAllByName(
+  mapping: readonly ImportColumnMapping[],
+  targetColumns: readonly string[],
+): ImportColumnMapping[] {
+  if (!targetColumns.length) {
+    return mapping.map((item) => ({ ...item, target: item.source }))
+  }
+  return autoMapColumns(
+    mapping.map((item) => item.source),
+    [...targetColumns],
+  )
+}
+
+export function importNoTablesBody(): string {
+  return '当前连接下没有可导入的表。可先在对象树新建表，或对 SQLite 选择「新建表」。'
+}
+
+export function importEmptyPreviewBody(): string {
+  return '没有可预览的行。请至少映射一列，并确认文件中包含数据行。'
+}
+
+export function importEmptySheetBody(): string {
+  return '文件已读取但没有数据行。请检查 CSV/Excel 是否只有表头，或换一份文件。'
+}
+
+export function importUnmappedWarning(skipped: number): string | null {
+  if (skipped <= 0) return null
+  return `有 ${skipped} 个源列将被跳过，不会写入目标表。`
+}

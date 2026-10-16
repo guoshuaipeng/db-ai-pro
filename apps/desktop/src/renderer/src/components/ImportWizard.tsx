@@ -3,12 +3,21 @@ import {
   autoMapColumns,
   buildInsertBatches,
   buildSqliteCreateTable,
+  importEmptyPreviewBody,
+  importEmptySheetBody,
+  importMappingStats,
+  importMappingSummaryLabel,
+  importNoTablesBody,
+  importUnmappedWarning,
   mappedPreviewRows,
+  remapAllByName,
+  skipAllMappings,
   type ImportColumnMapping,
   type ImportSheetData,
 } from '@shared/importPlan'
 import { getApi } from '../bridge'
 import { useWorkspace } from '../state/workspace'
+import { EmptyState } from './EmptyState'
 
 type Step = 'file' | 'target' | 'map' | 'preview' | 'progress'
 
@@ -130,6 +139,8 @@ export function ImportWizard() {
 
   const activeMapped = mapping.filter((item) => item.target)
   const preview = sheet ? mappedPreviewRows(sheet.rows, mapping, 8) : []
+  const mappingStats = importMappingStats(mapping)
+  const unmappedWarning = importUnmappedWarning(mappingStats.skipped)
 
   const runImport = async () => {
     if (!sheet || !activeMapped.length) {
@@ -243,10 +254,17 @@ export function ImportWizard() {
 
           {step === 'file' && (
             <div className="import-card">
-              <p className="settings-lead">选择 CSV / TXT / XLSX。最多读取 10,000 行。导入前可预览并映射列。</p>
-              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void pickFile()}>
-                {busy ? '读取中…' : '选择文件'}
-              </button>
+              <EmptyState
+                compact
+                kicker="导入"
+                title="还没有选择文件"
+                body="选择 CSV / TXT / XLSX。最多读取 10,000 行；下一步可映射列并预览后再写入。"
+                actions={
+                  <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void pickFile()}>
+                    {busy ? '读取中…' : '选择文件'}
+                  </button>
+                }
+              />
             </div>
           )}
 
@@ -255,6 +273,34 @@ export function ImportWizard() {
               <p className="field-hint">
                 文件：{sheet.fileName} · {sheet.format.toUpperCase()} · {sheet.rows.length} 行 · {sheet.headers.length} 列
               </p>
+              {sheet.rows.length === 0 ? (
+                <EmptyState
+                  compact
+                  kicker="文件"
+                  title="没有数据行"
+                  body={importEmptySheetBody()}
+                  actions={
+                    <button type="button" className="btn btn-ghost" onClick={() => setStep('file')}>
+                      重新选文件
+                    </button>
+                  }
+                />
+              ) : null}
+              {mode === 'existing' && tableOptions.length === 0 ? (
+                <EmptyState
+                  compact
+                  kicker="目标表"
+                  title="没有可导入的表"
+                  body={importNoTablesBody()}
+                  actions={
+                    canCreate ? (
+                      <button type="button" className="btn btn-primary" onClick={() => setMode('create')}>
+                        改用新建表
+                      </button>
+                    ) : null
+                  }
+                />
+              ) : null}
               <div className="density-grid" role="radiogroup" aria-label="导入模式">
                 <button
                   type="button"
@@ -296,7 +342,15 @@ export function ImportWizard() {
                 <button type="button" className="btn btn-ghost" onClick={() => setStep('file')}>
                   上一步
                 </button>
-                <button type="button" className="btn btn-primary" onClick={() => void prepareMapping()}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={
+                    sheet.rows.length === 0 ||
+                    (mode === 'existing' && tableOptions.length === 0)
+                  }
+                  onClick={() => void prepareMapping()}
+                >
                   下一步
                 </button>
               </div>
@@ -306,6 +360,34 @@ export function ImportWizard() {
           {step === 'map' && sheet && (
             <div className="import-card">
               <p className="settings-lead">把源列映射到目标列。未映射的列会被跳过。</p>
+              <div className="import-map-toolbar">
+                <span className="import-map-summary">{importMappingSummaryLabel(mappingStats)}</span>
+                <button
+                  type="button"
+                  className="btn btn-ghost tiny-btn"
+                  onClick={() =>
+                    setMapping(
+                      remapAllByName(
+                        mapping,
+                        mode === 'create' ? sheet.headers : targetColumns,
+                      ),
+                    )
+                  }
+                >
+                  按名称重映射
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost tiny-btn"
+                  onClick={() => setMapping(skipAllMappings(mapping))}
+                >
+                  全部跳过
+                </button>
+              </div>
+              {unmappedWarning ? <p className="field-hint import-map-warn">{unmappedWarning}</p> : null}
+              {mapping.length === 0 ? (
+                <EmptyState compact kicker="列映射" title="没有源列" body="文件没有表头列，请换一份带表头的 CSV/Excel。" />
+              ) : null}
               <div className="import-map-wrap">
                 <table className="structure-table">
                   <thead>
@@ -365,6 +447,20 @@ export function ImportWizard() {
                 将向 <code>{tableName}</code> {mode === 'create' ? '建表并' : ''}写入 {sheet.rows.length} 行 · 映射{' '}
                 {activeMapped.length} 列。批量 INSERT 执行中可取消。
               </p>
+              {unmappedWarning ? <p className="field-hint import-map-warn">{unmappedWarning}</p> : null}
+              {!activeMapped.length || preview.length === 0 ? (
+                <EmptyState
+                  compact
+                  kicker="预览"
+                  title="没有可预览的数据"
+                  body={importEmptyPreviewBody()}
+                  actions={
+                    <button type="button" className="btn btn-ghost" onClick={() => setStep('map')}>
+                      返回映射
+                    </button>
+                  }
+                />
+              ) : (
               <div className="sample-preview-wrap">
                 <table className="structure-table sample-preview-table">
                   <thead>
@@ -387,6 +483,7 @@ export function ImportWizard() {
                   </tbody>
                 </table>
               </div>
+              )}
               <div className="dialog-actions">
                 <button type="button" className="btn btn-ghost" onClick={() => setStep('map')}>
                   上一步

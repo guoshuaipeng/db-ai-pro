@@ -3054,6 +3054,21 @@ body.is-col-resizing .grid-col-resizer {
   min-height: 0;
 }
 .import-card { display: flex; flex-direction: column; gap: 12px; }
+.import-map-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.import-map-summary {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-right: auto;
+}
+.import-map-warn {
+  color: #fbbf24;
+  margin: 0;
+}
 .import-map-wrap {
   max-height: 320px;
   overflow: auto;
