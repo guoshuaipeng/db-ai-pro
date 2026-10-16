@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { DIALECTS, dialectInfo, needsServerDatabase } from '@shared/types'
 import { CONN_COLOR_TAGS } from '@shared/connGroups'
-import type { ConnectionInput, Dialect } from '@shared/types'
+import type { ConnectionInput, ConnectionPublic, Dialect } from '@shared/types'
 import type { ImportPlanItem } from '@shared/connectionTransfer'
+import { getApi } from '../bridge'
 import { useWorkspace } from '../state/workspace'
+import { whitelistForSave } from '@shared/dbVisibility'
 
 export function Dialogs() {
   const ws = useWorkspace()
@@ -98,6 +100,9 @@ export function Dialogs() {
   }
   if (ws.dialog.type === 'import') {
     return <ImportDialog path={ws.dialog.path} plan={ws.dialog.plan} />
+  }
+  if (ws.dialog.type === 'dbVisibility') {
+    return <DbVisibilityDialog connection={ws.dialog.connection} />
   }
   return <ConnectionDialog />
 }
@@ -337,8 +342,19 @@ function ConnectionDialog() {
               <input value={port} onChange={(event) => setPort(event.target.value)} inputMode="numeric" />
             </label>
             <label className="field">
-              <span>{databaseLabel}</span>
-              <input value={database} onChange={(event) => setDatabase(event.target.value)} spellCheck={false} />
+              <span>{databaseLabel}{(dialect === 'mysql' || dialect === 'mariadb') ? '（可选）' : ''}</span>
+              <input
+                value={database}
+                onChange={(event) => setDatabase(event.target.value)}
+                spellCheck={false}
+                placeholder={
+                  dialect === 'mysql' || dialect === 'mariadb'
+                    ? '可留空，对象树列出实例全部库'
+                    : dialect === 'postgresql'
+                      ? '默认 postgres，对象树可列其他库'
+                      : undefined
+                }
+              />
             </label>
             <label className="field">
               <span>用户名</span>
@@ -420,3 +436,135 @@ function ConnectionDialog() {
     </div>
   )
 }
+
+
+function DbVisibilityDialog({ connection }: { connection: ConnectionPublic }) {
+  const ws = useWorkspace()
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [allDbs, setAllDbs] = useState<string[]>([])
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') ws.closeDialog()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [ws])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      setError('')
+      try {
+        const names = await getApi().connections.listDatabases(connection.id)
+        if (cancelled) return
+        setAllDbs(names)
+        const whitelist = connection.visibleDatabases
+        if (whitelist == null) {
+          setChecked(new Set(names))
+        } else {
+          setChecked(new Set(whitelist.filter((n) => names.includes(n))))
+        }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : '无法列出数据库')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [connection.id, connection.visibleDatabases])
+
+  const toggle = (name: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  const selectAll = () => setChecked(new Set(allDbs))
+  const selectNone = () => setChecked(new Set())
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const whitelist = whitelistForSave(allDbs, [...checked])
+      await ws.saveVisibleDatabases(connection.id, whitelist)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="overlay" role="presentation" onMouseDown={ws.closeDialog}>
+      <div
+        className="dialog dialog-wide"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="db-vis-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <h2 id="db-vis-title">显示的库 — {connection.name}</h2>
+        <p className="dialog-copy">
+          勾选后会出现在对象树中。全部勾选表示显示实例上所有库（与未设置白名单相同）。
+        </p>
+        {loading ? (
+          <p className="dialog-meta">正在列出数据库…</p>
+        ) : error ? (
+          <p className="field-error">{error}</p>
+        ) : allDbs.length === 0 ? (
+          <p className="dialog-meta">没有可显示的库（或当前账号无权列出）。</p>
+        ) : (
+          <>
+            <div className="db-vis-toolbar">
+              <button type="button" className="btn btn-ghost" onClick={selectAll}>
+                全选
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={selectNone}>
+                全不选
+              </button>
+              <span className="dialog-meta">
+                已选 {checked.size} / {allDbs.length}
+              </span>
+            </div>
+            <div className="db-vis-list" role="group" aria-label="数据库列表">
+              {allDbs.map((name) => (
+                <label key={name} className="checkline db-vis-item">
+                  <input
+                    type="checkbox"
+                    checked={checked.has(name)}
+                    onChange={() => toggle(name)}
+                  />
+                  <span>{name}</span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-ghost" onClick={ws.closeDialog}>
+            取消
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={loading || !!error || saving}
+            onClick={() => void save()}
+          >
+            {saving ? '保存中…' : '保存'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+

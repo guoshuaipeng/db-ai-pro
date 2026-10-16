@@ -63,6 +63,8 @@ export type ConnectionInput = {
   groupId?: string | null
   /** Preset color tag id (blue/teal/…). */
   colorTag?: string | null
+  /** Whitelist of instance databases to show; null/omit = all. */
+  visibleDatabases?: string[] | null
 }
 
 export type ConnectionPublic = {
@@ -79,6 +81,8 @@ export type ConnectionPublic = {
   readOnly?: boolean
   groupId?: string | null
   colorTag?: string | null
+  /** Whitelist of instance databases to show; null/omit = all. */
+  visibleDatabases?: string[] | null
   createdAt: string
   updatedAt: string
 }
@@ -98,6 +102,8 @@ export type SchemaNode = {
   displayName: string
   dialect?: Dialect
   connectionId?: string
+  /** Server database / schema catalog for this node (instance tree). */
+  databaseName?: string
   tableName?: string
   dataType?: string
   status?: 'ok' | 'error'

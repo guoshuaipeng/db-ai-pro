@@ -114,8 +114,10 @@ describe.skipIf(!pgUrl)('PostgreSQL', () => {
       expect(results.every((result) => result.ok)).toBe(true)
       expect(results[3]?.rows?.[0]?.note).toBe('a;b')
 
-      const schema = await listPostgresSchema(client, target)
-      const table = schema.children?.[0].children?.find((node) => node.name === 'dataai_m2_smoke')
+      const schema = await listPostgresSchema(client, target, login)
+      const table = schema.children
+        ?.flatMap((db) => db.children ?? [])
+        .find((node) => node.name === 'dataai_m2_smoke')
       expect(table?.children?.map((column) => column.name)).toEqual(['id', 'note'])
       expect(table?.children?.find((column) => column.name === 'note')?.dataType).toMatch(/char/)
 

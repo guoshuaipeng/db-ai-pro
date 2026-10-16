@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { onDataai } from '../appEvents'
+import { emitDataai, onDataai } from '../appEvents'
 import { dialectInfo } from '@shared/types'
 import { formatLatency } from '@shared/connHealth'
 import { bucketSchemaByGroup, colorForTag, CONN_COLOR_TAGS } from '@shared/connGroups'
 import { quoteIdentIfNeeded } from '@shared/sql'
+import { qualifyBrowseTable } from '@shared/tablePaging'
 import { setSqlDragData } from '@shared/sqlDragDrop'
 import type { Dialect, SchemaNode } from '@shared/types'
 import { IconColumn, IconDatabase, IconMore, IconPlus, IconRefresh, IconSearch, IconTable } from './icons'
@@ -325,17 +326,24 @@ function TreeNode({
     ((node.kind === 'column' || node.kind === 'key') && !!node.name)
   const insertName = () => {
     if (node.kind === 'table') {
-      ws.insertObjectIdent(node.tableName || node.name, dialect)
+      const dial = dialect || ws.activeConnection?.dialect || 'sqlite'
+      const raw = node.tableName || node.name
+      const text = qualifyBrowseTable(dial, raw, node.databaseName)
+      emitDataai('dataai:insert-at-cursor', { text })
     } else if (node.kind === 'column' || node.kind === 'key') {
       ws.insertObjectIdent(node.name, dialect)
     }
   }
 
   const dragIdentText = () => {
-    const raw =
-      node.kind === 'table' ? (node.tableName || node.name) : node.kind === 'column' || node.kind === 'key' ? node.name : ''
-    if (!raw?.trim()) return ''
     const dial = dialect || ws.activeConnection?.dialect || 'sqlite'
+    if (node.kind === 'table') {
+      const raw = node.tableName || node.name
+      if (!raw?.trim()) return ''
+      return qualifyBrowseTable(dial, raw.trim(), node.databaseName)
+    }
+    const raw = node.kind === 'column' || node.kind === 'key' ? node.name : ''
+    if (!raw?.trim()) return ''
     return quoteIdentIfNeeded(raw.trim(), dial)
   }
 
@@ -478,6 +486,18 @@ function TreeNode({
             >
               检测延迟
             </button>
+            {connection.dialect !== 'sqlite' && connection.dialect !== 'redis' && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  onMenu(null)
+                  ws.openDbVisibility(connection)
+                }}
+              >
+                显示的库…
+              </button>
+            )}
             <button type="button" role="menuitem" onClick={() => { onMenu(null); ws.openEdit(connection) }}>
               编辑
             </button>
@@ -566,7 +586,7 @@ function TreeNode({
               role="menuitem"
               onClick={() => {
                 onMenu(null)
-                ws.openTableQuery(node.connectionId!, node.tableName!)
+                ws.openTableQuery(node.connectionId!, node.tableName!, node.databaseName)
               }}
             >
               打开查询

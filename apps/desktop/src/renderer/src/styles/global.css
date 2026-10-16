@@ -4029,3 +4029,31 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   width: 16px;
   height: 16px;
 }
+
+
+/* M72: instance database visibility checklist */
+.db-vis-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.db-vis-list {
+  max-height: min(360px, 50vh);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin-bottom: 16px;
+  background: var(--panel-2, var(--panel));
+}
+.db-vis-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  border-radius: 4px;
+}
+.db-vis-item:hover {
+  background: color-mix(in srgb, var(--accent, #5b8cff) 8%, transparent);
+}

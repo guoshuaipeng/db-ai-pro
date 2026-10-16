@@ -1,5 +1,6 @@
 import pg from 'pg'
-import { buildObjectTree, formatSchemaText, groupColumns } from '@shared/schema'
+import { buildMultiDatabaseObjectTree, formatSchemaText, groupColumns } from '@shared/schema'
+import { resolveVisibleDatabases } from '@shared/dbVisibility'
 import { splitSql } from '@shared/sql'
 import type { SchemaNode, StatementResult } from '@shared/types'
 import { explainDbError } from './errors'
@@ -47,14 +48,49 @@ function tablesFrom(rows: ColumnRow[]) {
   )
 }
 
-export async function listPostgresSchema(client: pg.Client, target: SqlTarget): Promise<SchemaNode> {
-  const result = await client.query<ColumnRow>(COLUMN_SQL)
-  return buildObjectTree({
+export async function listPostgresDatabases(client: pg.Client): Promise<string[]> {
+  const result = await client.query<{ datname: string }>(
+    `SELECT datname FROM pg_database WHERE datistemplate = false AND datallowconn = true ORDER BY datname`,
+  )
+  return result.rows.map((row) => row.datname).filter(Boolean)
+}
+
+async function tablesForPostgresDatabase(login: ServerLogin, database: string) {
+  const client = await openPostgres({ ...login, database })
+  try {
+    const result = await client.query<ColumnRow>(COLUMN_SQL)
+    return tablesFrom(result.rows)
+  } finally {
+    await client.end().catch(() => undefined)
+  }
+}
+
+export async function listPostgresSchema(
+  client: pg.Client,
+  target: SqlTarget,
+  login: ServerLogin,
+  visibleWhitelist?: string[] | null,
+): Promise<SchemaNode> {
+  const all = await listPostgresDatabases(client)
+  const visible = resolveVisibleDatabases(all, visibleWhitelist)
+  const databases: Array<{ name: string; tables: ReturnType<typeof tablesFrom> }> = []
+  for (const name of visible) {
+    if (name === (target.database ?? login.database)) {
+      const result = await client.query<ColumnRow>(COLUMN_SQL)
+      databases.push({ name, tables: tablesFrom(result.rows) })
+    } else {
+      try {
+        databases.push({ name, tables: await tablesForPostgresDatabase(login, name) })
+      } catch {
+        databases.push({ name, tables: [] })
+      }
+    }
+  }
+  return buildMultiDatabaseObjectTree({
     connectionId: target.id,
     connectionName: target.name,
     dialect: 'postgresql',
-    databaseName: target.database ?? '',
-    tables: tablesFrom(result.rows),
+    databases,
   })
 }
 

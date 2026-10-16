@@ -152,6 +152,7 @@ type DialogState =
   | { type: 'connection'; connection?: ConnectionPublic }
   | { type: 'delete'; connection: ConnectionPublic; inTxn?: boolean }
   | { type: 'import'; path: string; plan: ImportPlanItem[] }
+  | { type: 'dbVisibility'; connection: ConnectionPublic }
   | {
       type: 'destructive'
       reasons: string[]
@@ -308,7 +309,9 @@ type WorkspaceValue = {
   structureTarget: { connectionId: string; tableName: string } | null
   openTableStructure: (connectionId: string, tableName: string) => void
   closeTableStructure: () => void
-  openTableQuery: (connectionId: string, tableName: string) => void
+  openTableQuery: (connectionId: string, tableName: string, databaseName?: string) => void
+  openDbVisibility: (connection: ConnectionPublic) => void
+  saveVisibleDatabases: (connectionId: string, whitelist: string[] | null) => Promise<void>
   setBrowsePage: (page: number) => void
   setBrowsePageSize: (pageSize: PageSize) => void
   refreshBrowse: () => void
@@ -824,7 +827,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     dialect: ConnectionPublic['dialect'],
   ) => {
     const nextBrowse = clampBrowsePage(browse)
-    const sql = buildBrowseSql(dialect, nextBrowse.tableName, nextBrowse.page, nextBrowse.pageSize)
+    const sql = buildBrowseSql(dialect, nextBrowse.tableName, nextBrowse.page, nextBrowse.pageSize, nextBrowse.databaseName)
     setEditorTabs((tabs) =>
       tabs.map((tab) =>
         tab.id === tabId
@@ -840,18 +843,25 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return { sql, browse: nextBrowse }
   }
 
-  const openTableQuery = (connectionId: string, tableName: string) => {
+  const openTableQuery = (connectionId: string, tableName: string, databaseName?: string) => {
     setActiveConnectionId(connectionId)
     const connection = connections.find((item) => item.id === connectionId)
     const dialect = connection?.dialect ?? 'sqlite'
     if (dialect === 'redis') return
     void recordTableRecent(connectionId, tableName)
-    const title = tableName
-    const existing = editorTabs.find((tab) => tab.title === title)
+    const db = databaseName?.trim() || undefined
+    const title = db ? `${db}.${tableName}` : tableName
+    const existing = editorTabs.find(
+      (tab) =>
+        tab.browse?.connectionId === connectionId &&
+        tab.browse?.tableName === tableName &&
+        (tab.browse?.databaseName ?? undefined) === db,
+    )
     const pageSize = existing?.browse?.pageSize ?? DEFAULT_PAGE_SIZE
     const browse: TableBrowseState = {
       connectionId,
       tableName,
+      ...(db ? { databaseName: db } : {}),
       page: 0,
       pageSize,
       totalRows: null,
@@ -864,7 +874,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       return
     }
     const id = crypto.randomUUID()
-    const sql = buildBrowseSql(dialect, tableName, 0, pageSize)
+    const sql = buildBrowseSql(dialect, tableName, 0, pageSize, db)
     setEditorTabs((tabs) => [
       ...tabs,
       withCleanBaseline({ id, title, sql, connectionId, browse }),
@@ -1059,7 +1069,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       return
     }
     if (node.kind !== 'table' || !node.tableName) return
-    if (node.connectionId) openTableQuery(node.connectionId, node.tableName)
+    if (node.connectionId) openTableQuery(node.connectionId, node.tableName, node.databaseName)
   }
 
   const updateSql = (sql: string) => {
@@ -1075,6 +1085,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           tab.browse.tableName,
           tab.browse.page,
           tab.browse.pageSize,
+          tab.browse.databaseName,
         )
         if (sql === tab.sql || sql.trim() === expected.trim()) {
           return { ...tab, sql }
@@ -1417,7 +1428,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const runSqlText = async (
     sql: string,
-    opts?: { connectionId?: string; editorId?: string; quiet?: boolean },
+    opts?: { connectionId?: string; editorId?: string; quiet?: boolean; database?: string },
   ) => {
     if (running) return
     const connectionId = opts?.connectionId ?? activeConnection?.id
@@ -1453,6 +1464,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         sql,
         requestId,
         timeoutMs,
+        database: opts?.database,
       })
       const next = resultsFrom(statements)
       const elapsedMs = statements.reduce((sum, item) => sum + (item.elapsedMs || 0), 0)
@@ -1543,7 +1555,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     let next = clampBrowsePage(browse)
     if (refreshCount || next.totalRows == null) {
       try {
-        const countSql = buildCountSql(dialect, next.tableName)
+        const countSql = buildCountSql(dialect, next.tableName, next.databaseName)
         const prefs = await api.prefs.get()
         const timeoutMs = prefs.queryTimeoutSec > 0 ? prefs.queryTimeoutSec * 1000 : 0
         const statements = await api.sql.execute({
@@ -1564,6 +1576,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       connectionId: next.connectionId,
       editorId: tabId,
       quiet: opts?.quiet !== false,
+      database: dialect === 'postgresql' ? next.databaseName : undefined,
     })
   }
 
@@ -2152,6 +2165,38 @@ ${sql.trim()}
     pushToast('success', '连接已保存')
   }
 
+  const openDbVisibility = (connection: ConnectionPublic) => {
+    if (connection.dialect === 'sqlite' || connection.dialect === 'redis') {
+      pushToast('info', '当前连接类型不支持实例库列表')
+      return
+    }
+    setDialog({ type: 'dbVisibility', connection })
+  }
+
+  const saveVisibleDatabases = async (connectionId: string, whitelist: string[] | null) => {
+    const connection = connections.find((item) => item.id === connectionId)
+    if (!connection) return
+    await api.connections.save({
+      id: connection.id,
+      name: connection.name,
+      dialect: connection.dialect,
+      filePath: connection.filePath,
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      readOnly: connection.readOnly,
+      groupId: connection.groupId ?? null,
+      colorTag: connection.colorTag ?? null,
+      visibleDatabases: whitelist,
+    })
+    const rows = await api.connections.list()
+    setConnections(rows)
+    setDialog(null)
+    pushToast('success', '显示的库已更新')
+    void refreshSchemaTree(connectionId)
+  }
+
   const setConnectionColorTag = async (connectionId: string, colorTag: string | null) => {
     const connection = connections.find((row) => row.id === connectionId)
     if (!connection) {
@@ -2369,6 +2414,8 @@ ${sql.trim()}
     openTableStructure,
     closeTableStructure,
     openTableQuery,
+    openDbVisibility,
+    saveVisibleDatabases,
     setBrowsePage,
     setBrowsePageSize,
     refreshBrowse,

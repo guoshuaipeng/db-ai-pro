@@ -1,5 +1,6 @@
 import sql from 'mssql'
-import { buildObjectTree, formatSchemaText, groupColumns } from '@shared/schema'
+import { buildMultiDatabaseObjectTree, formatSchemaText, groupColumns } from '@shared/schema'
+import { MSSQL_SYSTEM_DATABASES, resolveVisibleDatabases } from '@shared/dbVisibility'
 import { splitSql } from '@shared/sql'
 import type { SchemaNode, StatementResult } from '@shared/types'
 import { explainDbError } from './errors'
@@ -45,21 +46,50 @@ function cell(value: unknown): unknown {
   return value
 }
 
-export async function listMssqlSchema(pool: sql.ConnectionPool, target: SqlTarget): Promise<SchemaNode> {
-  const result = await pool.request().query(COLUMN_SQL)
-  const tables = groupColumns(
-    result.recordset.map((row) => ({
-      table_name: String(row.table_name),
-      column_name: String(row.column_name),
-      data_type: String(row.data_type),
-    })),
-  )
-  return buildObjectTree({
+export async function listMssqlDatabases(pool: sql.ConnectionPool): Promise<string[]> {
+  const result = await pool.request().query(`SELECT name FROM sys.databases WHERE state_desc = 'ONLINE' ORDER BY name`)
+  return (result.recordset as { name: string }[])
+    .map((row) => String(row.name))
+    .filter((name) => name && !MSSQL_SYSTEM_DATABASES.has(name))
+}
+
+export async function listMssqlSchema(
+  pool: sql.ConnectionPool,
+  target: SqlTarget,
+  visibleWhitelist?: string[] | null,
+): Promise<SchemaNode> {
+  const all = await listMssqlDatabases(pool)
+  const visible = resolveVisibleDatabases(all, visibleWhitelist)
+  const databases: Array<{ name: string; tables: ReturnType<typeof groupColumns> }> = []
+  for (const name of visible) {
+    try {
+      const result = await pool.request().query(`
+        SELECT t.name AS table_name, c.name AS column_name, ty.name AS data_type
+        FROM [${name.replace(']', ']]')}].sys.tables AS t
+        INNER JOIN [${name.replace(']', ']]')}].sys.columns AS c ON c.object_id = t.object_id
+        INNER JOIN [${name.replace(']', ']]')}].sys.types AS ty ON ty.user_type_id = c.user_type_id
+        WHERE t.is_ms_shipped = 0
+        ORDER BY t.name, c.column_id
+      `)
+      databases.push({
+        name,
+        tables: groupColumns(
+          result.recordset.map((row) => ({
+            table_name: String(row.table_name),
+            column_name: String(row.column_name),
+            data_type: String(row.data_type),
+          })),
+        ),
+      })
+    } catch {
+      databases.push({ name, tables: [] })
+    }
+  }
+  return buildMultiDatabaseObjectTree({
     connectionId: target.id,
     connectionName: target.name,
     dialect: target.dialect,
-    databaseName: target.database ?? '',
-    tables,
+    databases,
   })
 }
 

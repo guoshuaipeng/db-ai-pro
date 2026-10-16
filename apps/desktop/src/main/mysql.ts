@@ -1,5 +1,6 @@
 import mysql, { type ResultSetHeader, type RowDataPacket } from 'mysql2/promise'
-import { buildObjectTree, formatSchemaText, groupColumns } from '@shared/schema'
+import { buildMultiDatabaseObjectTree, formatSchemaText, groupColumns } from '@shared/schema'
+import { MYSQL_HIDDEN_SCHEMAS, resolveVisibleDatabases } from '@shared/dbVisibility'
 import type { SchemaNode, StatementResult } from '@shared/types'
 import { splitSql } from '@shared/sql'
 import { explainDbError } from './errors'
@@ -20,13 +21,19 @@ const COLUMN_SQL = `
   ORDER BY TABLE_NAME, ORDINAL_POSITION
 `
 
+const LIST_DB_SQL = `
+  SELECT SCHEMA_NAME AS name
+  FROM information_schema.SCHEMATA
+  ORDER BY SCHEMA_NAME
+`
+
 export async function openMysql(login: ServerLogin): Promise<mysql.Connection> {
   return mysql.createConnection({
     host: login.host,
     port: login.port,
     user: login.user,
     password: login.password,
-    database: login.database,
+    ...(login.database?.trim() ? { database: login.database.trim() } : {}),
     connectTimeout: 8000,
     dateStrings: true,
     supportBigNumbers: true,
@@ -41,21 +48,57 @@ function cell(value: unknown): unknown {
   return value
 }
 
-export async function listMysqlSchema(conn: mysql.Connection, target: SqlTarget): Promise<SchemaNode> {
-  const [rows] = await conn.query<RowDataPacket[]>(COLUMN_SQL)
-  const tables = groupColumns(
-    rows.map((row) => ({
+export async function listMysqlDatabases(conn: mysql.Connection): Promise<string[]> {
+  const [rows] = await conn.query<RowDataPacket[]>(LIST_DB_SQL)
+  return rows
+    .map((row) => String(row.name))
+    .filter((name) => name && !MYSQL_HIDDEN_SCHEMAS.has(name))
+}
+
+export async function listMysqlSchema(
+  conn: mysql.Connection,
+  target: SqlTarget,
+  visibleWhitelist?: string[] | null,
+): Promise<SchemaNode> {
+  const all = await listMysqlDatabases(conn)
+  const visible = resolveVisibleDatabases(all, visibleWhitelist)
+  if (visible.length === 0) {
+    return buildMultiDatabaseObjectTree({
+      connectionId: target.id,
+      connectionName: target.name,
+      dialect: target.dialect,
+      databases: [],
+    })
+  }
+  const placeholders = visible.map(() => '?').join(', ')
+  const [rows] = await conn.query<RowDataPacket[]>(
+    `SELECT TABLE_SCHEMA AS schema_name, TABLE_NAME AS table_name, COLUMN_NAME AS column_name, COLUMN_TYPE AS data_type
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA IN (${placeholders})
+     ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION`,
+    visible,
+  )
+  const byDb = new Map<string, { table_name: string; column_name: string; data_type: string }[]>()
+  for (const name of visible) byDb.set(name, [])
+  for (const row of rows) {
+    const schema = String(row.schema_name)
+    const bucket = byDb.get(schema)
+    if (!bucket) continue
+    bucket.push({
       table_name: String(row.table_name),
       column_name: String(row.column_name),
       data_type: String(row.data_type),
-    })),
-  )
-  return buildObjectTree({
+    })
+  }
+  const databases = visible.map((name) => ({
+    name,
+    tables: groupColumns(byDb.get(name) ?? []),
+  }))
+  return buildMultiDatabaseObjectTree({
     connectionId: target.id,
     connectionName: target.name,
     dialect: target.dialect,
-    databaseName: target.database ?? '',
-    tables,
+    databases,
   })
 }
 

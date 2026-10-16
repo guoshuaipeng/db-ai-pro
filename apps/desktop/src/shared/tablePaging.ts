@@ -10,6 +10,8 @@ export const DEFAULT_PAGE_SIZE: PageSize = 100
 export type TableBrowseState = {
   connectionId: string
   tableName: string
+  /** Instance database / schema for multi-DB trees (MySQL schema, MSSQL DB, PG DB). */
+  databaseName?: string
   /** 0-based page index */
   page: number
   pageSize: PageSize
@@ -38,9 +40,14 @@ export function normalizeBrowseState(raw: unknown): TableBrowseState | undefined
       : typeof row.totalRows === 'number' && Number.isFinite(row.totalRows) && row.totalRows >= 0
         ? Math.floor(row.totalRows)
         : null
+  const databaseName =
+    typeof row.databaseName === 'string' && row.databaseName.trim()
+      ? row.databaseName.trim()
+      : undefined
   return {
     connectionId: row.connectionId.trim(),
     tableName: row.tableName.trim(),
+    ...(databaseName ? { databaseName } : {}),
     page,
     pageSize,
     totalRows,
@@ -64,15 +71,34 @@ export function clampBrowsePage(browse: TableBrowseState): TableBrowseState {
   return page === browse.page ? browse : { ...browse, page }
 }
 
+
+/** Qualify table for multi-database browse. MySQL/MariaDB: `db`.`t`; SQL Server: "db".."t"; PG stays unqualified (session DB). */
+export function qualifyBrowseTable(
+  dialect: Dialect,
+  tableName: string,
+  databaseName?: string | null,
+): string {
+  const style: IdentStyle = identStyle(dialect)
+  const table = quoteIdent(tableName, style)
+  const db = databaseName?.trim()
+  if (!db) return table
+  if (dialect === 'postgresql' || dialect === 'sqlite' || dialect === 'redis') return table
+  if (dialect === 'sqlserver') {
+    return `${quoteIdent(db, style)}..${table}`
+  }
+  // mysql / mariadb
+  return `${quoteIdent(db, style)}.${table}`
+}
+
 /** Build SELECT for one page. SQLite includes rowid for cell edits. */
 export function buildBrowseSql(
   dialect: Dialect,
   tableName: string,
   page: number,
   pageSize: PageSize,
+  databaseName?: string | null,
 ): string {
-  const style: IdentStyle = identStyle(dialect)
-  const table = quoteIdent(tableName, style)
+  const table = qualifyBrowseTable(dialect, tableName, databaseName)
   const offset = pageOffset(page, pageSize)
   const limit = pageSize
 
@@ -92,9 +118,12 @@ export function buildBrowseSql(
   return `SELECT *\nFROM ${table}\nLIMIT ${limit} OFFSET ${offset};`
 }
 
-export function buildCountSql(dialect: Dialect, tableName: string): string {
-  const style: IdentStyle = identStyle(dialect)
-  const table = quoteIdent(tableName, style)
+export function buildCountSql(
+  dialect: Dialect,
+  tableName: string,
+  databaseName?: string | null,
+): string {
+  const table = qualifyBrowseTable(dialect, tableName, databaseName)
   return `SELECT COUNT(*) AS __cnt__\nFROM ${table};`
 }
 

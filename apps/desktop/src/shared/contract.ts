@@ -64,6 +64,7 @@ export type DesktopApi = {
     save: (input: ConnectionInput) => Promise<ConnectionPublic>
     remove: (id: string) => Promise<void>
     schema: (id: string) => Promise<SchemaNode>
+    listDatabases: (id: string) => Promise<string[]>
     test: (input: ConnectionInput) => Promise<{ ok: boolean; error?: string }>
     health: (id: string) => Promise<{
       ok: boolean
@@ -96,6 +97,8 @@ export type DesktopApi = {
       sql: string
       requestId?: string
       timeoutMs?: number
+      /** PostgreSQL cross-DB browse override */
+      database?: string
     }) => Promise<StatementResult[]>
     explain: (payload: {
       connectionId: string

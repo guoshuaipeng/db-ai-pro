@@ -338,6 +338,7 @@ export function createPreviewApi(): DesktopApi {
           database: input.database,
           username: input.username,
           hasPassword: input.password ? true : (existing?.hasPassword ?? false),
+          visibleDatabases: input.visibleDatabases === undefined ? (existing?.visibleDatabases ?? null) : input.visibleDatabases,
           createdAt: existing?.createdAt ?? now,
           updatedAt: now,
         }
@@ -347,6 +348,7 @@ export function createPreviewApi(): DesktopApi {
       remove: async (id: string) => {
         memory.connections = memory.connections.filter((row) => row.id !== id)
       },
+      listDatabases: async (_id: string) => [] as string[],
       schema: async (id: string) => {
         const connection = memory.connections.find((row) => row.id === id)
         if (!connection) throw new Error('连接不存在')

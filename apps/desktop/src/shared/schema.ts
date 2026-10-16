@@ -125,3 +125,83 @@ export function connectionErrorNode(
     ],
   }
 }
+
+
+export function buildMultiDatabaseObjectTree(input: {
+  connectionId: string
+  connectionName: string
+  dialect: Dialect
+  databases: Array<{ name: string; tables: TableSpec[] }>
+}): SchemaNode {
+  const { connectionId, connectionName, dialect, databases } = input
+  const dbNodes: SchemaNode[] = databases.map((database) => {
+    const tableNodes: SchemaNode[] = database.tables.map((table) => ({
+      id: `${connectionId}:db:${database.name}:table:${table.name}`,
+      kind: 'table' as const,
+      name: table.name,
+      displayName: tableLabel(table.name),
+      dialect,
+      connectionId,
+      databaseName: database.name,
+      tableName: table.name,
+      children: table.columns.map((column) => ({
+        id: `${connectionId}:db:${database.name}:column:${table.name}:${column.name}`,
+        kind: 'column' as const,
+        name: column.name,
+        displayName: column.name,
+        dataType: column.dataType,
+        dialect,
+        connectionId,
+        databaseName: database.name,
+        tableName: table.name,
+      })),
+    }))
+    const children: SchemaNode[] =
+      tableNodes.length > 0
+        ? tableNodes
+        : [
+            {
+              id: `${connectionId}:db:${database.name}:empty`,
+              kind: 'note',
+              name: 'empty-schema',
+              displayName: '还没有表',
+              note: '此库暂无用户表，或当前账号看不到表。',
+              connectionId,
+              databaseName: database.name,
+            },
+          ]
+    return {
+      id: `${connectionId}:db:${database.name}`,
+      kind: 'database' as const,
+      name: database.name,
+      displayName: database.name,
+      dialect,
+      connectionId,
+      databaseName: database.name,
+      children,
+    }
+  })
+
+  return {
+    id: connectionId,
+    kind: 'connection',
+    name: connectionName,
+    displayName: connectionName,
+    dialect,
+    connectionId,
+    status: 'ok',
+    children:
+      dbNodes.length > 0
+        ? dbNodes
+        : [
+            {
+              id: `${connectionId}:db-filter-empty`,
+              kind: 'note',
+              name: 'no-visible-db',
+              displayName: '没有可显示的库',
+              note: '可在连接菜单「显示的库…」勾选要展示的数据库。',
+              connectionId,
+            },
+          ],
+  }
+}

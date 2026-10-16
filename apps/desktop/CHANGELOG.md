@@ -2,6 +2,13 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 3.33.0 — M72 实例库列表与勾选显示
+
+- MySQL / MariaDB / PostgreSQL / SQL Server：对象树按实例列出全部数据库（隐藏系统库），不再只显示连接时填写的那一个库
+- 连接菜单「显示的库…」：勾选白名单；全选等同未限制；保存后刷新对象树
+- 打开表浏览时自动限定库名（MySQL `库.表`、SQL Server `库..表`）；PostgreSQL 跨库浏览走一次性会话
+- 连接对话框：MySQL/MariaDB 数据库名可选；PostgreSQL 可保留默认库并在树中展开其他库
+
 ## 3.32.0 — M71 快捷键说明可搜索
 
 - F1 / 状态栏「F1」快捷键对话框：顶部筛选框，按动作名或按键过滤

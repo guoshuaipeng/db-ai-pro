@@ -55,6 +55,7 @@ type StoredConnection = {
   readOnly?: boolean
   groupId?: string | null
   colorTag?: string | null
+  visibleDatabases?: string[] | null
   createdAt: string
   updatedAt: string
 }
@@ -133,6 +134,7 @@ function toPublic(row: StoredConnection): ConnectionPublic {
     readOnly: row.readOnly === true,
     groupId: row.groupId ?? null,
     colorTag: row.colorTag ?? null,
+    visibleDatabases: row.visibleDatabases ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
@@ -152,7 +154,9 @@ export function saveConnection(input: ConnectionInput): { connection: Connection
   const info = dialectInfo(input.dialect)
   if (info.id === 'sqlite' && !input.filePath?.trim()) return { error: '请选择 SQLite 文件' }
   if (info.id !== 'sqlite' && !input.host?.trim()) return { error: '请填写主机' }
-  if (needsServerDatabase(info.id) && !input.database?.trim()) return { error: '请填写数据库名' }
+  if (needsServerDatabase(info.id) && info.id !== 'mysql' && info.id !== 'mariadb' && !input.database?.trim()) {
+    return { error: '请填写数据库名' }
+  }
 
   const rows = loadConnectionsRaw()
   const now = new Date().toISOString()
@@ -185,6 +189,10 @@ export function saveConnection(input: ConnectionInput): { connection: Connection
       input.groupId === undefined ? (existing?.groupId ?? null) : input.groupId,
     colorTag:
       input.colorTag === undefined ? (existing?.colorTag ?? null) : input.colorTag,
+    visibleDatabases:
+      input.visibleDatabases === undefined
+        ? (existing?.visibleDatabases ?? null)
+        : input.visibleDatabases,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }

@@ -3,6 +3,7 @@ import {
   PAGE_SIZES,
   buildBrowseSql,
   buildCountSql,
+  qualifyBrowseTable,
   canNextPage,
   canPrevPage,
   clampBrowsePage,
@@ -32,6 +33,19 @@ describe('tablePaging', () => {
     expect(buildBrowseSql('postgresql', 't', 1, 1000)).toBe(
       'SELECT *\nFROM "t"\nLIMIT 1000 OFFSET 1000;',
     )
+  })
+
+  it('qualifies MySQL/MSSQL browse with databaseName', () => {
+    expect(qualifyBrowseTable('mysql', 'orders', 'shop')).toBe('`shop`.`orders`')
+    expect(buildBrowseSql('mysql', 'orders', 0, 100, 'shop')).toBe(
+      'SELECT *\nFROM `shop`.`orders`\nLIMIT 100 OFFSET 0;',
+    )
+    expect(buildBrowseSql('sqlserver', 't', 0, 100, 'app')).toBe(
+      'SELECT *\nFROM "app".."t"\nORDER BY (SELECT NULL)\nOFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY;',
+    )
+    expect(buildCountSql('mariadb', 't', 'db1')).toBe('SELECT COUNT(*) AS __cnt__\nFROM `db1`.`t`;')
+    // PG ignores databaseName in SQL (session-level DB)
+    expect(qualifyBrowseTable('postgresql', 't', 'other')).toBe('"t"')
   })
 
   it('builds OFFSET/FETCH for SQL Server with ORDER BY', () => {

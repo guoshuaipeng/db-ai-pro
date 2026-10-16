@@ -49,6 +49,11 @@ const api: DesktopApi = {
       if (result?.error) throw new Error(result.error)
       return result.schema
     },
+    listDatabases: async (id: string) => {
+      const result = await ipcRenderer.invoke('connections:listDatabases', id)
+      if (result?.error) throw new Error(result.error)
+      return result.databases ?? []
+    },
     test: (input: ConnectionInput) => ipcRenderer.invoke('connections:test', input),
     health: (id: string) => ipcRenderer.invoke('connections:health', id),
     seedSample: async () => {

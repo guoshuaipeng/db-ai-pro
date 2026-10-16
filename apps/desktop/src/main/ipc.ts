@@ -27,6 +27,7 @@ import {
   probeTarget,
   pingSession,
   schemaForSession,
+  listInstanceDatabases,
   inspectTableSession,
   beginTransaction,
   commitTransaction,
@@ -349,6 +350,18 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     }
   })
 
+
+  ipcMain.handle('connections:listDatabases', async (_event, id: string) => {
+    const row = getConnection(id)
+    if (!row) return { error: '连接不存在' }
+    if (row.dialect === 'sqlite' || row.dialect === 'redis') return { databases: [] as string[] }
+    try {
+      return { databases: await listInstanceDatabases(targetFromStored(row)) }
+    } catch (error) {
+      return { error: explainDbError(error) }
+    }
+  })
+
   ipcMain.handle('connections:schema', async (_event, id: string) => {
     const row = getConnection(id)
     if (!row) return { error: '连接不存在' }
@@ -437,7 +450,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     'sql:execute',
     async (
       _event,
-      payload: { connectionId: string; sql: string; requestId?: string; timeoutMs?: number },
+      payload: { connectionId: string; sql: string; requestId?: string; timeoutMs?: number; database?: string },
     ) => {
     const row = getConnection(payload.connectionId)
     if (!row) return { error: '连接不存在' }
@@ -453,6 +466,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
       const results = await executeSession(targetFromStored(row), payload.sql, {
         requestId: payload.requestId,
         timeoutMs,
+        database: payload.database,
       })
       const failed = results.find((item) => !item.ok)
       const elapsedMs = results.reduce((sum, item) => sum + (item.elapsedMs || 0), 0)

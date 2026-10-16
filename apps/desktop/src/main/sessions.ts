@@ -3,9 +3,9 @@ import type { SqlTarget } from './target'
 import type { Connection } from 'mysql2/promise'
 import type { Client } from 'pg'
 import type Database from 'better-sqlite3'
-import { describeMysql, executeMysql, listMysqlSchema, openMysql, type ServerLogin } from './mysql'
-import { describeMssql, executeMssql, listMssqlSchema, openMssql } from './mssql'
-import { describePostgres, executePostgres, listPostgresSchema, openPostgres } from './postgres'
+import { describeMysql, executeMysql, listMysqlDatabases, listMysqlSchema, openMysql, type ServerLogin } from './mysql'
+import { describeMssql, executeMssql, listMssqlDatabases, listMssqlSchema, openMssql } from './mssql'
+import { describePostgres, executePostgres, listPostgresDatabases, listPostgresSchema, openPostgres } from './postgres'
 import { closeRedis, listRedisSchema, probeRedis, pingRedis, scanRedisKeys } from './redis'
 import { databaseExists, describeSchema, executeScript, listSchema, openDatabase } from './sqlite'
 import {
@@ -17,6 +17,7 @@ import {
 import type { TableStructure } from '@shared/tableStructure'
 import { supportsManualTransaction, transactionSql } from '@shared/transaction'
 import sql from 'mssql'
+import { getConnection } from './store'
 
 export type { SqlTarget } from './target'
 
@@ -69,13 +70,15 @@ function stampOf(target: SqlTarget): string {
 
 function loginOf(target: SqlTarget): ServerLogin {
   if (!target.host?.trim()) throw new Error('请填写主机')
-  if (!target.database?.trim()) throw new Error('请填写数据库名')
+  const dialect = target.dialect
+  const optionalDb = dialect === 'mysql' || dialect === 'mariadb'
+  if (!optionalDb && !target.database?.trim()) throw new Error('请填写数据库名')
   return {
     host: target.host.trim(),
-    port: target.port ?? (target.dialect === 'postgresql' ? 5432 : target.dialect === 'sqlserver' ? 1433 : 3306),
+    port: target.port ?? (dialect === 'postgresql' ? 5432 : dialect === 'sqlserver' ? 1433 : 3306),
     user: target.username?.trim() ?? '',
     password: target.password ?? '',
-    database: target.database.trim(),
+    database: target.database?.trim() || (dialect === 'postgresql' ? 'postgres' : ''),
   }
 }
 
@@ -267,22 +270,52 @@ export async function schemaForSession(target: SqlTarget): Promise<SchemaNode> {
     return listRedisSchema(target, keys)
   }
   const session = await openSession(target)
+  const whitelist = getConnection(target.id)?.visibleDatabases ?? null
   if (session.kind === 'sqlite') {
     return listSchema(target.id, target.name, target.filePath ?? '', session.db)
   }
-  if (session.kind === 'mysql') return listMysqlSchema(session.conn, target)
-  if (session.kind === 'postgres') return listPostgresSchema(session.client, target)
-  return listMssqlSchema(session.pool, target)
+  if (session.kind === 'mysql') return listMysqlSchema(session.conn, target, whitelist)
+  if (session.kind === 'postgres') return listPostgresSchema(session.client, target, loginOf(target), whitelist)
+  return listMssqlSchema(session.pool, target, whitelist)
+}
+
+export async function listInstanceDatabases(target: SqlTarget): Promise<string[]> {
+  if (target.dialect === 'sqlite' || target.dialect === 'redis') return []
+  const session = await openSession(target)
+  if (session.kind === 'mysql') return listMysqlDatabases(session.conn)
+  if (session.kind === 'postgres') return listPostgresDatabases(session.client)
+  if (session.kind === 'mssql') return listMssqlDatabases(session.pool)
+  return []
 }
 
 export type ExecuteSessionOptions = {
   requestId?: string
   /** Soft timeout in ms. 0 / undefined = no timeout. */
   timeoutMs?: number
+  /** One-shot database override (PostgreSQL cross-DB browse). */
+  database?: string
 }
 
-async function runOnSession(target: SqlTarget, sqlText: string): Promise<StatementResult[]> {
+async function runOnSession(
+  target: SqlTarget,
+  sqlText: string,
+  databaseOverride?: string,
+): Promise<StatementResult[]> {
   if (target.dialect === 'redis') throw new Error('Redis 请使用键浏览器，而不是 SQL 编辑器')
+  const override = databaseOverride?.trim()
+  if (
+    target.dialect === 'postgresql' &&
+    override &&
+    override !== (target.database ?? '').trim()
+  ) {
+    const login = { ...loginOf(target), database: override }
+    const client = await openPostgres(login)
+    try {
+      return await executePostgres(client, sqlText)
+    } finally {
+      await client.end().catch(() => undefined)
+    }
+  }
   const session = await openSession(target)
   if (session.kind === 'sqlite') return executeScript(session.db, sqlText)
   if (session.kind === 'mysql') return executeMysql(session.conn, sqlText)
@@ -322,7 +355,7 @@ export async function executeSession(
 
   const work = (async () => {
     try {
-      return await runOnSession(target, sql)
+      return await runOnSession(target, sql, opts.database)
     } catch (error) {
       const active = requestId ? activeQueries.get(requestId) : undefined
       if (active?.reason) throw new QueryCancelledError(active.reason)
