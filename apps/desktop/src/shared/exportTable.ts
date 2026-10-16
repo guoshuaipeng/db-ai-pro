@@ -28,6 +28,20 @@ export function rowsToCsv(columns: string[], rows: Record<string, unknown>[]): s
   return `${lines.join('\n')}\n`
 }
 
+export function rowsToTsv(columns: string[], rows: Record<string, unknown>[]): string {
+  const escape = (value: unknown): string => {
+    const text = cellText(value)
+    if (/["\t\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`
+    return text
+  }
+  const lines = [columns.map(escape).join('\t')]
+  for (const row of rows) {
+    lines.push(columns.map((column) => escape(row[column])).join('\t'))
+  }
+  return `${lines.join('\n')}\n`
+}
+
+
 export function rowsToJson(columns: string[], rows: Record<string, unknown>[]): string {
   const cleaned = rows.map((row) => {
     const next: Record<string, unknown> = {}

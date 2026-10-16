@@ -2942,3 +2942,23 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   width: 120px;
   accent-color: var(--accent, #9eb4ff);
 }
+
+
+/* M41 row selection */
+.grid tbody tr.is-selected td,
+.grid tbody tr.is-selected th.row-index {
+  background: rgba(158, 180, 255, 0.14);
+}
+.grid tbody tr.is-selected.is-active td,
+.grid tbody tr.is-selected:hover td {
+  background: rgba(158, 180, 255, 0.2);
+}
+.grid tbody tr.is-selected td.is-pinned,
+.grid tbody tr.is-selected.is-active td.is-pinned,
+.grid tbody tr.is-selected:hover td.is-pinned {
+  background: #243049;
+}
+.grid .row-index {
+  cursor: pointer;
+  user-select: none;
+}

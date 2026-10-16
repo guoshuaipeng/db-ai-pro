@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { capExportRows, EXPORT_ROW_CAP, rowsToHtml, rowsToMarkdown } from './exportTable'
+import {
+  capExportRows,
+  EXPORT_ROW_CAP,
+  rowsToCsv,
+  rowsToHtml,
+  rowsToMarkdown,
+  rowsToTsv,
+} from './exportTable'
 
 describe('export Markdown / HTML', () => {
   const columns = ['id', 'name']
@@ -29,5 +36,17 @@ describe('export Markdown / HTML', () => {
     expect(capped.truncated).toBe(true)
     expect(capped.rows).toEqual([0, 1, 2])
     expect(EXPORT_ROW_CAP).toBeGreaterThan(1000)
+  })
+})
+
+describe('rowsToTsv', () => {
+  it('joins with tabs', () => {
+    const tsv = rowsToTsv(['id', 'name'], [{ id: 1, name: 'a\tb' }])
+    expect(tsv.split('\n')[0]).toBe('id\tname')
+    expect(tsv).toContain('"a\tb"')
+  })
+
+  it('csv still uses commas', () => {
+    expect(rowsToCsv(['id'], [{ id: 1 }])).toContain('id\n1')
   })
 })

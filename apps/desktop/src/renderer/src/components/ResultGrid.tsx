@@ -2,7 +2,14 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import ExcelJS from 'exceljs'
 import { getApi } from '../bridge'
-import { capExportRows, rowsToCsv, rowsToHtml, rowsToJson, rowsToMarkdown } from '@shared/exportTable'
+import {
+  capExportRows,
+  rowsToCsv,
+  rowsToHtml,
+  rowsToJson,
+  rowsToMarkdown,
+  rowsToTsv,
+} from '@shared/exportTable'
 import {
   columnValues,
   rowsToValuesSql,
@@ -13,6 +20,12 @@ import { inferSqliteTable } from '@shared/sql'
 import { formatCell, isNumericColumn } from '../format'
 import { useWorkspace } from '../state/workspace'
 import { nextSortState, sortResultRows, type ResultSort } from '@shared/resultSort'
+import {
+  rangeRowIndexes,
+  selectAllRowIndexes,
+  selectedRowsFromIndexes,
+  toggleRowIndex,
+} from '@shared/rowSelection'
 
 const ROW_HEIGHT = 32
 
@@ -56,6 +69,7 @@ async function downloadExcel(columns: string[], rows: Record<string, unknown>[])
 export function ResultToolbar({
   columns,
   rows,
+  selectedRows,
   focusColumn,
   filterQuery,
   onFilterQuery,
@@ -63,6 +77,8 @@ export function ResultToolbar({
 }: {
   columns: string[]
   rows: Record<string, unknown>[]
+  /** When non-empty, copy / IN / VALUES use this subset. */
+  selectedRows?: Record<string, unknown>[]
   focusColumn?: string | null
   filterQuery?: string
   onFilterQuery?: (value: string) => void
@@ -75,32 +91,43 @@ export function ResultToolbar({
   const exportColumns = visible.length > 0 ? visible : columns
   const statsColumn = focusColumn && visible.includes(focusColumn) ? focusColumn : visible[0] ?? null
   const allCount = totalRows ?? rows.length
+  const selectionActive = (selectedRows?.length ?? 0) > 0
+  const copySource = selectionActive ? selectedRows! : rows
+  const selectionLabel = selectionActive ? `已选 ${copySource.length}` : ''
 
   const copyAll = async () => {
-    await navigator.clipboard.writeText(rowsToCsv(exportColumns, rows))
-    setCopyNote('已复制 CSV')
+    await navigator.clipboard.writeText(rowsToCsv(exportColumns, copySource))
+    setCopyNote(selectionActive ? `已复制 CSV（${copySource.length} 行）` : '已复制 CSV')
+  }
+
+  const copyTsv = async () => {
+    if (copySource.length === 0) return
+    await navigator.clipboard.writeText(rowsToTsv(exportColumns, copySource))
+    setCopyNote(
+      selectionActive ? `已复制 TSV（${copySource.length} 行）` : `已复制 TSV（${copySource.length} 行）`,
+    )
   }
 
   const copyInList = async () => {
-    if (!statsColumn || rows.length === 0) return
-    const { sql, truncated, count } = valuesToInList(columnValues(rows, statsColumn))
+    if (!statsColumn || copySource.length === 0) return
+    const { sql, truncated, count } = valuesToInList(columnValues(copySource, statsColumn))
     await navigator.clipboard.writeText(sql)
     setCopyNote(
       truncated
-        ? `已复制 IN（${count}，已截断）· ${statsColumn}`
-        : `已复制 IN（${count}）· ${statsColumn}`,
+        ? `已复制 IN（${count}，已截断）· ${statsColumn}${selectionActive ? ' · 选中行' : ''}`
+        : `已复制 IN（${count}）· ${statsColumn}${selectionActive ? ' · 选中行' : ''}`,
     )
   }
 
   const copyValuesSnippet = async () => {
-    if (rows.length === 0) return
+    if (copySource.length === 0) return
     const cols = statsColumn ? [statsColumn] : exportColumns
-    const { sql, truncated, count } = rowsToValuesSql(rowTuples(rows, cols))
+    const { sql, truncated, count } = rowsToValuesSql(rowTuples(copySource, cols))
     await navigator.clipboard.writeText('VALUES\n' + sql)
     setCopyNote(
       truncated
-        ? `已复制 VALUES（${count} 行，已截断）`
-        : `已复制 VALUES（${count} 行 · ${cols.length} 列）`,
+        ? `已复制 VALUES（${count} 行，已截断）${selectionActive ? ' · 选中行' : ''}`
+        : `已复制 VALUES（${count} 行 · ${cols.length} 列）${selectionActive ? ' · 选中行' : ''}`,
     )
   }
 
@@ -213,13 +240,32 @@ export function ResultToolbar({
       >
         {busy ? '导出中…' : '导出 Excel'}
       </button>
-      <button type="button" className="btn btn-ghost tiny-btn" onClick={() => void copyAll()}>
-        复制表格
+      {selectionActive && (
+        <span className="result-copy-note" title="复制操作作用于选中行">
+          {selectionLabel}
+        </span>
+      )}
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
+        disabled={copySource.length === 0}
+        onClick={() => void copyAll()}
+      >
+        复制 CSV
       </button>
       <button
         type="button"
         className="btn btn-ghost tiny-btn"
-        disabled={!statsColumn || rows.length === 0}
+        disabled={copySource.length === 0}
+        title="复制为制表符分隔（TSV）"
+        onClick={() => void copyTsv()}
+      >
+        复制 TSV
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
+        disabled={!statsColumn || copySource.length === 0}
         title={statsColumn ? `复制列 ${statsColumn} 为 IN (...)` : '无可用列'}
         onClick={() => void copyInList()}
       >
@@ -228,7 +274,7 @@ export function ResultToolbar({
       <button
         type="button"
         className="btn btn-ghost tiny-btn"
-        disabled={rows.length === 0}
+        disabled={copySource.length === 0}
         title={
           statsColumn
             ? `复制列 ${statsColumn} 为 VALUES`
@@ -248,11 +294,13 @@ export function ResultGrid({
   rows,
   onFocusColumn,
   onViewRowsChange,
+  onSelectedRowsChange,
 }: {
   columns: string[]
   rows: Record<string, unknown>[]
   onFocusColumn?: (column: string | null) => void
   onViewRowsChange?: (rows: Record<string, unknown>[]) => void
+  onSelectedRowsChange?: (rows: Record<string, unknown>[]) => void
 }) {
   const ws = useWorkspace()
   const parentRef = useRef<HTMLDivElement>(null)
@@ -267,6 +315,8 @@ export function ResultGrid({
     column: string
     rowIndex: number | null
   } | null>(null)
+  const [selectedIndexes, setSelectedIndexes] = useState<Set<number>>(() => new Set())
+  const selectionAnchorRef = useRef<number | null>(null)
 
   const visibleColumns = useMemo(() => columns.filter((column) => column !== '__rowid__'), [columns])
   const displayColumns = useMemo(() => {
@@ -280,6 +330,22 @@ export function ResultGrid({
   useEffect(() => {
     onViewRowsChange?.(displayRows)
   }, [displayRows, onViewRowsChange])
+
+  useEffect(() => {
+    onSelectedRowsChange?.(selectedRowsFromIndexes(displayRows, selectedIndexes))
+  }, [displayRows, selectedIndexes, onSelectedRowsChange])
+
+  // Drop stale indexes after sort/filter size changes
+  useEffect(() => {
+    setSelectedIndexes((current) => {
+      if (current.size === 0) return current
+      const next = new Set<number>()
+      for (const index of current) {
+        if (index >= 0 && index < displayRows.length) next.add(index)
+      }
+      return next.size === current.size ? current : next
+    })
+  }, [displayRows.length])
   const numeric = Object.fromEntries(displayColumns.map((column) => [column, isNumericColumn(displayRows, column)]))
 
   const canEditSqlite = useMemo(() => {
@@ -300,6 +366,8 @@ export function ResultGrid({
     setEditing(null)
     setSort(null)
     setContextMenu(null)
+    setSelectedIndexes(new Set())
+    selectionAnchorRef.current = null
     setPinned((current) => current.filter((name) => columns.includes(name)))
     setNote(rows.length > 500 ? `已虚拟滚动渲染 ${rows.length.toLocaleString('zh-CN')} 行` : '')
   }, [columns, rows])
@@ -325,6 +393,59 @@ export function ResultGrid({
       row: Math.min(Math.max(0, current.row + rowDelta), Math.max(0, displayRows.length - 1)),
       col: Math.min(Math.max(0, current.col + colDelta), Math.max(0, displayColumns.length - 1)),
     }))
+  }
+
+  const selectRow = (rowIndex: number, event: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) => {
+    const ctrl = Boolean(event.ctrlKey || event.metaKey)
+    const shift = Boolean(event.shiftKey)
+    if (shift && selectionAnchorRef.current != null) {
+      setSelectedIndexes(rangeRowIndexes(selectionAnchorRef.current, rowIndex))
+    } else if (ctrl) {
+      setSelectedIndexes((current) => toggleRowIndex(current, rowIndex))
+      selectionAnchorRef.current = rowIndex
+    } else {
+      setSelectedIndexes(new Set([rowIndex]))
+      selectionAnchorRef.current = rowIndex
+    }
+    setFocus((current) => ({ ...current, row: rowIndex }))
+  }
+
+  const copySelectedAsTsv = async () => {
+    const selected = selectedRowsFromIndexes(displayRows, selectedIndexes)
+    if (selected.length === 0) return
+    await navigator.clipboard.writeText(rowsToTsv(displayColumns, selected))
+    setNote(`已复制选中 ${selected.length} 行为 TSV`)
+    setContextMenu(null)
+  }
+
+  const copySelectedAsCsv = async () => {
+    const selected = selectedRowsFromIndexes(displayRows, selectedIndexes)
+    if (selected.length === 0) return
+    await navigator.clipboard.writeText(rowsToCsv(displayColumns, selected))
+    setNote(`已复制选中 ${selected.length} 行为 CSV`)
+    setContextMenu(null)
+  }
+
+  const copySelectedAsIn = async (column: string) => {
+    const selected = selectedRowsFromIndexes(displayRows, selectedIndexes)
+    if (selected.length === 0) return
+    const { sql, truncated, count } = valuesToInList(columnValues(selected, column))
+    await navigator.clipboard.writeText(sql)
+    setNote(truncated ? `已复制选中行 IN（${count}，已截断）` : `已复制选中行 IN（${count}）· ${column}`)
+    setContextMenu(null)
+  }
+
+  const copySelectedAsValues = async () => {
+    const selected = selectedRowsFromIndexes(displayRows, selectedIndexes)
+    if (selected.length === 0) return
+    const { sql, truncated, count } = rowsToValuesSql(rowTuples(selected, displayColumns))
+    await navigator.clipboard.writeText('VALUES\n' + sql)
+    setNote(
+      truncated
+        ? `已复制选中行 VALUES（${count}，已截断）`
+        : `已复制选中行 VALUES（${count} 行）`,
+    )
+    setContextMenu(null)
   }
 
   const copyFocused = async () => {
@@ -450,7 +571,22 @@ export function ResultGrid({
       onKeyDown={(event: KeyboardEvent) => {
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && !editing) {
           event.preventDefault()
-          void copyFocused()
+          if (selectedIndexes.size > 0) void copySelectedAsTsv()
+          else void copyFocused()
+          return
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && !editing) {
+          event.preventDefault()
+          setSelectedIndexes(selectAllRowIndexes(displayRows.length))
+          selectionAnchorRef.current = 0
+          return
+        }
+        if (event.key === 'Escape' && !editing) {
+          if (selectedIndexes.size > 0) {
+            event.preventDefault()
+            setSelectedIndexes(new Set())
+            selectionAnchorRef.current = null
+          }
           return
         }
         if (editing) return
@@ -552,10 +688,24 @@ export function ResultGrid({
                 key={item.key}
                 role="row"
                 data-index={rowIndex}
-                className={focus.row === rowIndex ? 'is-active' : undefined}
+                aria-selected={selectedIndexes.has(rowIndex)}
+                className={[
+                  focus.row === rowIndex ? 'is-active' : '',
+                  selectedIndexes.has(rowIndex) ? 'is-selected' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ') || undefined}
                 style={{ height: ROW_HEIGHT }}
               >
-                <th className="row-index" scope="row">
+                <th
+                  className="row-index"
+                  scope="row"
+                  title="单击选择 · Ctrl 多选 · Shift 范围"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    selectRow(rowIndex, event)
+                  }}
+                >
                   {rowIndex + 1}
                 </th>
                 {displayColumns.map((column, colIndex) => {
@@ -588,7 +738,10 @@ export function ResultGrid({
                         .filter(Boolean)
                         .join(' ')}
                       style={pinnedAt >= 0 ? { left: pinLeft(column) } : undefined}
-                      onClick={() => setFocus({ row: rowIndex, col: colIndex })}
+                      onClick={(event) => {
+                        selectRow(rowIndex, event)
+                        setFocus({ row: rowIndex, col: colIndex })
+                      }}
                       onDoubleClick={() => beginEdit(rowIndex, colIndex)}
                     >
                       {isEditing ? (
@@ -655,11 +808,31 @@ export function ResultGrid({
               </button>
             </>
           )}
+          {selectedIndexes.size > 0 && (
+            <>
+              <button type="button" role="menuitem" onClick={() => void copySelectedAsTsv()}>
+                复制选中行 TSV（{selectedIndexes.size}）
+              </button>
+              <button type="button" role="menuitem" onClick={() => void copySelectedAsCsv()}>
+                复制选中行 CSV
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => void copySelectedAsIn(contextMenu.column)}
+              >
+                复制选中列 IN
+              </button>
+              <button type="button" role="menuitem" onClick={() => void copySelectedAsValues()}>
+                复制选中行 VALUES
+              </button>
+            </>
+          )}
         </div>
       )}
       {note && <p className="result-footnote">{note}</p>}
       <p className="result-footnote">
-        表头点击排序；右键可复制 IN / VALUES；「钉」固定最多 2 列；左侧 # 为行号。
+        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列。
         {sort ? ` 当前排序：${sort.column} ${sort.direction === 'asc' ? '升序' : '降序'}。` : ''}
       </p>
       {canEditSqlite && <p className="result-footnote">SQLite：双击单元格可编辑（需确认）。隐藏列 __rowid__ 用于定位行。</p>}
