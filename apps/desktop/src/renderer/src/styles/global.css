@@ -1945,7 +1945,78 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
 .status-muted { color: var(--ink-tertiary); }
 .status-item.is-warn { color: var(--warn); }
 .status-item.is-txn { color: #f0b429; font-weight: 600; }
-.shortcuts-dialog { width: min(480px, calc(100vw - 48px)); }
+.shortcuts-dialog { width: min(560px, calc(100vw - 48px)); }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.shortcut-search {
+  position: relative;
+  display: block;
+  margin: 0 0 8px;
+}
+.shortcut-search input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 32px 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: #0b1220;
+  color: #f8fafc;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.shortcut-search input:focus {
+  border-color: rgba(129, 140, 248, 0.55);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+.shortcut-search-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+.shortcut-search-clear:hover {
+  background: rgba(148, 163, 184, 0.14);
+  color: #f8fafc;
+}
+.shortcut-stats {
+  margin: 0 0 8px;
+  color: var(--ink-tertiary);
+  font-size: 12px;
+}
+.shortcut-empty {
+  margin: 16px 4px 8px;
+  color: var(--ink-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+.shortcuts-dialog .shortcut-list {
+  max-height: min(52vh, 420px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
 
 @media (max-height: 768px) {
   .palette-overlay { padding-top: 8vh; }

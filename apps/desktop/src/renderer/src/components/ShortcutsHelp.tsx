@@ -1,9 +1,16 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { SHORTCUT_HELP } from '@shared/commands'
+import { filterShortcutHelp } from '@shared/shortcutHelp'
 
 export function ShortcutsHelp({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [query, setQuery] = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
+
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setQuery('')
+      return
+    }
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
@@ -11,8 +18,14 @@ export function ShortcutsHelp({ open, onClose }: { open: boolean; onClose: () =>
       }
     }
     window.addEventListener('keydown', onKey, true)
+    queueMicrotask(() => {
+      searchRef.current?.focus()
+      searchRef.current?.select()
+    })
     return () => window.removeEventListener('keydown', onKey, true)
   }, [open, onClose])
+
+  const filtered = useMemo(() => filterShortcutHelp(SHORTCUT_HELP, query), [query])
 
   if (!open) return null
 
@@ -26,15 +39,42 @@ export function ShortcutsHelp({ open, onClose }: { open: boolean; onClose: () =>
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h2 id="shortcuts-title">键盘快捷键</h2>
-        <p className="dialog-copy">与 Monaco 常用编辑键尽量错开；冲突时以编辑器内快捷键为准。多光标（Alt+单击 / Ctrl+Alt+↑↓）为 Monaco 内置，无需额外实现。可用命令面板（Ctrl+K / Ctrl+P）搜索表、列与收藏。收藏片段支持 {'{{table}}'} / {'{{limit}}'} 等占位符，插入时弹出填写框。</p>
-        <ul className="shortcut-list">
-          {SHORTCUT_HELP.map((row) => (
-            <li key={row.action} className="shortcut-row">
-              <span>{row.action}</span>
-              <kbd>{row.keys}</kbd>
-            </li>
-          ))}
-        </ul>
+        <p className="dialog-copy">
+          与 Monaco 常用编辑键尽量错开；冲突时以编辑器内快捷键为准。多光标（Alt+单击 / Ctrl+Alt+↑↓）为 Monaco
+          内置。也可用命令面板（Ctrl+K）搜索能力。
+        </p>
+        <label className="shortcut-search">
+          <span className="sr-only">筛选快捷键</span>
+          <input
+            ref={searchRef}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="筛选动作或按键，例如 运行、Ctrl+K、刷新…"
+            aria-label="筛选快捷键"
+          />
+          {query.trim() && (
+            <button type="button" className="shortcut-search-clear" aria-label="清除筛选" onClick={() => setQuery('')}>
+              ×
+            </button>
+          )}
+        </label>
+        <p className="shortcut-stats" aria-live="polite">
+          {query.trim()
+            ? `显示 ${filtered.length} / ${SHORTCUT_HELP.length}`
+            : `共 ${SHORTCUT_HELP.length} 条`}
+        </p>
+        {filtered.length === 0 ? (
+          <p className="shortcut-empty">没有匹配的快捷键，试试更短的关键字。</p>
+        ) : (
+          <ul className="shortcut-list">
+            {filtered.map((row) => (
+              <li key={`${row.action}:${row.keys}`} className="shortcut-row">
+                <span>{row.action}</span>
+                <kbd>{row.keys}</kbd>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="dialog-actions">
           <button type="button" className="btn btn-primary" onClick={onClose}>
             知道了
