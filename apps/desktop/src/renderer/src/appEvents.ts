@@ -28,6 +28,7 @@ export type DataaiEventMap = {
   'dataai:result-copy-message': undefined
   'dataai:result-copy-markdown': undefined
   'dataai:result-copy-json': undefined
+  'dataai:result-copy-insert': undefined
   'dataai:result-column-visibility': undefined
   'dataai:result-cell-preview': undefined
   'dataai:replace': undefined

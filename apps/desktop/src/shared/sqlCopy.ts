@@ -77,3 +77,42 @@ export function rowTuples(
 ): unknown[][] {
   return rows.map((row) => columns.map((column) => row[column] ?? null))
 }
+
+/** Quote SQL identifier; keep simple names bare. */
+export function quoteSqlIdent(name: string): string {
+  const trimmed = name.trim()
+  if (!trimmed) return 'my_table'
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) return trimmed
+  return `"${trimmed.replace(/"/g, '""')}"`
+}
+
+export function suggestInsertTableName(browseTable?: string | null): string {
+  const name = browseTable?.trim()
+  return name ? name : 'my_table'
+}
+
+/** Full INSERT INTO … VALUES …; statement from column names + row tuples. */
+export function rowsToInsertSql(
+  tableName: string,
+  columns: readonly string[],
+  rows: unknown[][],
+  options?: { cap?: number },
+): { sql: string; truncated: boolean; count: number; tableName: string } {
+  const table = suggestInsertTableName(tableName)
+  const { sql: valuesBody, truncated, count } = rowsToValuesSql(rows, options)
+  const colList = columns.map(quoteSqlIdent).join(', ')
+  return {
+    sql: `INSERT INTO ${quoteSqlIdent(table)} (${colList})\nVALUES\n${valuesBody};`,
+    truncated,
+    count,
+    tableName: table,
+  }
+}
+
+export function insertCopiedToast(count: number, truncated: boolean, tableName: string): string {
+  const n = count.toLocaleString('zh-CN')
+  const table = tableName || 'my_table'
+  if (truncated) return `已复制 INSERT（前 ${n} 行 → ${table}，已截断）`
+  return `已复制 INSERT（${n} 行 → ${table}）`
+}
+

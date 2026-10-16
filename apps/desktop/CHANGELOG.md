@@ -2,6 +2,12 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 3.72.0 — M111 复制结果为 INSERT 语句
+
+- 结果工具栏「复制 INSERT」：生成 `INSERT INTO … (列) VALUES …;` 到剪贴板（选中行优先；浏览表名优先，否则 `my_table`）
+- 命令面板「复制结果为 INSERT」；行数过多时截断并提示
+- 与「复制 VALUES」互补；不改动格式化 toast、Alt+Page 切结果标签等近期能力
+
 ## 3.71.0 — M110 格式化 SQL 完成提示
 
 - Shift+Alt+F / 工具栏「格式化」完成后 toast：已格式化（全文或选区）或「已是格式化状态」

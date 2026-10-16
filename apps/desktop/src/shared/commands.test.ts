@@ -113,6 +113,10 @@ describe('filterCommands', () => {
     expect(filterCommands('JSON').some((item) => item.id === 'result.copyJson')).toBe(true)
   })
 
+  it('finds copy result insert command', () => {
+    expect(filterCommands('INSERT').some((item) => item.id === 'result.copyInsert')).toBe(true)
+  })
+
   it('finds clear result tabs command', () => {
     expect(filterCommands('清空结果').some((item) => item.id === 'result.clearTabs')).toBe(true)
   })

@@ -214,6 +214,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'result.copyInsert',
+    title: '复制结果为 INSERT',
+    subtitle: 'INSERT INTO … VALUES … 写入剪贴板',
+    keywords: 'insert copy sql 复制 插入',
+    shortcut: '结果工具栏「复制 INSERT」',
+    category: 'query',
+  },
+  {
     id: 'result.copyJson',
     title: '复制结果为 JSON',
     subtitle: 'JSON 数组写入剪贴板（缩进格式）',
@@ -625,6 +633,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '在结果中查找', keys: '结果区 Ctrl+F · 工具栏「查找」' },
   { action: '复制单元格', keys: 'Ctrl+C · Shift+双击单元格' },
   { action: '复制结果列名', keys: '结果工具栏「复制列名」· Ctrl+K' },
+  { action: '复制结果为 INSERT', keys: '结果工具栏「复制 INSERT」' },
   { action: '清空结果标签', keys: '结果栏「清空」· 标签 × / 中键 · Ctrl+K' },
   { action: '关闭其他 / 右侧结果标签', keys: '结果标签右键菜单' },
   { action: '列宽适应', keys: '工具栏「列宽适应」· Ctrl+K · 表头分隔线双击' },

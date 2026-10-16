@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { rowsToValuesSql, sqlLiteral, valuesToInList } from './sqlCopy'
+import {
+  insertCopiedToast,
+  quoteSqlIdent,
+  rowsToInsertSql,
+  rowsToValuesSql,
+  sqlLiteral,
+  suggestInsertTableName,
+  valuesToInList,
+} from './sqlCopy'
 
 describe('sqlCopy', () => {
   it('quotes literals', () => {
@@ -23,3 +31,25 @@ describe('sqlCopy', () => {
     expect(sql).toBe("(1, 'x'),\n(2, NULL)")
   })
 })
+
+describe('rowsToInsertSql', () => {
+  it('builds INSERT with bare idents', () => {
+    const { sql, tableName } = rowsToInsertSql('orders', ['id', 'name'], [[1, 'a']])
+    expect(tableName).toBe('orders')
+    expect(sql).toContain('INSERT INTO orders (id, name)')
+    expect(sql).toContain("VALUES\n(1, 'a');")
+  })
+
+  it('quotes odd table names', () => {
+    expect(quoteSqlIdent('my table')).toBe('"my table"')
+    expect(suggestInsertTableName(null)).toBe('my_table')
+  })
+})
+
+describe('insertCopiedToast', () => {
+  it('mentions table', () => {
+    expect(insertCopiedToast(2, false, 't')).toContain('t')
+    expect(insertCopiedToast(2, true, 't')).toContain('截断')
+  })
+})
+

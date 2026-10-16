@@ -21,8 +21,11 @@ import {
 import { cellCopyClickHint, cellValueCopiedNote } from '@shared/cellCopy'
 import {
   columnValues,
+  insertCopiedToast,
+  rowsToInsertSql,
   rowsToValuesSql,
   rowTuples,
+  suggestInsertTableName,
   valuesToInList,
 } from '@shared/sqlCopy'
 import { inferSqliteTable } from '@shared/sql'
@@ -113,15 +116,18 @@ export function ResultToolbar({
   filterQuery,
   onFilterQuery,
   totalRows,
+  insertTableName,
 }: {
   columns: string[]
   rows: Record<string, unknown>[]
-  /** When non-empty, copy / IN / VALUES use this subset. */
+  /** When non-empty, copy / IN / VALUES / INSERT use this subset. */
   selectedRows?: Record<string, unknown>[]
   focusColumn?: string | null
   filterQuery?: string
   onFilterQuery?: (value: string) => void
   totalRows?: number
+  /** Preferred table name for INSERT copy (e.g. browse target). */
+  insertTableName?: string | null
 }) {
   const ws = useWorkspace()
   const [busy, setBusy] = useState(false)
@@ -200,6 +206,23 @@ export function ResultToolbar({
   }
 
 
+
+  const copyInsertSnippet = async () => {
+    if (copySource.length === 0 || exportColumns.length === 0) return
+    const table = suggestInsertTableName(insertTableName)
+    const { sql, truncated, count, tableName } = rowsToInsertSql(
+      table,
+      exportColumns,
+      rowTuples(copySource, exportColumns),
+    )
+    await navigator.clipboard.writeText(sql)
+    setCopyNote(
+      selectionActive
+        ? `${insertCopiedToast(count, truncated, tableName)} · 选中行`
+        : insertCopiedToast(count, truncated, tableName),
+    )
+  }
+
   const headerColumns = headerNameColumns(exportColumns)
 
   const copyHeaders = async () => {
@@ -230,6 +253,12 @@ export function ResultToolbar({
       void copyJson()
     })
   }, [exportColumns, copySource, selectionActive])
+
+  useEffect(() => {
+    return onDataai('dataai:result-copy-insert', () => {
+      void copyInsertSnippet()
+    })
+  }, [exportColumns, copySource, selectionActive, insertTableName])
 
   const exportCapped = (kind: 'markdown' | 'html' | 'excel', sourceRows: Record<string, unknown>[]) => {
     const { rows: capped, truncated, total } = capExportRows(sourceRows)
@@ -464,6 +493,15 @@ export function ResultToolbar({
         onClick={() => void copyValuesSnippet()}
       >
         复制 VALUES
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
+        disabled={copySource.length === 0 || exportColumns.length === 0}
+        title={`复制为 INSERT INTO ${suggestInsertTableName(insertTableName)} (…) VALUES …（浏览表名优先；过多行截断）`}
+        onClick={() => void copyInsertSnippet()}
+      >
+        复制 INSERT
       </button>
       {copyNote && <span className="result-copy-note">{copyNote}</span>}
 

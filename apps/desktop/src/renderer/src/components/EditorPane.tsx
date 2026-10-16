@@ -747,6 +747,7 @@ export function ResultPane() {
             filterQuery={resultFilter}
             onFilterQuery={setResultFilter}
             totalRows={(active.rows ?? []).length}
+            insertTableName={ws.activeEditor?.browse?.tableName}
           />
         </div>
       ) : results && results.tabs.length > 0 ? (
