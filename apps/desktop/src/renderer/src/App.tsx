@@ -20,6 +20,7 @@ import { SchemaDiffPanel } from './components/SchemaDiffPanel'
 import { CommandPalette } from './components/CommandPalette'
 import type { SqlFavorite } from '@shared/types'
 import { ShortcutsHelp } from './components/ShortcutsHelp'
+import { GotoLineDialog } from './components/GotoLineDialog'
 import { StatusBar } from './components/StatusBar'
 import { SettingsCenter, type SettingsTab } from './components/SettingsCenter'
 import {
@@ -52,6 +53,7 @@ export function App() {
     }
   }, [paletteOpen, ws])
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [gotoOpen, setGotoOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('model')
   const [prefs, setPrefs] = useState<AppPrefs>(DEFAULT_PREFS)
@@ -62,6 +64,7 @@ export function App() {
   }
 
   useEffect(() => onDataai('dataai:open-ai-settings', () => openSettings('model')), [])
+  useEffect(() => onDataai('dataai:open-goto-line', () => setGotoOpen(true)), [])
 
   useEffect(() => {
     let cancelled = false
@@ -168,6 +171,9 @@ export function App() {
         case 'editor.find':
           emitDataai('dataai:find')
           break
+        case 'editor.gotoLine':
+          setGotoOpen(true)
+          break
         case 'result.find':
           emitDataai('dataai:result-find')
           break
@@ -268,7 +274,7 @@ export function App() {
       const meta = event.metaKey || event.ctrlKey
       const key = event.key.toLowerCase()
 
-      if (paletteOpen || shortcutsOpen || settingsOpen) {
+      if (paletteOpen || shortcutsOpen || settingsOpen || gotoOpen) {
         // Palette / help handle Esc themselves; don't steal other chords.
         return
       }
@@ -286,6 +292,11 @@ export function App() {
       if (event.key === 'F1') {
         event.preventDefault()
         setShortcutsOpen(true)
+        return
+      }
+      if (meta && !event.shiftKey && key === 'g') {
+        event.preventDefault()
+        setGotoOpen(true)
         return
       }
       if (event.key === 'F5' || (meta && event.key === 'Enter')) {
@@ -367,7 +378,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [ws, paletteOpen, shortcutsOpen, settingsOpen, zoomIn, zoomOut, zoomReset])
+  }, [ws, paletteOpen, shortcutsOpen, settingsOpen, gotoOpen, zoomIn, zoomOut, zoomReset])
 
   if (!ws.ready) {
     return (
@@ -518,6 +529,7 @@ export function App() {
         }}
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenShortcuts={() => setShortcutsOpen(true)}
+        onOpenGotoLine={() => setGotoOpen(true)}
         onZoomReset={zoomReset}
       />
       <div className="toast-viewport" aria-live="polite">
@@ -550,6 +562,13 @@ export function App() {
         onInsertFavorite={(sql) => ws.insertFavoriteSql(sql)}
       />
       <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <GotoLineDialog
+        open={gotoOpen}
+        seedLine={ws.cursor.line}
+        seedColumn={ws.cursor.column}
+        onClose={() => setGotoOpen(false)}
+        onGoto={(target) => emitDataai('dataai:goto-line', target)}
+      />
       <SettingsCenter
         open={settingsOpen}
         tab={settingsTab}

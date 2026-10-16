@@ -4237,3 +4237,11 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
 .fav-scope-fieldset .checkline {
   margin: 4px 0;
 }
+
+.goto-line-dialog {
+  width: min(360px, calc(100vw - 32px));
+}
+.goto-line-dialog .field input {
+  font-variant-numeric: tabular-nums;
+  font-family: "JetBrains Mono", "Noto Sans SC", ui-monospace, monospace;
+}

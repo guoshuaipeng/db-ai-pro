@@ -39,6 +39,11 @@ describe('filterCommands', () => {
     expect(filterCommands('注释').some((item) => item.id === 'editor.toggleComment')).toBe(true)
   })
 
+  it('finds goto line command', () => {
+    expect(filterCommands('转到行').some((item) => item.id === 'editor.gotoLine')).toBe(true)
+    expect(filterCommands('goto').some((item) => item.id === 'editor.gotoLine')).toBe(true)
+  })
+
   it('finds query templates', () => {
     expect(filterCommands('模板').some((item) => item.id === 'query.templates')).toBe(true)
     expect(filterCommands('COUNT').some((item) => item.id === 'query.tpl.selectCount')).toBe(true)

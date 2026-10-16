@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "3.40.0",
+  "version": "3.41.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — quick-save SQL favorites",
+  "description": "DataAI TypeScript desktop — go to line",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

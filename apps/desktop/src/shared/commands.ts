@@ -134,6 +134,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'editor.gotoLine',
+    title: '转到行',
+    subtitle: '跳转到指定行 / 列（状态栏行号也可点）',
+    keywords: 'goto line column jump 转到 行号 跳转',
+    shortcut: 'Ctrl+G',
+    category: 'query',
+  },
+  {
     id: 'result.find',
     title: '在结果中查找',
     subtitle: '高亮匹配单元格并定位',

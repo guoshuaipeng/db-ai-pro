@@ -26,6 +26,7 @@ type StatusBarProps = {
   onProbeHealth: () => void
   onOpenPalette: () => void
   onOpenShortcuts: () => void
+  onOpenGotoLine: () => void
   onZoomReset: () => void
 }
 
@@ -50,6 +51,7 @@ export function StatusBar({
   onProbeHealth,
   onOpenPalette,
   onOpenShortcuts,
+  onOpenGotoLine,
   onZoomReset,
 }: StatusBarProps) {
   const healthView = statusHealthView(health)
@@ -94,9 +96,14 @@ export function StatusBar({
           未连接
         </span>
       )}
-      <span className="status-item">
+      <button
+        type="button"
+        className="status-item status-btn"
+        title="转到行（Ctrl+G）"
+        onClick={onOpenGotoLine}
+      >
         行 {cursorLine} · 列 {cursorColumn}
-      </span>
+      </button>
       {readOnlyActive ? (
         <span
           className="status-item is-readonly"

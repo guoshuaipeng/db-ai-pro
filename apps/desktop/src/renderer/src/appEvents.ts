@@ -15,6 +15,8 @@ export type DataaiEventMap = {
   'dataai:fill-query-params': undefined
   'dataai:toggle-comment': undefined
   'dataai:find': undefined
+  'dataai:open-goto-line': undefined
+  'dataai:goto-line': { line: number; column: number }
   'dataai:result-find': undefined
   'dataai:result-autofit-columns': undefined
   'dataai:result-column-visibility': undefined

@@ -7,6 +7,7 @@ import { onDataai } from '../appEvents'
 import { pickRunSql, selectionIsNonEmpty } from '@shared/runSqlPick'
 import { isSqlDragEvent, readSqlDragText } from '@shared/sqlDragDrop'
 import { formatSql } from '@shared/sqlFormat'
+import { clampGotoLineTarget } from '@shared/gotoLine'
 import {
   DEFAULT_EDITOR_FONT_SIZE,
   clampEditorFontSize,
@@ -303,6 +304,24 @@ export function SqlEditor({
   useEffect(() => onDataai('dataai:focus-editor', () => {
     instanceRef.current?.focus()
   }), [])
+
+  useEffect(
+    () =>
+      onDataai('dataai:goto-line', (detail) => {
+        const instance = instanceRef.current
+        if (!instance || !detail) return
+        const model = instance.getModel()
+        if (!model) return
+        const target = clampGotoLineTarget(detail, model.getLineCount(), (line) =>
+          model.getLineMaxColumn(line),
+        )
+        const position = { lineNumber: target.line, column: target.column }
+        instance.setPosition(position)
+        instance.revealPositionInCenter(position)
+        instance.focus()
+      }),
+    [],
+  )
 
   useEffect(
     () =>
