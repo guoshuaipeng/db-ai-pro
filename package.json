@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "name": "dataai-repo",
+  "scripts": {
+    "desktop:install": "npm install --prefix apps/desktop",
+    "desktop": "npm run dev --prefix apps/desktop",
+    "desktop:test": "npm test --prefix apps/desktop",
+    "desktop:typecheck": "npm run typecheck --prefix apps/desktop",
+    "desktop:smoke": "npm run smoke --prefix apps/desktop",
+    "desktop:build": "npm run build --prefix apps/desktop"
+  }
+}
