@@ -32,8 +32,10 @@ import { ResultChart } from './ResultChart'
 import { canChartResult } from '@shared/chartData'
 import { HistoryPanel } from './HistoryPanel'
 import { EmptyState } from './EmptyState'
+import { cancelRunButtonTitle } from '@shared/queryRunStatus'
 import { FavoritesPanel } from './FavoritesPanel'
 import { SaveFavoriteDialog } from './SaveFavoriteDialog'
+import { getApi } from '../bridge'
 import { useWorkspace } from '../state/workspace'
 import { pickFocusResultTarget } from '@shared/focusResult'
 import { isSlowQuery } from '@shared/slowQuery'
@@ -72,6 +74,7 @@ import { resolveTabConnectionColor } from '@shared/tabConnectionColor'
 
 export function EditorPane() {
   const ws = useWorkspace()
+  const [queryTimeoutSec, setQueryTimeoutSec] = useState(30)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historySlowOnly, setHistorySlowOnly] = useState(false)
   const [favoritesOpen, setFavoritesOpen] = useState(false)
@@ -103,6 +106,14 @@ export function EditorPane() {
     setHistoryOpen(true)
     setFavoritesOpen(false)
   }), [])
+
+  useEffect(() => {
+    void getApi()
+      .prefs.get()
+      .then((prefs) => setQueryTimeoutSec(prefs.queryTimeoutSec))
+      .catch(() => {})
+  }, [ws.running])
+
   useEffect(() => {
     return onDataai('dataai:sql-format-done', (detail) => {
       if (!detail) return
@@ -482,7 +493,7 @@ export function EditorPane() {
               type="button"
               className="btn btn-danger run-btn"
               onClick={() => ws.cancelRun()}
-              title="取消正在执行的查询（Esc）"
+              title={cancelRunButtonTitle(queryTimeoutSec)}
             >
               <IconStop />
               取消

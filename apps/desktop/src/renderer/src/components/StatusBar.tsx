@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { dialectInfo } from '@shared/types'
-import { formatElapsedMs } from '@shared/slowQuery'
+import { runningElapsedLabel, runningElapsedTitle } from '@shared/queryRunStatus'
 import {
   statusBarConnectionTitle,
   statusBarCopyEndpointHint,
@@ -34,6 +34,8 @@ type StatusBarProps = {
   txnOpen: boolean
   running: boolean
   runningSince: number | null
+  /** Soft timeout seconds (0 = none). */
+  queryTimeoutSec?: number
   lastRunLabel: string | null
   lastRunOk: boolean | null
   lastRunSlow: boolean
@@ -73,6 +75,7 @@ export function StatusBar({
   txnOpen,
   running,
   runningSince,
+  queryTimeoutSec = 0,
   lastRunLabel,
   lastRunOk,
   lastRunSlow,
@@ -223,7 +226,7 @@ export function StatusBar({
         </span>
       ) : null}
       {running ? (
-        <RunningElapsed since={runningSince} />
+        <RunningElapsed since={runningSince} timeoutSec={queryTimeoutSec} />
       ) : lastRunLabel ? (
         <button
           type="button"
@@ -298,7 +301,13 @@ export function StatusBar({
   )
 }
 
-function RunningElapsed({ since }: { since: number | null }) {
+function RunningElapsed({
+  since,
+  timeoutSec,
+}: {
+  since: number | null
+  timeoutSec: number
+}) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 100)
@@ -306,9 +315,13 @@ function RunningElapsed({ since }: { since: number | null }) {
   }, [])
   const elapsed = since != null ? Math.max(0, now - since) : 0
   return (
-    <span className="status-item is-running" aria-live="polite" title="查询执行中">
+    <span
+      className="status-item is-running"
+      aria-live="polite"
+      title={runningElapsedTitle(elapsed, timeoutSec)}
+    >
       <span className="status-pulse" />
-      执行中 · {formatElapsedMs(elapsed)}
+      {runningElapsedLabel(elapsed, timeoutSec)}
     </span>
   )
 }

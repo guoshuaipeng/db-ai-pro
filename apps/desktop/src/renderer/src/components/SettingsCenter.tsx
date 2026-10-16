@@ -5,6 +5,7 @@ import {
   ZOOM_MAX,
   ZOOM_MIN,
   clampEditorFontSize,
+  clampQueryTimeoutSec,
   clampZoomFactor,
   formatZoomPercent,
   stepZoomFactor,
@@ -21,6 +22,14 @@ import {
 } from '@shared/settingsSearch'
 import { Mark } from './icons'
 import { EmptyState } from './EmptyState'
+import {
+  QUERY_TIMEOUT_PRESETS,
+  queryTimeoutHint,
+  queryTimeoutPolicySummary,
+  queryTimeoutPresetLabel,
+  queryTimeoutSavedNote,
+  validateQueryTimeoutDraft,
+} from '@shared/queryRunStatus'
 import {
   AI_ENDPOINT_PRESETS,
   aiModelBaseUrlHint,
@@ -418,17 +427,18 @@ function QueryPanel({
   }
 
   const saveTimeout = async () => {
+    const problem = validateQueryTimeoutDraft(timeoutSec)
+    if (problem) {
+      setNote(problem)
+      return
+    }
     setBusy(true)
     setNote('')
     try {
       const next = await api.prefs.save({ queryTimeoutSec: Number(timeoutSec) })
       onPrefs(next)
       setTimeoutSec(String(next.queryTimeoutSec))
-      setNote(
-        next.queryTimeoutSec === 0
-          ? '已关闭软超时（查询不会自动取消）。'
-          : `软超时已设为 ${next.queryTimeoutSec} 秒；超时后会自动取消查询。`,
-      )
+      setNote(queryTimeoutSavedNote(next.queryTimeoutSec))
     } finally {
       setBusy(false)
     }
@@ -441,9 +451,35 @@ function QueryPanel({
     <div className="settings-card">
       {showTimeout ? (
         <>
+          <EmptyState
+            compact
+            kicker="查询"
+            title="软超时与取消"
+            body={queryTimeoutPolicySummary(Number(timeoutSec) || 0)}
+          />
           <p className="settings-lead">
-            配置查询软超时。执行中可在编辑器工具栏取消；超时后会按驱动能力中断连接上的查询，避免一直挂起。
+            配置查询软超时。执行中可在编辑器工具栏取消或按 Esc；超时后会按驱动能力中断连接上的查询。
           </p>
+          <div className="query-timeout-presets" role="group" aria-label="常用软超时">
+            <span className="query-timeout-presets-label">常用</span>
+            <div className="chips">
+              {QUERY_TIMEOUT_PRESETS.map((sec) => (
+                <button
+                  key={sec}
+                  type="button"
+                  className={
+                    clampQueryTimeoutSec(Number(timeoutSec)) === sec ? 'chip is-active' : 'chip'
+                  }
+                  onClick={() => {
+                    setTimeoutSec(String(sec))
+                    setNote('')
+                  }}
+                >
+                  {queryTimeoutPresetLabel(sec)}
+                </button>
+              ))}
+            </div>
+          </div>
           <label className="field">
             <span>软超时（秒，0 = 不限制）</span>
             <input
@@ -452,11 +488,16 @@ function QueryPanel({
               max={600}
               step={1}
               value={timeoutSec}
-              onChange={(event) => setTimeoutSec(event.target.value)}
+              onChange={(event) => {
+                setTimeoutSec(event.target.value)
+                setNote('')
+              }}
             />
           </label>
-          <p className="field-hint">默认 30 秒。建议在本地大表或慢网关时按需调大；危险语句仍会先弹出确认框。</p>
-          {note && <p className="field-ok">{note}</p>}
+          <p className="field-hint">{queryTimeoutHint()}</p>
+          {note ? (
+            <p className={note.startsWith('已') ? 'field-ok' : 'field-error'}>{note}</p>
+          ) : null}
         </>
       ) : null}
       {showSlow ? (

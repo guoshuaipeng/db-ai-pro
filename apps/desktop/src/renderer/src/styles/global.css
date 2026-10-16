@@ -1345,6 +1345,17 @@ body.is-col-resizing .grid-col-resizer {
 .send-btn { width: 32px; padding: 0; }
 .settings-card { margin: 0 14px 10px; }
 
+
+.query-timeout-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.query-timeout-presets-label {
+  font-size: 12px;
+  color: var(--ink-secondary, #94a3b8);
+}
 .ai-model-presets {
   display: flex;
   flex-direction: column;

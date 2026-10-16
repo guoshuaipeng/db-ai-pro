@@ -94,7 +94,7 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     id: 'queryTimeoutSec',
     tab: 'query',
     title: '软超时',
-    keywords: '超时 秒 timeout 取消 查询',
+    keywords: '超时 秒 timeout 取消 查询 Esc 软超时 不限制 预设',
   },
   {
     id: 'slowQueryMs',

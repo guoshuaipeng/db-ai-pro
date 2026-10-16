@@ -769,6 +769,7 @@ export function App() {
         txnOpen={ws.txnOpen}
         running={ws.running}
         runningSince={ws.runningSince}
+        queryTimeoutSec={prefs.queryTimeoutSec}
         lastRunLabel={lastRunLabel}
         lastRunOk={ws.lastRun ? ws.lastRun.ok : null}
         lastRunSlow={lastRunSlow}
