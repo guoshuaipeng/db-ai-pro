@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import appMark from '../assets/app-mark.png'
 
 type IconProps = { size?: number }
 
@@ -17,12 +18,16 @@ const stroke = {
   strokeLinejoin: 'round' as const,
 }
 
-export function Mark({ size = 18 }: { size?: number }) {
+export function Mark({ size = 24 }: { size?: number }) {
   return (
-    <svg className="mark" width={size} height={size} viewBox="0 0 18 18" aria-hidden="true">
-      <rect x="1" y="1" width="16" height="16" rx="4.5" fill="#171d2b" stroke="#9eb4ff" strokeWidth="1.2" />
-      <path d="M5 12.4V7.6M9 12.4V5.2M13 12.4V8.6" stroke="#9eb4ff" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
+    <img
+      className="mark"
+      src={appMark}
+      width={size}
+      height={size}
+      alt=""
+      draggable={false}
+    />
   )
 }
 
@@ -137,3 +142,4 @@ export function IconSend() {
     </Svg>
   )
 }
+

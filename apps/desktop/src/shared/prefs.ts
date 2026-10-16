@@ -60,6 +60,8 @@ export type AppPrefs = {
   editorMinimap: boolean
   /** Monaco editor font size (12–20). */
   editorFontSize: number
+  /** Monaco soft wrap. Default off (SQL prefers horizontal scroll). */
+  editorWordWrap: boolean
   /** Hide full-workspace welcome when there are no connections. */
   welcomeDismissed: boolean
 }
@@ -77,6 +79,7 @@ export const DEFAULT_PREFS: AppPrefs = {
   notifyOnSlowQuery: false,
   editorMinimap: false,
   editorFontSize: DEFAULT_EDITOR_FONT_SIZE,
+  editorWordWrap: false,
   welcomeDismissed: false,
 }
 
@@ -113,6 +116,7 @@ export function normalizePrefs(value: unknown): AppPrefs {
     editorFontSize: clampEditorFontSize(
       row.editorFontSize === undefined ? DEFAULT_EDITOR_FONT_SIZE : row.editorFontSize,
     ),
+    editorWordWrap: row.editorWordWrap === true,
     welcomeDismissed: row.welcomeDismissed === true,
   }
 }

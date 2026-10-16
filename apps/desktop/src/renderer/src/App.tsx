@@ -212,6 +212,9 @@ export function App() {
         case 'view.toggleMinimap':
           void ws.toggleEditorMinimap()
           break
+        case 'view.toggleWordWrap':
+          void ws.toggleEditorWordWrap()
+          break
         case 'view.editorFont':
           openSettings('appearance')
           break
@@ -281,6 +284,11 @@ export function App() {
       if (event.altKey && event.shiftKey && !meta && key === 'f') {
         event.preventDefault()
         emitDataai('dataai:format-sql')
+        return
+      }
+      if (event.altKey && !event.shiftKey && !meta && key === 'z') {
+        event.preventDefault()
+        void ws.toggleEditorWordWrap()
         return
       }
       if (meta && event.shiftKey && key === 'f') {

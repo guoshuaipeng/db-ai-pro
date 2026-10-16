@@ -342,6 +342,17 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
     }
   }
 
+  const setEditorWordWrap = async (editorWordWrap: boolean) => {
+    setBusy(true)
+    try {
+      await ws.setEditorWordWrap(editorWordWrap)
+      const next = await api.prefs.get()
+      onPrefs(next)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const setEditorFontSize = async (editorFontSize: number) => {
     setBusy(true)
     try {
@@ -487,6 +498,22 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
           onClick={() => void setEditorMinimap(!prefs.editorMinimap)}
         >
           {prefs.editorMinimap ? '已开启' : '已关闭'}
+        </button>
+      </div>
+      <div className="contrast-block">
+        <div className="contrast-copy">
+          <strong>自动换行</strong>
+          <span>SQL 编辑器软换行。默认关闭（横向滚动）；Alt+Z 或 Ctrl+K「换行」可切换。</span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={prefs.editorWordWrap}
+          className={prefs.editorWordWrap ? 'contrast-switch is-on' : 'contrast-switch'}
+          disabled={busy}
+          onClick={() => void setEditorWordWrap(!prefs.editorWordWrap)}
+        >
+          {prefs.editorWordWrap ? '已开启' : '已关闭'}
         </button>
       </div>
       <div className="contrast-block">

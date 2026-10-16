@@ -237,6 +237,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'view',
   },
   {
+    id: 'view.toggleWordWrap',
+    title: '切换自动换行',
+    subtitle: 'SQL 编辑器软换行开 / 关',
+    keywords: 'word wrap 换行 自动换行 softwrap',
+    shortcut: 'Alt+Z',
+    category: 'view',
+  },
+  {
     id: 'view.editorFont',
     title: '编辑器字号…',
     subtitle: '在设置中调节 12–20',
@@ -363,6 +371,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '窗口置顶', keys: '标题栏「置顶」· Ctrl+K' },
   { action: '放大 / 缩小 / 重置缩放', keys: 'Ctrl+= · Ctrl+- · Ctrl+0' },
   { action: '编辑器小地图', keys: '设置 · Ctrl+K「小地图」' },
+  { action: '自动换行', keys: 'Alt+Z · 工具栏「换行」' },
   { action: '编辑器字号', keys: '设置 → 外观' },
   { action: '快速查询模板', keys: '工具栏「模板」· Ctrl+K' },
   { action: '插入表名 / 列名', keys: '对象树菜单 · Alt/Ctrl+单击' },

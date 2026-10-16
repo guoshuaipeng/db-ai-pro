@@ -78,6 +78,8 @@ describe('editor chrome prefs', () => {
     expect(normalizePrefs({ editorMinimap: true }).editorMinimap).toBe(true)
     expect(normalizePrefs(null).editorFontSize).toBe(13)
     expect(normalizePrefs({ editorFontSize: 16 }).editorFontSize).toBe(16)
+    expect(normalizePrefs(null).editorWordWrap).toBe(false)
+    expect(normalizePrefs({ editorWordWrap: true }).editorWordWrap).toBe(true)
   })
 
   it('clamps editor font size 12–20', () => {

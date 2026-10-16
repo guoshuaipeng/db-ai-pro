@@ -31,7 +31,7 @@ export function WelcomePanel({
       <div className="welcome-card">
         <div className="welcome-brand">
           <div className="welcome-mark">
-            <Mark size={28} />
+            <Mark size={40} />
           </div>
           <div>
             <p className="welcome-kicker">本机数据库工作台</p>
@@ -122,3 +122,4 @@ export function WelcomePanel({
     </section>
   )
 }
+

@@ -113,6 +113,7 @@ type SqlEditorProps = {
   suggestions?: SchemaSuggestItem[]
   minimap?: boolean
   fontSize?: number
+  wordWrap?: boolean
 }
 
 export function SqlEditor({
@@ -122,6 +123,7 @@ export function SqlEditor({
   suggestions = [],
   minimap = false,
   fontSize = DEFAULT_EDITOR_FONT_SIZE,
+  wordWrap = false,
 }: SqlEditorProps) {
   const host = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<editor.IStandaloneCodeEditor | null>(null)
@@ -154,7 +156,7 @@ export function SqlEditor({
       cursorSmoothCaretAnimation: 'on',
       smoothScrolling: true,
       tabSize: 2,
-      wordWrap: 'off',
+      wordWrap: wordWrap ? 'on' : 'off',
       automaticLayout: true,
       overviewRulerLanes: 0,
       hideCursorInOverviewRuler: true,
@@ -221,9 +223,10 @@ export function SqlEditor({
     instance.updateOptions({
       minimap: { enabled: minimap === true },
       fontSize: size,
+      wordWrap: wordWrap ? 'on' : 'off',
       lineHeight: editorLineHeight(size),
     })
-  }, [minimap, fontSize])
+  }, [minimap, fontSize, wordWrap])
 
   useEffect(() => onDataai('dataai:focus-editor', () => {
     instanceRef.current?.focus()

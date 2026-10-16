@@ -280,6 +280,10 @@ export function createPreviewApi(): DesktopApi {
             typeof input.editorFontSize === 'number' && Number.isFinite(input.editorFontSize)
               ? Math.min(20, Math.max(12, Math.round(input.editorFontSize)))
               : memory.prefs.editorFontSize,
+          editorWordWrap:
+            input.editorWordWrap === undefined
+              ? memory.prefs.editorWordWrap
+              : input.editorWordWrap === true,
           welcomeDismissed:
             input.welcomeDismissed === undefined
               ? memory.prefs.welcomeDismissed

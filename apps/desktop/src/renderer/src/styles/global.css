@@ -120,8 +120,17 @@ button:disabled { cursor: default; opacity: 0.45; }
   app-region: no-drag;
 }
 
-.brand { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.word { font-weight: 600; font-size: 13px; letter-spacing: -0.02em; }
+.brand { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: block;
+  flex-shrink: 0;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px rgba(158, 180, 255, 0.25);
+}
+.word { font-weight: 600; font-size: 14px; letter-spacing: -0.02em; }
 .title-version {
   font-size: 11px;
   color: var(--ink-tertiary);
@@ -3150,8 +3159,8 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   align-items: flex-start;
 }
 .welcome-mark {
-  width: 52px;
-  height: 52px;
+  width: 64px;
+  height: 64px;
   border-radius: 14px;
   display: grid;
   place-items: center;
@@ -3336,3 +3345,4 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   background: rgba(158, 180, 255, 0.14);
   color: var(--accent, #9eb4ff);
 }
+

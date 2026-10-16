@@ -239,6 +239,15 @@ export function EditorPane() {
             </button>
             <button
               type="button"
+              className={ws.editorWordWrap ? 'btn btn-ghost run-btn is-active' : 'btn btn-ghost run-btn'}
+              onClick={() => void ws.toggleEditorWordWrap()}
+              aria-pressed={ws.editorWordWrap}
+              title="自动换行（Alt+Z）"
+            >
+              换行
+            </button>
+            <button
+              type="button"
               className="btn btn-ghost run-btn"
               onClick={() => void ws.explain()}
               disabled={ws.running}
@@ -274,6 +283,7 @@ export function EditorPane() {
             suggestions={suggestions}
             minimap={ws.editorMinimap}
             fontSize={ws.editorFontSize}
+            wordWrap={ws.editorWordWrap}
           />
         )}
         <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} />

@@ -207,9 +207,12 @@ type WorkspaceValue = {
   setSlowQueryMs: (ms: number) => Promise<void>
   editorMinimap: boolean
   editorFontSize: number
+  editorWordWrap: boolean
   setEditorMinimap: (value: boolean) => Promise<void>
   setEditorFontSize: (value: number) => Promise<void>
+  setEditorWordWrap: (value: boolean) => Promise<void>
   toggleEditorMinimap: () => Promise<void>
+  toggleEditorWordWrap: () => Promise<void>
   txnOpen: boolean
   txnSupported: boolean
   readOnlyActive: boolean
@@ -438,6 +441,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [slowQueryMs, setSlowQueryMsState] = useState(DEFAULT_SLOW_QUERY_MS)
   const [editorMinimap, setEditorMinimapState] = useState(false)
   const [editorFontSize, setEditorFontSizeState] = useState(DEFAULT_EDITOR_FONT_SIZE)
+  const [editorWordWrap, setEditorWordWrapState] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [aiOpen, setAiOpen] = useState(true)
   const requestRef = useRef<string | null>(null)
@@ -554,6 +558,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setSlowQueryMsState(prefs.slowQueryMs ?? DEFAULT_SLOW_QUERY_MS)
         setEditorMinimapState(prefs.editorMinimap === true)
         setEditorFontSizeState(clampEditorFontSize(prefs.editorFontSize))
+        setEditorWordWrapState(prefs.editorWordWrap === true)
         setNotifyOnErrorOnlyState(prefs.notifyOnErrorOnly === true)
         setNotifyOnSlowQueryState(prefs.notifyOnSlowQuery === true)
         const connectionIds = new Set(rows.map((row) => row.id))
@@ -1302,6 +1307,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const toggleEditorMinimap = useCallback(async () => {
     await setEditorMinimap(!editorMinimap)
   }, [editorMinimap, setEditorMinimap])
+
+  const setEditorWordWrap = useCallback(
+    async (value: boolean) => {
+      const next = await api.prefs.save({ editorWordWrap: value })
+      setEditorWordWrapState(next.editorWordWrap === true)
+      pushToast('success', next.editorWordWrap ? '已开启自动换行' : '已关闭自动换行')
+    },
+    [api, pushToast],
+  )
+
+  const toggleEditorWordWrap = useCallback(async () => {
+    await setEditorWordWrap(!editorWordWrap)
+  }, [editorWordWrap, setEditorWordWrap])
 
   const setEditorFontSize = useCallback(
     async (value: number) => {
@@ -2136,9 +2154,12 @@ ${sql.trim()}
     setSlowQueryMs,
     editorMinimap,
     editorFontSize,
+    editorWordWrap,
     setEditorMinimap,
     setEditorFontSize,
+    setEditorWordWrap,
     toggleEditorMinimap,
+    toggleEditorWordWrap,
     txnOpen,
     txnSupported,
     readOnlyActive,
