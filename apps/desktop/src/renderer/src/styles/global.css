@@ -2199,6 +2199,40 @@ body.is-col-resizing .grid-col-resizer {
   border-bottom: 1px solid var(--hairline);
 }
 .settings-main-head h3 { margin: 0; font-size: 15px; }
+
+.settings-filter-bar {
+  padding: 0 14px 8px;
+}
+.settings-filter {
+  width: 100%;
+  max-width: 420px;
+}
+.settings-tab.is-dimmed {
+  opacity: 0.45;
+}
+.settings-tab-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--accent, #5b8def);
+  vertical-align: middle;
+}
+.settings-zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.settings-zoom-value {
+  min-width: 3.2em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text-secondary, #9aa4b2);
+}
+
 .settings-body {
   overflow: auto;
   padding: 16px;
