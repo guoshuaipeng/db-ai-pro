@@ -2,6 +2,11 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 1.7.0 — M26 导出 Markdown / HTML
+
+- 结果工具栏导出 Markdown 表与简易 HTML（与筛选/排序视图一致）
+- Excel / MD / HTML 共用行数上限（5 万），超出截断并提示
+
 ## 1.6.0 — M25 连接健康 / 延迟徽章
 
 - 连接树显示延迟徽章（绿 / 黄 / 红）；菜单与 Ctrl+K 可手动探测；选中连接时自动轻量检测

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import ExcelJS from 'exceljs'
 import { getApi } from '../bridge'
-import { rowsToCsv, rowsToJson } from '@shared/exportTable'
+import { capExportRows, rowsToCsv, rowsToHtml, rowsToJson, rowsToMarkdown } from '@shared/exportTable'
 import { inferSqliteTable } from '@shared/sql'
 import { formatCell, isNumericColumn } from '../format'
 import { useWorkspace } from '../state/workspace'
@@ -65,11 +65,22 @@ export function ResultToolbar({
   const ws = useWorkspace()
   const [busy, setBusy] = useState(false)
   const visible = columns.filter((column) => column !== '__rowid__')
+  const exportColumns = visible.length > 0 ? visible : columns
   const statsColumn = focusColumn && visible.includes(focusColumn) ? focusColumn : visible[0] ?? null
   const allCount = totalRows ?? rows.length
 
   const copyAll = async () => {
-    await navigator.clipboard.writeText(rowsToCsv(columns, rows))
+    await navigator.clipboard.writeText(rowsToCsv(exportColumns, rows))
+  }
+
+  const exportCapped = (kind: 'markdown' | 'html' | 'excel') => {
+    const { rows: capped, truncated, total } = capExportRows(rows)
+    if (truncated) {
+      window.alert(
+        `${kind === 'excel' ? 'Excel' : kind === 'markdown' ? 'Markdown' : 'HTML'} 导出已截断为前 ${capped.length.toLocaleString('zh-CN')} 行（共 ${total.toLocaleString('zh-CN')} 行）`,
+      )
+    }
+    return capped
   }
 
   return (
@@ -106,15 +117,23 @@ export function ResultToolbar({
       <button
         type="button"
         className="btn btn-ghost tiny-btn"
-        onClick={() => downloadText(`dataai-result-${Date.now()}.csv`, rowsToCsv(columns, rows), 'text/csv;charset=utf-8')}
+        disabled={rows.length === 0}
+        onClick={() =>
+          downloadText(`dataai-result-${Date.now()}.csv`, rowsToCsv(exportColumns, rows), 'text/csv;charset=utf-8')
+        }
       >
         导出 CSV
       </button>
       <button
         type="button"
         className="btn btn-ghost tiny-btn"
+        disabled={rows.length === 0}
         onClick={() =>
-          downloadText(`dataai-result-${Date.now()}.json`, rowsToJson(columns, rows), 'application/json;charset=utf-8')
+          downloadText(
+            `dataai-result-${Date.now()}.json`,
+            rowsToJson(exportColumns, rows),
+            'application/json;charset=utf-8',
+          )
         }
       >
         导出 JSON
@@ -122,10 +141,41 @@ export function ResultToolbar({
       <button
         type="button"
         className="btn btn-ghost tiny-btn"
-        disabled={busy}
+        disabled={rows.length === 0}
+        onClick={() => {
+          const capped = exportCapped('markdown')
+          downloadText(
+            `dataai-result-${Date.now()}.md`,
+            rowsToMarkdown(exportColumns, capped),
+            'text/markdown;charset=utf-8',
+          )
+        }}
+      >
+        导出 MD
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
+        disabled={rows.length === 0}
+        onClick={() => {
+          const capped = exportCapped('html')
+          downloadText(
+            `dataai-result-${Date.now()}.html`,
+            rowsToHtml(exportColumns, capped),
+            'text/html;charset=utf-8',
+          )
+        }}
+      >
+        导出 HTML
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
+        disabled={busy || rows.length === 0}
         onClick={() => {
           setBusy(true)
-          void downloadExcel(columns, rows)
+          const capped = exportCapped('excel')
+          void downloadExcel(exportColumns, capped)
             .catch((error: unknown) => window.alert(error instanceof Error ? error.message : '导出 Excel 失败'))
             .finally(() => setBusy(false))
         }}
@@ -143,10 +193,12 @@ export function ResultGrid({
   columns,
   rows,
   onFocusColumn,
+  onViewRowsChange,
 }: {
   columns: string[]
   rows: Record<string, unknown>[]
   onFocusColumn?: (column: string | null) => void
+  onViewRowsChange?: (rows: Record<string, unknown>[]) => void
 }) {
   const ws = useWorkspace()
   const parentRef = useRef<HTMLDivElement>(null)
@@ -165,6 +217,9 @@ export function ResultGrid({
   }, [visibleColumns, pinned])
 
   const displayRows = useMemo(() => sortResultRows(rows, sort), [rows, sort])
+  useEffect(() => {
+    onViewRowsChange?.(displayRows)
+  }, [displayRows, onViewRowsChange])
   const numeric = Object.fromEntries(displayColumns.map((column) => [column, isNumericColumn(displayRows, column)]))
 
   const canEditSqlite = useMemo(() => {
