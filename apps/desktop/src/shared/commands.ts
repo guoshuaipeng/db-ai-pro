@@ -394,4 +394,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '结果列筛选', keys: '表头「筛」· 右键「列筛选…」' },
   { action: '导出列选择', keys: '导出 CSV/JSON/MD/HTML/Excel 前勾选列' },
   { action: '显示 / 隐藏结果列', keys: '工具栏「显示列」· 右键「隐藏此列」' },
+  { action: '单元格全文预览', keys: '双击单元格 · 工具栏「查看单元格」' },
 ]

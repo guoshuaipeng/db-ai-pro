@@ -40,6 +40,7 @@ import {
 } from '@shared/resultColumnFilter'
 import { emitDataai, onDataai } from '../appEvents'
 import { ExportColumnDialog } from './ExportColumnDialog'
+import { CellValuePreviewDialog } from './CellValuePreviewDialog'
 import { type ExportFormat } from '@shared/exportColumnPick'
 import {
   baseResultColumns,
@@ -254,6 +255,15 @@ export function ResultToolbar({
       <button
         type="button"
         className="btn btn-ghost tiny-btn"
+        disabled={rows.length === 0}
+        title="查看当前焦点单元格全文（只读）"
+        onClick={() => emitDataai('dataai:result-cell-preview')}
+      >
+        查看单元格
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
         disabled={!statsColumn || rows.length === 0}
         title={statsColumn ? `统计列：${statsColumn}` : '无可统计列'}
         onClick={() => {
@@ -413,6 +423,7 @@ export function ResultGrid({
   const [hiddenColumns, setHiddenColumns] = useState<string[]>([])
   const [visibilityOpen, setVisibilityOpen] = useState(false)
   const visibilityRef = useRef<HTMLDivElement>(null)
+  const [cellPreview, setCellPreview] = useState<{ column: string; rowIndex: number; value: unknown } | null>(null)
 
   const allBaseColumns = useMemo(() => baseResultColumns(columns), [columns])
   const visibleColumns = useMemo(
@@ -514,6 +525,7 @@ export function ResultGrid({
     setFilterMenuColumn(null)
     setHiddenColumns([])
     setVisibilityOpen(false)
+    setCellPreview(null)
     setNote(rows.length > 500 ? `已虚拟滚动渲染 ${rows.length.toLocaleString('zh-CN')} 行` : '')
   }, [columns, rows])
 
@@ -542,6 +554,7 @@ export function ResultGrid({
       const target = event.target as Node | null
       if (visibilityRef.current?.contains(target)) return
       setVisibilityOpen(false)
+    setCellPreview(null)
     }
     window.addEventListener('mousedown', onDown)
     return () => window.removeEventListener('mousedown', onDown)
@@ -684,6 +697,17 @@ export function ResultGrid({
     setContextMenu(null)
   }
 
+
+  const openCellPreview = (rowIndex: number, colIndex: number) => {
+    const column = displayColumns[colIndex]
+    if (!column) return
+    const value = displayRows[rowIndex]?.[column]
+    setFocus({ row: rowIndex, col: colIndex })
+    setEditing(null)
+    setContextMenu(null)
+    setCellPreview({ column, rowIndex, value })
+  }
+
   const beginEdit = (rowIndex: number, colIndex: number) => {
     if (!canEditSqlite) return
     const column = displayColumns[colIndex]
@@ -788,6 +812,7 @@ export function ResultGrid({
   const restoreAllColumns = () => {
     setHiddenColumns(resetHiddenColumns())
     setVisibilityOpen(false)
+    setCellPreview(null)
     setNote('已恢复全部列')
   }
 
@@ -1230,7 +1255,11 @@ export function ResultGrid({
                           rowIndex,
                         })
                       }}
-                      title={canEditSqlite ? `${text}（双击编辑 / Ctrl+C 复制）` : `${text}（Ctrl+C 复制）`}
+                      title={
+                        canEditSqlite
+                          ? `${text}（双击查看 · Enter 编辑 / Ctrl+C 复制）`
+                          : `${text}（双击查看 / Ctrl+C 复制）`
+                      }
                       className={[
                         numeric[column] ? 'is-number' : '',
                         value == null ? 'is-null' : '',
@@ -1252,7 +1281,7 @@ export function ResultGrid({
                         selectRow(rowIndex, event)
                         setFocus({ row: rowIndex, col: colIndex })
                       }}
-                      onDoubleClick={() => beginEdit(rowIndex, colIndex)}
+                      onDoubleClick={() => openCellPreview(rowIndex, colIndex)}
                     >
                       {isEditing ? (
                         <input
@@ -1333,6 +1362,16 @@ export function ResultGrid({
               <button
                 type="button"
                 role="menuitem"
+                onClick={() => {
+                  const colIndex = displayColumns.indexOf(contextMenu.column)
+                  if (colIndex >= 0) openCellPreview(contextMenu.rowIndex!, colIndex)
+                }}
+              >
+                查看单元格
+              </button>
+              <button
+                type="button"
+                role="menuitem"
                 onClick={() => void copyCellAsIn(contextMenu.rowIndex!, contextMenu.column)}
               >
                 复制单元格 IN
@@ -1368,12 +1407,19 @@ export function ResultGrid({
           )}
         </div>
       )}
+      <CellValuePreviewDialog
+        open={cellPreview != null}
+        column={cellPreview?.column ?? ''}
+        rowIndex={cellPreview?.rowIndex ?? 0}
+        value={cellPreview?.value}
+        onClose={() => setCellPreview(null)}
+      />
       {note && <p className="result-footnote">{note}</p>}
       <p className="result-footnote">
-        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；「列宽适应」或表头分隔线双击估算列宽；表头「筛」可按列筛选（与上方筛选框叠加）；「显示列」可隐藏列。
+        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；「列宽适应」或表头分隔线双击估算列宽；表头「筛」可按列筛选（与上方筛选框叠加）；「显示列」可隐藏列；双击或「查看单元格」只读预览全文。
         {sort ? ` 当前排序：${sort.column} ${sort.direction === 'asc' ? '升序' : '降序'}。` : ''}
       </p>
-      {canEditSqlite && <p className="result-footnote">SQLite：双击单元格可编辑（需确认）。隐藏列 __rowid__ 用于定位行。</p>}
+      {canEditSqlite && <p className="result-footnote">SQLite：双击查看单元格；Enter 进入编辑（需确认）。隐藏列 __rowid__ 用于定位行。</p>}
     </div>
     </div>
   )

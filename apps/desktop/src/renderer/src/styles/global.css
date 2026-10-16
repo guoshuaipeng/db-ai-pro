@@ -3557,3 +3557,30 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   background: rgba(148, 163, 184, 0.08);
   border-bottom: 1px solid var(--line);
 }
+
+.cell-preview-overlay { z-index: 42; }
+.cell-preview-dialog { width: min(640px, 100%); }
+.cell-preview-body {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  max-height: min(420px, 52vh);
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #0f131a;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.cell-preview-body.is-null {
+  color: var(--ink-tertiary);
+  font-style: italic;
+}
+.cell-preview-copy-note {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--accent, #9eb4ff);
+}
