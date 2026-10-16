@@ -8,6 +8,7 @@ type WelcomePanelProps = {
   onNewConnection: () => void
   onRestoreSample: () => void
   onImportConnections: () => void
+  onImportPyQtConnections: () => void
   onOpenRecentTable: (item: RecentTableItem) => void
   onOpenRecentQuery: (item: RecentQueryItem) => void
   onDismiss: () => void
@@ -20,6 +21,7 @@ export function WelcomePanel({
   onNewConnection,
   onRestoreSample,
   onImportConnections,
+  onImportPyQtConnections,
   onOpenRecentTable,
   onOpenRecentQuery,
   onDismiss,
@@ -68,6 +70,12 @@ export function WelcomePanel({
             <span className="welcome-action-copy">
               <strong>导入连接</strong>
               <span>从备份 JSON 合并已有连接（仅密封密文）</span>
+            </span>
+          </button>
+          <button type="button" className="welcome-action" onClick={onImportPyQtConnections}>
+            <span className="welcome-action-copy">
+              <strong>从旧版导入</strong>
+              <span>读取 ~/.db-ai/config.db，密码写入系统密钥环</span>
             </span>
           </button>
         </div>

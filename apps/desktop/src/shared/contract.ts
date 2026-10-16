@@ -77,6 +77,17 @@ export type DesktopApi = {
     importPreview: () => Promise<
       { path: string; plan: ImportPlanItem[] } | { error: string; path?: string } | { cancelled: true }
     >
+    importPyQtPreview: (explicitPath?: string | null) => Promise<
+      | {
+          path: string
+          plan: ImportPlanItem[]
+          skipped: number
+          found: number
+          source: 'pyqt'
+        }
+      | { error: string; path?: string }
+      | { cancelled: true }
+    >
     importApply: (plan: ImportPlanItem[]) => Promise<{ connections: ConnectionPublic[]; imported: number }>
   }
   sql: {

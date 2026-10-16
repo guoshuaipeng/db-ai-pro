@@ -59,6 +59,8 @@ const api: DesktopApi = {
     pickFile: (mode) => ipcRenderer.invoke('connections:pickFile', mode),
     exportBundle: () => ipcRenderer.invoke('connections:export'),
     importPreview: () => ipcRenderer.invoke('connections:importPreview'),
+    importPyQtPreview: (explicitPath?: string | null) =>
+      ipcRenderer.invoke('connections:importPyQtPreview', explicitPath ?? null),
     importApply: async (plan: ImportPlanItem[]) => {
       const result = await ipcRenderer.invoke('connections:importApply', plan)
       if (result?.error) throw new Error(result.error)

@@ -473,9 +473,16 @@ export function exportConnectionsBundle(): ConnectionBundle {
 
 export function previewConnectionImport(raw: unknown): { plan: ImportPlanItem[] } | { error: string } {
   if (!isConnectionBundle(raw)) return { error: '不是 DataAI 连接导出文件（需要 version=1 / dataai-connections）' }
-  const incoming = raw.connections.map((row) => sanitizeTransferRow(row))
+  return previewTransferImport(raw.connections.map((row) => sanitizeTransferRow(row)))
+}
+
+/** Build an import plan from already-normalized transfer rows (JSON bundle / PyQt migrate). */
+export function previewTransferImport(
+  incoming: TransferConnection[],
+): { plan: ImportPlanItem[] } | { error: string } {
+  if (!Array.isArray(incoming) || incoming.length === 0) return { error: '没有可导入的连接' }
   const existing = loadConnectionsRaw().map(toTransfer)
-  return { plan: planConnectionImport(existing, incoming) }
+  return { plan: planConnectionImport(existing, incoming.map((row) => sanitizeTransferRow(row))) }
 }
 
 export function applyConnectionImport(

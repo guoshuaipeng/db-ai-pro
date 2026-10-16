@@ -49,6 +49,14 @@ export function ConnectionPane() {
           <button type="button" className="tiny-btn btn btn-ghost" onClick={() => void ws.importConnections()}>
             导入
           </button>
+          <button
+            type="button"
+            className="tiny-btn btn btn-ghost"
+            title="从旧版 PyQt DataAI 的 ~/.db-ai/config.db 导入连接"
+            onClick={() => void ws.importPyQtConnections()}
+          >
+            旧版
+          </button>
           <button type="button" className="tiny-btn btn btn-ghost" onClick={() => void ws.exportConnections()}>
             导出
           </button>
@@ -162,7 +170,7 @@ export function ConnectionPane() {
         <EmptyState
           kicker="开始使用"
           title="还没有数据库连接"
-          body="先添加一个连接。SQLite / MySQL / MariaDB / PostgreSQL / SQL Server 可直接查询；Redis 可浏览键值。也可以一键恢复示例业务库。"
+          body="先添加一个连接。SQLite / MySQL / MariaDB / PostgreSQL / SQL Server 可直接查询；Redis 可浏览键值。可恢复示例库，或一键从旧版 PyQt 配置导入。"
           icon={<IconDatabase />}
           actions={
             <>
@@ -171,6 +179,9 @@ export function ConnectionPane() {
               </button>
               <button type="button" className="btn btn-ghost" onClick={() => void ws.restoreSample()}>
                 恢复示例库
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => void ws.importPyQtConnections()}>
+                从旧版导入
               </button>
             </>
           }

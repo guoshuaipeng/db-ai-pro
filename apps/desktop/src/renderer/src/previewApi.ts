@@ -388,6 +388,7 @@ export function createPreviewApi(): DesktopApi {
       pickFile: async () => null,
       exportBundle: async () => ({ path: null, count: 0 }),
       importPreview: async () => ({ cancelled: true as const }),
+      importPyQtPreview: async () => ({ cancelled: true as const }),
       importApply: async () => ({ connections: memory.connections, imported: 0 }),
     },
     sql: {

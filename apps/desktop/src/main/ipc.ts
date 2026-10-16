@@ -39,6 +39,7 @@ import type { SqlTarget } from './target'
 import { readRedisValue, scanRedisKeys } from './redis'
 import { databaseExists, openDatabase } from './sqlite'
 import { readImportFile } from './importFile'
+import { previewPyQtImport } from './pyqtImport'
 import {
   appendQueryHistory,
   applyConnectionImport,
@@ -407,6 +408,30 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
   })
 
   ipcMain.handle('connections:importApply', (_event, plan: ImportPlanItem[]) => applyConnectionImport(plan))
+
+  ipcMain.handle('connections:importPyQtPreview', async (_event, explicitPath?: string | null) => {
+    const preview = previewPyQtImport(explicitPath)
+    if ('error' in preview) {
+      if (!explicitPath && preview.path && /未找到旧版配置/.test(preview.error)) {
+        const win = getWindow()
+        const options = {
+          title: '选择旧版 DataAI config.db',
+          properties: ['openFile'] as Array<'openFile'>,
+          filters: [
+            { name: 'SQLite', extensions: ['db', 'sqlite', 'sqlite3'] },
+            { name: 'All', extensions: ['*'] },
+          ],
+        }
+        const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+        if (picked.canceled || !picked.filePaths[0]) return { cancelled: true as const }
+        const again = previewPyQtImport(picked.filePaths[0])
+        if ('error' in again) return { error: again.error, path: again.path }
+        return { path: again.path, plan: again.plan, skipped: again.skipped, found: again.found, source: 'pyqt' as const }
+      }
+      return { error: preview.error, path: preview.path }
+    }
+    return { path: preview.path, plan: preview.plan, skipped: preview.skipped, found: preview.found, source: 'pyqt' as const }
+  })
 
   ipcMain.handle(
     'sql:execute',

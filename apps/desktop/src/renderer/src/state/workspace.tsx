@@ -237,6 +237,7 @@ type WorkspaceValue = {
   clearAiMemory: () => void
   exportConnections: () => Promise<void>
   importConnections: () => Promise<void>
+  importPyQtConnections: () => Promise<void>
   applyImportPlan: (plan: ImportPlanItem[]) => Promise<void>
   loadHistory: (connectionId: string) => Promise<QueryHistoryEntry[]>
   clearHistory: (connectionId: string) => Promise<void>
@@ -1853,6 +1854,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setDialog({ type: 'import', path: result.path, plan: result.plan })
   }
 
+  const importPyQtConnections = async () => {
+    const result = await api.connections.importPyQtPreview()
+    if ('cancelled' in result) {
+      pushToast('info', '已取消旧版导入')
+      return
+    }
+    if ('error' in result) {
+      pushToast('error', result.error)
+      return
+    }
+    if (result.skipped > 0) {
+      pushToast('info', `已跳过 ${result.skipped} 条无法识别的旧连接`)
+    }
+    setDialog({ type: 'import', path: result.path, plan: result.plan })
+  }
+
   const applyImportPlan = async (plan: ImportPlanItem[]) => {
     const result = await api.connections.importApply(plan)
     setConnections(result.connections)
@@ -2256,6 +2273,7 @@ ${sql.trim()}
     clearAiMemory,
     exportConnections,
     importConnections,
+    importPyQtConnections,
     applyImportPlan,
     loadHistory,
     clearHistory,
