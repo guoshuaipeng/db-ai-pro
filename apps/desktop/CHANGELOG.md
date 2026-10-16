@@ -2,6 +2,11 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 3.27.0 — M66 全部标签列表
+
+- 标签栏「全部标签」下拉：筛选 / 跳转 / 行内关闭；显示连接色与固定标记
+- 中键点击标签关闭（与浏览器一致）；与滚动箭头、拖拽排序、右键菜单共存
+
 ## 3.26.0 — M65 示例业务库打包
 
 - 将 `resources/samples/retail.db` 打进安装包（electron-builder extraResources）

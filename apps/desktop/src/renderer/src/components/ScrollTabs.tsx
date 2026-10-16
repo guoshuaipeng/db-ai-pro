@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { filterTabsForPicker } from '@shared/tabPicker'
 
 type TabItem = {
   id: string
@@ -44,6 +45,8 @@ export function ScrollTabs({
 }: ScrollTabsProps) {
   const scroller = useRef<HTMLDivElement>(null)
   const renameInputRef = useRef<HTMLInputElement>(null)
+  const pickerRef = useRef<HTMLDivElement>(null)
+  const pickerSearchRef = useRef<HTMLInputElement>(null)
   const [overflow, setOverflow] = useState({ left: false, right: false })
   const [menu, setMenu] = useState<MenuState>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -51,6 +54,13 @@ export function ScrollTabs({
   const skipBlurCommit = useRef(false)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropBeforeIndex, setDropBeforeIndex] = useState<number | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerQuery, setPickerQuery] = useState('')
+
+  const filteredPickerTabs = useMemo(
+    () => filterTabsForPicker(tabs, pickerQuery),
+    [tabs, pickerQuery],
+  )
 
   const measure = () => {
     const el = scroller.current
@@ -105,6 +115,32 @@ export function ScrollTabs({
   }, [menu])
 
   useEffect(() => {
+    if (!pickerOpen) return
+    const close = (event: MouseEvent) => {
+      if (pickerRef.current?.contains(event.target as Node)) return
+      setPickerOpen(false)
+      setPickerQuery('')
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setPickerOpen(false)
+        setPickerQuery('')
+      }
+    }
+    window.addEventListener('mousedown', close)
+    window.addEventListener('keydown', onKey, true)
+    queueMicrotask(() => {
+      pickerSearchRef.current?.focus()
+      pickerSearchRef.current?.select()
+    })
+    return () => {
+      window.removeEventListener('mousedown', close)
+      window.removeEventListener('keydown', onKey, true)
+    }
+  }, [pickerOpen])
+
+  useEffect(() => {
     if (!editingId) return
     const input = renameInputRef.current
     if (!input) return
@@ -131,6 +167,7 @@ export function ScrollTabs({
   const beginRename = (tab: TabItem) => {
     if (!onRename) return
     setMenu(null)
+    setPickerOpen(false)
     setDraggingId(null)
     setDropBeforeIndex(null)
     onSelect(tab.id)
@@ -166,8 +203,15 @@ export function ScrollTabs({
     onContextAction?.(id, action)
   }
 
+  const pickTab = (id: string) => {
+    onSelect(id)
+    setPickerOpen(false)
+    setPickerQuery('')
+  }
+
   const menuTab = menu ? tabs.find((tab) => tab.id === menu.id) : null
   const hasOverflow = overflow.left || overflow.right
+  const showPicker = tabs.length > 1
 
   return (
     <div className="tabstrip">
@@ -219,6 +263,7 @@ export function ScrollTabs({
                 event.dataTransfer.effectAllowed = 'move'
                 setDraggingId(tab.id)
                 setMenu(null)
+                setPickerOpen(false)
               }}
               onDragEnd={() => {
                 setDraggingId(null)
@@ -241,11 +286,17 @@ export function ScrollTabs({
                 setDraggingId(null)
                 setDropBeforeIndex(null)
               }}
+              onAuxClick={(event) => {
+                if (event.button !== 1 || !onClose || renaming) return
+                event.preventDefault()
+                onClose(tab.id)
+              }}
               onContextMenu={(event) => {
                 if (!onContextAction && !onRename) return
                 event.preventDefault()
                 if (renaming) return
                 onSelect(tab.id)
+                setPickerOpen(false)
                 setMenu({ id: tab.id, x: event.clientX, y: event.clientY })
               }}
             >
@@ -298,7 +349,7 @@ export function ScrollTabs({
                   data-tab={tab.id}
                   className="tab-main"
                   aria-selected={selected}
-                  title={tab.pinned ? `${tab.label}（已固定）· 双击重命名` : `${tab.label} · 双击重命名`}
+                  title={tab.pinned ? `${tab.label}（已固定）· 双击重命名 · 中键关闭` : `${tab.label} · 双击重命名 · 中键关闭`}
                   onClick={() => onSelect(tab.id)}
                   onDoubleClick={(event) => {
                     event.preventDefault()
@@ -348,6 +399,93 @@ export function ScrollTabs({
         <button type="button" className="tab-nav" aria-label="向右滚动标签" disabled={!overflow.right} onClick={() => move(1)}>
           <Chevron direction="right" />
         </button>
+      )}
+      {showPicker && (
+        <div className="tab-picker" ref={pickerRef}>
+          <button
+            type="button"
+            className={pickerOpen ? 'tab-nav tab-picker-btn is-open' : 'tab-nav tab-picker-btn'}
+            aria-label="全部标签"
+            aria-expanded={pickerOpen}
+            aria-haspopup="listbox"
+            title="全部标签"
+            onClick={() => {
+              setMenu(null)
+              setPickerOpen((open) => {
+                if (open) setPickerQuery('')
+                return !open
+              })
+            }}
+          >
+            <ListChevron />
+          </button>
+          {pickerOpen && (
+            <div className="tab-picker-menu" role="listbox" aria-label="全部查询标签">
+              <div className="tab-picker-search">
+                <input
+                  ref={pickerSearchRef}
+                  value={pickerQuery}
+                  onChange={(event) => setPickerQuery(event.target.value)}
+                  placeholder="筛选标签…"
+                  aria-label="筛选标签"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && filteredPickerTabs[0]) {
+                      event.preventDefault()
+                      pickTab(filteredPickerTabs[0].id)
+                    }
+                  }}
+                />
+              </div>
+              <div className="tab-picker-list">
+                {filteredPickerTabs.length === 0 ? (
+                  <p className="tab-picker-empty">无匹配标签</p>
+                ) : (
+                  filteredPickerTabs.map((tab) => {
+                    const full = tabs.find((row) => row.id === tab.id)
+                    const selected = tab.id === activeId
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        className={selected ? 'tab-picker-item is-active' : 'tab-picker-item'}
+                        onClick={() => pickTab(tab.id)}
+                      >
+                        {full?.color ? (
+                          <span className="tab-picker-stripe" style={{ background: full.color }} aria-hidden="true" />
+                        ) : (
+                          <span className="tab-picker-stripe is-neutral" aria-hidden="true" />
+                        )}
+                        {tab.pinned && (
+                          <span className="tab-pin" aria-hidden="true">
+                            <PinIcon />
+                          </span>
+                        )}
+                        <span className="tab-picker-label">{tab.label}</span>
+                        {tab.badge && <span className="tab-badge">{tab.badge}</span>}
+                        {onClose && (
+                          <span
+                            className="tab-picker-close"
+                            role="presentation"
+                            title="关闭"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onClose(tab.id)
+                            }}
+                          >
+                            <CloseIcon />
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+              <p className="tab-picker-foot">{tabs.length} 个标签 · 中键可关闭</p>
+            </div>
+          )}
+        </div>
       )}
       {trailing}
       {menu && menuTab && (onContextAction || onRename) && (
@@ -402,6 +540,14 @@ function Chevron({ direction }: { direction: 'left' | 'right' }) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
       <path d={d} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function ListChevron() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4 6.5 8 10.5 12 6.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
