@@ -154,12 +154,21 @@ export type WorkspaceState = {
   aiOpen: boolean
 }
 
+export type FavoriteFolder = {
+  id: string
+  name: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type SqlFavorite = {
   id: string
   name: string
   sql: string
   /** null = global snippet */
   connectionId: string | null
+  /** null / missing = 未分组 */
+  folderId?: string | null
   createdAt: string
   updatedAt: string
 }

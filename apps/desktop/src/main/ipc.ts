@@ -49,6 +49,9 @@ import {
   hasConnectionStore,
   listConnections,
   listFavorites,
+  listFavoriteFolders,
+  saveFavoriteFolder,
+  removeFavoriteFolder,
   listQueryHistory,
   loadWorkspace,
   previewConnectionImport,
@@ -491,6 +494,15 @@ ipcMain.handle('sql:cancel', async (_event, requestId: string) => {
   )
   ipcMain.handle('favorites:remove', (_event, id: string) => {
     removeFavorite(id)
+  })
+
+  ipcMain.handle('favorites:listFolders', () => listFavoriteFolders())
+  ipcMain.handle(
+    'favorites:saveFolder',
+    (_event, input: { id?: string; name: string }) => saveFavoriteFolder(input),
+  )
+  ipcMain.handle('favorites:removeFolder', (_event, id: string) => {
+    removeFavoriteFolder(id)
   })
 
   ipcMain.handle(

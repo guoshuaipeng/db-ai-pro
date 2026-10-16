@@ -11,6 +11,7 @@ import type {
   RedisValueView,
   SchemaNode,
   SqlFavorite,
+  FavoriteFolder,
   StatementResult,
   WorkspaceState,
 } from './types'
@@ -90,8 +91,12 @@ export type DesktopApi = {
       name: string
       sql: string
       connectionId?: string | null
+      folderId?: string | null
     }) => Promise<SqlFavorite>
     remove: (id: string) => Promise<void>
+    listFolders: () => Promise<FavoriteFolder[]>
+    saveFolder: (input: { id?: string; name: string }) => Promise<FavoriteFolder>
+    removeFolder: (id: string) => Promise<void>
   }
   redis: {
     scan: (payload: { connectionId: string; pattern?: string; count?: number }) => Promise<RedisKeyInfo[]>

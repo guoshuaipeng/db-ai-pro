@@ -21,6 +21,7 @@ const memory = {
   connections: [] as ConnectionPublic[],
   history: {} as Record<string, QueryHistoryEntry[]>,
   favorites: [] as SqlFavorite[],
+  favoriteFolders: [] as import('@shared/types').FavoriteFolder[],
   workspace: null as WorkspaceState | null,
   settings: {
     baseUrl: 'https://api.openai.com/v1',
@@ -354,6 +355,7 @@ export function createPreviewApi(): DesktopApi {
           name: input.name.trim(),
           sql: input.sql.trim(),
           connectionId: input.connectionId === undefined ? null : input.connectionId,
+          folderId: input.folderId === undefined ? (existing?.folderId ?? null) : input.folderId,
           createdAt: existing?.createdAt ?? now,
           updatedAt: now,
         }
@@ -362,6 +364,25 @@ export function createPreviewApi(): DesktopApi {
       },
       remove: async (id: string) => {
         memory.favorites = memory.favorites.filter((row) => row.id !== id)
+      },
+      listFolders: async () => memory.favoriteFolders,
+      saveFolder: async (input) => {
+        const now = new Date().toISOString()
+        const existing = memory.favoriteFolders.find((row) => row.id === input.id)
+        const next = {
+          id: existing?.id ?? crypto.randomUUID(),
+          name: input.name.trim(),
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+        }
+        memory.favoriteFolders = [...memory.favoriteFolders.filter((row) => row.id !== next.id), next]
+        return next
+      },
+      removeFolder: async (id: string) => {
+        memory.favoriteFolders = memory.favoriteFolders.filter((row) => row.id !== id)
+        memory.favorites = memory.favorites.map((row) =>
+          row.folderId === id ? { ...row, folderId: null } : row,
+        )
       },
     },
     redis: {

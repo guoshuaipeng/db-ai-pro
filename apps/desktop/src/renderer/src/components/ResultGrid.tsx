@@ -50,15 +50,22 @@ export function ResultToolbar({
   columns,
   rows,
   focusColumn,
+  filterQuery,
+  onFilterQuery,
+  totalRows,
 }: {
   columns: string[]
   rows: Record<string, unknown>[]
   focusColumn?: string | null
+  filterQuery?: string
+  onFilterQuery?: (value: string) => void
+  totalRows?: number
 }) {
   const ws = useWorkspace()
   const [busy, setBusy] = useState(false)
   const visible = columns.filter((column) => column !== '__rowid__')
   const statsColumn = focusColumn && visible.includes(focusColumn) ? focusColumn : visible[0] ?? null
+  const allCount = totalRows ?? rows.length
 
   const copyAll = async () => {
     await navigator.clipboard.writeText(rowsToCsv(columns, rows))
@@ -66,6 +73,23 @@ export function ResultToolbar({
 
   return (
     <div className="result-tools">
+      {onFilterQuery && (
+        <label className="result-filter">
+          <span className="result-filter-label">筛选</span>
+          <input
+            className="result-filter-input"
+            value={filterQuery ?? ''}
+            onChange={(e) => onFilterQuery(e.target.value)}
+            placeholder="过滤当前结果…"
+            aria-label="过滤结果行"
+          />
+          {(filterQuery ?? '').trim() && (
+            <span className="result-filter-count">
+              {rows.length}/{allCount}
+            </span>
+          )}
+        </label>
+      )}
       <button
         type="button"
         className="btn btn-ghost tiny-btn"

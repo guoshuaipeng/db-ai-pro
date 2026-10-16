@@ -5,6 +5,7 @@ import { IconClock, IconPlay, IconPlus, IconStar, IconStop } from './icons'
 import { ScrollTabs } from './ScrollTabs'
 import { SqlEditor } from './SqlEditor'
 import { ResultGrid, ResultToolbar } from './ResultGrid'
+import { filterResultRows } from '@shared/resultFilter'
 import { ResultChart } from './ResultChart'
 import { canChartResult } from '@shared/chartData'
 import { HistoryPanel } from './HistoryPanel'
@@ -158,6 +159,7 @@ export function ResultPane() {
   const active = results?.tabs.find((tab) => tab.id === results.activeId) ?? null
   const [view, setView] = useState<'table' | 'chart'>('table')
   const [focusColumn, setFocusColumn] = useState<string | null>(null)
+  const [resultFilter, setResultFilter] = useState('')
 
   const chartable =
     active?.kind === 'grid' && active.columns
@@ -166,6 +168,7 @@ export function ResultPane() {
 
   useEffect(() => {
     setView('table')
+    setResultFilter('')
   }, [active?.id])
 
   useEffect(() => {
@@ -173,6 +176,11 @@ export function ResultPane() {
   }, [chartable, view])
 
   const gridCount = results?.tabs.filter((tab) => tab.kind === 'grid').length ?? 0
+
+  const filteredRows = useMemo(() => {
+    if (!active?.columns || active.kind !== 'grid') return []
+    return filterResultRows(active.rows ?? [], resultFilter, active.columns)
+  }, [active?.columns, active?.kind, active?.rows, resultFilter])
 
   return (
     <section className="result-pane" aria-label="查询结果">
@@ -207,7 +215,7 @@ export function ResultPane() {
                     </button>
                   </div>
                 )}
-                <ResultToolbar columns={active.columns} rows={active.rows ?? []} focusColumn={focusColumn} />
+                <ResultToolbar columns={active.columns} rows={filteredRows} focusColumn={focusColumn} filterQuery={resultFilter} onFilterQuery={setResultFilter} totalRows={(active.rows ?? []).length} />
               </div>
             ) : (
               <span className="result-count">输出</span>
@@ -228,7 +236,7 @@ export function ResultPane() {
       {active?.kind === 'plan' && <pre className="message-log plan-log">{active.message}</pre>}
       {active?.kind === 'message' && <pre className="message-log">{active.message}</pre>}
       {active?.kind === 'grid' && active.columns && view === 'table' && (
-        <ResultGrid columns={active.columns} rows={active.rows ?? []} key={`${active.id}:table`} onFocusColumn={setFocusColumn} />
+        <ResultGrid columns={active.columns} rows={filteredRows} key={`${active.id}:table`} onFocusColumn={setFocusColumn} />
       )}
       {active?.kind === 'grid' && active.columns && view === 'chart' && chartable && (
         <ResultChart columns={active.columns} rows={active.rows ?? []} key={`${active.id}:chart`} />

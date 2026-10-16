@@ -10,10 +10,11 @@ import type {
   Dialect,
   QueryHistoryEntry,
   SqlFavorite,
+  FavoriteFolder,
   WorkspaceState,
 } from '@shared/types'
 import { QUERY_HISTORY_LIMIT, pushQueryHistory } from '@shared/queryHistory'
-import { upsertFavorite } from '@shared/favorites'
+import { upsertFavorite, upsertFolder } from '@shared/favorites'
 import { DEFAULT_PREFS, normalizePrefs, type AppPrefs } from '@shared/prefs'
 import {
   applyImportPlan,
@@ -334,6 +335,7 @@ export function saveFavorite(input: {
   name: string
   sql: string
   connectionId?: string | null
+  folderId?: string | null
 }): { favorite: SqlFavorite } | { error: string } {
   const name = input.name.trim()
   const sql = input.sql.trim()
@@ -347,6 +349,8 @@ export function saveFavorite(input: {
     name,
     sql,
     connectionId: input.connectionId === undefined ? (existing?.connectionId ?? null) : input.connectionId,
+    folderId:
+      input.folderId === undefined ? (existing?.folderId ?? null) : input.folderId,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
@@ -359,6 +363,44 @@ export function removeFavorite(id: string): void {
     'favorites.json',
     listFavorites().filter((row) => row.id !== id),
   )
+}
+
+export function listFavoriteFolders(): FavoriteFolder[] {
+  return readJson<FavoriteFolder[]>('favorite-folders.json', [])
+}
+
+export function saveFavoriteFolder(input: {
+  id?: string
+  name: string
+}): { folder: FavoriteFolder } | { error: string } {
+  const name = input.name.trim()
+  if (!name) return { error: '请填写文件夹名称' }
+  const rows = listFavoriteFolders()
+  const now = new Date().toISOString()
+  const existing = input.id ? rows.find((row) => row.id === input.id) : undefined
+  if (!existing && rows.some((row) => row.name === name)) {
+    return { error: '已有同名文件夹' }
+  }
+  const next: FavoriteFolder = {
+    id: existing?.id ?? createId(),
+    name,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  }
+  writeJson('favorite-folders.json', upsertFolder(rows, next))
+  return { folder: next }
+}
+
+export function removeFavoriteFolder(id: string): void {
+  writeJson(
+    'favorite-folders.json',
+    listFavoriteFolders().filter((row) => row.id !== id),
+  )
+  // detach favorites from removed folder
+  const favs = listFavorites().map((row) =>
+    row.folderId === id ? { ...row, folderId: null, updatedAt: new Date().toISOString() } : row,
+  )
+  writeJson('favorites.json', favs)
 }
 
 

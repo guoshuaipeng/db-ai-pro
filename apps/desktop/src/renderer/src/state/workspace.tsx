@@ -140,6 +140,7 @@ type WorkspaceValue = {
     name: string
     sql: string
     connectionId?: string | null
+    folderId?: string | null
   }) => Promise<void>
   removeFavorite: (id: string) => Promise<void>
   insertFavoriteSql: (sql: string) => void
@@ -1046,9 +1047,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     name: string
     sql: string
     connectionId?: string | null
+    folderId?: string | null
   }) => {
     await api.favorites.save(input)
-    pushToast('success', '片段已收藏')
+    pushToast('success', input.id ? '片段已更新' : '片段已收藏')
   }
 
   const removeFavorite = async (id: string) => {

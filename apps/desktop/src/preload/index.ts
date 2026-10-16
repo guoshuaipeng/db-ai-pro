@@ -106,6 +106,13 @@ const api: DesktopApi = {
       return result.favorite
     },
     remove: (id: string) => ipcRenderer.invoke('favorites:remove', id),
+    listFolders: () => ipcRenderer.invoke('favorites:listFolders'),
+    saveFolder: async (input) => {
+      const result = await ipcRenderer.invoke('favorites:saveFolder', input)
+      if (result?.error) throw new Error(result.error)
+      return result.folder
+    },
+    removeFolder: (id: string) => ipcRenderer.invoke('favorites:removeFolder', id),
   },
   redis: {
     scan: async (payload) => {
