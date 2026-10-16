@@ -1,4 +1,5 @@
 import type { EditorTabState } from './types'
+import { normalizeBrowseState } from './tablePaging'
 
 /** Max query tabs persisted / restored. */
 export const SESSION_TAB_CAP = 20
@@ -17,11 +18,13 @@ export function normalizeSessionTab(raw: unknown): EditorTabState | null {
         : typeof row.connectionId === 'string'
           ? row.connectionId
           : null
+  const browse = normalizeBrowseState(row.browse)
   return {
     id: row.id.trim(),
     title: row.title.trim() || '查询',
     sql: row.sql,
     connectionId,
+    ...(browse ? { browse } : {}),
   }
 }
 

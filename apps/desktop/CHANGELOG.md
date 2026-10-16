@@ -2,6 +2,12 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 2.7.0 — M36 表数据分页
+
+- 打开表浏览时用 LIMIT/OFFSET（SQL Server 为 OFFSET/FETCH）分页，可选 100/500/1000
+- 上一页 / 下一页、页码与总行数信息；深色分页条；当前页仍走结果虚拟滚动
+- 自由 SQL 编辑后退出浏览分页模式；支持 SQLite / MySQL / PostgreSQL / SQL Server
+
 ## 2.6.0 — M35 连接分组 + 颜色标记
 
 - 连接可归入命名分组（新建 / 改名 / 删除），树中可折叠

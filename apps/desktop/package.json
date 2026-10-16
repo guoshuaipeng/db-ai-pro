@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — connection groups + color tags",
+  "description": "DataAI TypeScript desktop — table browse pagination",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

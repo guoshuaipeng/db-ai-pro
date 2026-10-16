@@ -13,6 +13,13 @@ import { EmptyState } from './EmptyState'
 import { FavoritesPanel } from './FavoritesPanel'
 import { useWorkspace } from '../state/workspace'
 import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
+import {
+  PAGE_SIZES,
+  canNextPage,
+  canPrevPage,
+  formatPageInfo,
+  type PageSize,
+} from '@shared/tablePaging'
 
 export function EditorPane() {
   const ws = useWorkspace()
@@ -198,8 +205,64 @@ export function ResultPane() {
   const lastRun = ws.lastRun
   const slow = lastRun ? isSlowQuery(lastRun.elapsedMs, ws.slowQueryMs) : false
 
+  const browse = ws.activeEditor?.browse
+  const browseInfo = browse ? formatPageInfo(browse) : ''
+  const pageRows = active?.kind === 'grid' ? (active.rows?.length ?? 0) : 0
+  const nextEnabled = browse
+    ? canNextPage(browse) && !(browse.totalRows == null && pageRows < browse.pageSize)
+    : false
+
   return (
     <section className="result-pane" aria-label="查询结果">
+      {browse && (
+        <div className="browse-pager" role="toolbar" aria-label="表数据分页">
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            disabled={ws.running || !canPrevPage(browse)}
+            onClick={() => ws.setBrowsePage(browse.page - 1)}
+            title="上一页"
+          >
+            上一页
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            disabled={ws.running || !nextEnabled}
+            onClick={() => ws.setBrowsePage(browse.page + 1)}
+            title="下一页"
+          >
+            下一页
+          </button>
+          <label className="browse-page-size">
+            <span>每页</span>
+            <select
+              value={browse.pageSize}
+              disabled={ws.running}
+              onChange={(event) => ws.setBrowsePageSize(Number(event.target.value) as PageSize)}
+              aria-label="每页行数"
+            >
+              {PAGE_SIZES.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="browse-page-info" title={browseInfo}>
+            {browseInfo}
+          </span>
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            disabled={ws.running}
+            onClick={() => ws.refreshBrowse()}
+            title="刷新本页"
+          >
+            刷新
+          </button>
+        </div>
+      )}
       {results && results.tabs.length > 0 ? (
         <ScrollTabs
           label="结果标签"

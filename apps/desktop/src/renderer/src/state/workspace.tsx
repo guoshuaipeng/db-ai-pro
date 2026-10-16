@@ -10,7 +10,17 @@ import {
 } from 'react'
 import { getApi } from '../bridge'
 import { connectionErrorNode } from '@shared/schema'
-import { changesSchema, identStyle, selectAll, selectAllWithRowid, statementTitle } from '@shared/sql'
+import { changesSchema, statementTitle } from '@shared/sql'
+import {
+  DEFAULT_PAGE_SIZE,
+  buildBrowseSql,
+  buildCountSql,
+  clampBrowsePage,
+  normalizePageSize,
+  parseCountValue,
+  type PageSize,
+  type TableBrowseState,
+} from '@shared/tablePaging'
 import { INITIAL_TABS } from '@shared/session'
 import { countTreeNodes, extrasFromConnections, filterNodes } from '@shared/tree'
 import { dialectInfo, isKvDialect } from '@shared/types'
@@ -219,6 +229,9 @@ type WorkspaceValue = {
   openTableStructure: (connectionId: string, tableName: string) => void
   closeTableStructure: () => void
   openTableQuery: (connectionId: string, tableName: string) => void
+  setBrowsePage: (page: number) => void
+  setBrowsePageSize: (pageSize: PageSize) => void
+  refreshBrowse: () => void
   loadTableStructure: (connectionId: string, tableName: string) => Promise<TableStructure>
   columnStatsTarget: ColumnStatsTarget | null
   openColumnStats: (target: ColumnStatsTarget) => void
@@ -628,6 +641,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const closeTableStructure = () => setStructureTarget(null)
 
+  const applyBrowseToTab = (
+    tabId: string,
+    browse: TableBrowseState,
+    dialect: ConnectionPublic['dialect'],
+  ) => {
+    const nextBrowse = clampBrowsePage(browse)
+    const sql = buildBrowseSql(dialect, nextBrowse.tableName, nextBrowse.page, nextBrowse.pageSize)
+    setEditorTabs((tabs) =>
+      tabs.map((tab) =>
+        tab.id === tabId
+          ? { ...tab, sql, connectionId: nextBrowse.connectionId, browse: nextBrowse }
+          : tab,
+      ),
+    )
+    return { sql, browse: nextBrowse }
+  }
+
   const openTableQuery = (connectionId: string, tableName: string) => {
     setActiveConnectionId(connectionId)
     const connection = connections.find((item) => item.id === connectionId)
@@ -636,16 +666,65 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     void recordTableRecent(connectionId, tableName)
     const title = tableName
     const existing = editorTabs.find((tab) => tab.title === title)
+    const pageSize = existing?.browse?.pageSize ?? DEFAULT_PAGE_SIZE
+    const browse: TableBrowseState = {
+      connectionId,
+      tableName,
+      page: 0,
+      pageSize,
+      totalRows: null,
+    }
     if (existing) {
       setActiveEditorId(existing.id)
       setTargetTable(tableName)
+      applyBrowseToTab(existing.id, browse, dialect)
+      void loadBrowsePage(existing.id, browse, dialect, { refreshCount: true, quiet: true })
       return
     }
     const id = crypto.randomUUID()
-    const sql = dialect === 'sqlite' ? selectAllWithRowid(tableName) : selectAll(tableName, identStyle(dialect))
-    setEditorTabs((tabs) => [...tabs, { id, title, sql, connectionId }])
+    const sql = buildBrowseSql(dialect, tableName, 0, pageSize)
+    setEditorTabs((tabs) => [...tabs, { id, title, sql, connectionId, browse }])
     setActiveEditorId(id)
     setTargetTable(tableName)
+    void loadBrowsePage(id, browse, dialect, { refreshCount: true, quiet: true })
+  }
+
+  const setBrowsePage = (page: number) => {
+    const tab = activeEditor
+    if (!tab?.browse) return
+    const connection = connections.find((item) => item.id === tab.browse!.connectionId)
+    const dialect = connection?.dialect ?? 'sqlite'
+    if (dialect === 'redis') return
+    const browse = clampBrowsePage({ ...tab.browse, page: Math.max(0, Math.floor(page)) })
+    if (browse.page === tab.browse.page) return
+    applyBrowseToTab(tab.id, browse, dialect)
+    void loadBrowsePage(tab.id, browse, dialect, { refreshCount: false, quiet: true })
+  }
+
+  const setBrowsePageSize = (pageSize: PageSize) => {
+    const tab = activeEditor
+    if (!tab?.browse) return
+    const connection = connections.find((item) => item.id === tab.browse!.connectionId)
+    const dialect = connection?.dialect ?? 'sqlite'
+    if (dialect === 'redis') return
+    const size = normalizePageSize(pageSize)
+    const browse: TableBrowseState = {
+      ...tab.browse,
+      pageSize: size,
+      page: 0,
+      totalRows: tab.browse.totalRows ?? null,
+    }
+    applyBrowseToTab(tab.id, browse, dialect)
+    void loadBrowsePage(tab.id, browse, dialect, { refreshCount: true, quiet: true })
+  }
+
+  const refreshBrowse = () => {
+    const tab = activeEditor
+    if (!tab?.browse) return
+    const connection = connections.find((item) => item.id === tab.browse!.connectionId)
+    const dialect = connection?.dialect ?? 'sqlite'
+    if (dialect === 'redis') return
+    void loadBrowsePage(tab.id, tab.browse, dialect, { refreshCount: true, quiet: true })
   }
 
   const openRecentTable = (item: RecentTableItem) => {
@@ -775,26 +854,30 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       return
     }
     if (node.kind !== 'table' || !node.tableName) return
-    const title = node.displayName
-    const existing = editorTabs.find((tab) => tab.title === title)
-    if (existing) {
-      setActiveEditorId(existing.id)
-      return
-    }
-    const dialect = node.dialect ?? connections.find((item) => item.id === node.connectionId)?.dialect ?? 'sqlite'
-    const id = crypto.randomUUID()
-    const sql = dialect === 'sqlite' ? selectAllWithRowid(node.tableName!) : selectAll(node.tableName!, identStyle(dialect))
-    setEditorTabs((tabs) => [
-      ...tabs,
-      { id, title, sql, connectionId: node.connectionId },
-    ])
-    setActiveEditorId(id)
-    if (dialect !== 'redis') setTargetTable(node.tableName!)
+    if (node.connectionId) openTableQuery(node.connectionId, node.tableName)
   }
 
   const updateSql = (sql: string) => {
     if (!activeEditor) return
-    setEditorTabs((tabs) => tabs.map((tab) => (tab.id === activeEditor.id ? { ...tab, sql } : tab)))
+    setEditorTabs((tabs) =>
+      tabs.map((tab) => {
+        if (tab.id !== activeEditor.id) return tab
+        if (!tab.browse) return { ...tab, sql }
+        const connection = connections.find((item) => item.id === tab.browse!.connectionId)
+        const dialect = connection?.dialect ?? 'sqlite'
+        const expected = buildBrowseSql(
+          dialect,
+          tab.browse.tableName,
+          tab.browse.page,
+          tab.browse.pageSize,
+        )
+        if (sql === tab.sql || sql.trim() === expected.trim()) {
+          return { ...tab, sql }
+        }
+        const { browse: _drop, ...rest } = tab
+        return { ...rest, sql }
+      }),
+    )
   }
 
   const newTab = () => {
@@ -895,18 +978,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     pushToast('success', nextFlag ? `「${activeConnection.name}」已设为只读` : `「${activeConnection.name}」已允许写入`)
   }, [activeConnection, api, pushToast])
 
-  const runSqlText = async (sql: string) => {
+  const runSqlText = async (
+    sql: string,
+    opts?: { connectionId?: string; editorId?: string; quiet?: boolean },
+  ) => {
     if (running) return
-    if (!activeConnection) {
+    const connectionId = opts?.connectionId ?? activeConnection?.id
+    const connection = connections.find((item) => item.id === connectionId) ?? activeConnection
+    const editorId = opts?.editorId ?? activeEditor?.id
+    const quiet = opts?.quiet === true
+    if (!connection) {
       pushToast('info', '先在左侧选择一个连接')
       return
     }
-    if (isKvDialect(activeConnection.dialect)) {
+    if (isKvDialect(connection.dialect)) {
       pushToast('info', 'Redis 请使用键浏览器，而不是 SQL 运行')
       return
     }
     const readOnlyHit = analyzeReadOnlySql(sql)
-    if (readOnlyActive && readOnlyHit.blocked) {
+    const readOnlyForConn = isReadOnlyEffective(globalReadOnly, connection.readOnly)
+    if (readOnlyForConn && readOnlyHit.blocked) {
       pushToast('info', readOnlyHit.reason)
       return
     }
@@ -921,7 +1012,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const prefs = await api.prefs.get()
       const timeoutMs = prefs.queryTimeoutSec > 0 ? prefs.queryTimeoutSec * 1000 : 0
       const statements = await api.sql.execute({
-        connectionId: activeConnection.id,
+        connectionId: connection.id,
         sql,
         requestId,
         timeoutMs,
@@ -930,25 +1021,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const elapsedMs = statements.reduce((sum, item) => sum + (item.elapsedMs || 0), 0)
       const rowCount = statements.reduce((sum, item) => sum + (item.rows?.length ?? 0), 0)
       setLastRun({ rows: rowCount, elapsedMs, ok: statements.every((item) => item.ok), kind: 'run' })
-      if (activeEditor) setResultMap((current) => ({ ...current, [activeEditor.id]: next }))
+      if (editorId) setResultMap((current) => ({ ...current, [editorId]: next }))
       const failed = statements.find((statement) => !statement.ok)
       if (failed) {
         pushToast('error', failed.error ?? '执行失败')
       } else {
-        pushToast('success', '执行完成')
-        void recordQueryRecent(sql, activeConnection.id)
-        if (activeEditor) {
+        if (!quiet) pushToast('success', '执行完成')
+        void recordQueryRecent(sql, connection.id)
+        if (editorId) {
           setEditorTabs((tabs) =>
-            tabs.map((tab) =>
-              tab.id === activeEditor.id ? { ...tab, connectionId: activeConnection.id } : tab,
-            ),
+            tabs.map((tab) => (tab.id === editorId ? { ...tab, connectionId: connection.id } : tab)),
           )
         }
       }
       if (statements.some((statement) => statement.ok && changesSchema(statement.statement))) {
         const rows = await api.connections.list()
         setConnections(rows)
-        await refreshSchema(rows, activeConnection.id)
+        await refreshSchema(rows, connection.id)
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '执行失败'
@@ -964,6 +1053,40 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }
 
+
+  const loadBrowsePage = async (
+    tabId: string,
+    browse: TableBrowseState,
+    dialect: ConnectionPublic['dialect'],
+    opts?: { refreshCount?: boolean; quiet?: boolean },
+  ) => {
+    const refreshCount = opts?.refreshCount !== false
+    let next = clampBrowsePage(browse)
+    if (refreshCount || next.totalRows == null) {
+      try {
+        const countSql = buildCountSql(dialect, next.tableName)
+        const prefs = await api.prefs.get()
+        const timeoutMs = prefs.queryTimeoutSec > 0 ? prefs.queryTimeoutSec * 1000 : 0
+        const statements = await api.sql.execute({
+          connectionId: next.connectionId,
+          sql: countSql,
+          requestId: crypto.randomUUID(),
+          timeoutMs,
+        })
+        const row = statements[0]?.rows?.[0] as Record<string, unknown> | undefined
+        const total = parseCountValue(row)
+        next = clampBrowsePage({ ...next, totalRows: total })
+      } catch {
+        next = { ...next, totalRows: next.totalRows ?? null }
+      }
+    }
+    const { sql } = applyBrowseToTab(tabId, next, dialect)
+    await runSqlText(sql, {
+      connectionId: next.connectionId,
+      editorId: tabId,
+      quiet: opts?.quiet !== false,
+    })
+  }
 
 
   const refreshTxnStatus = async (connectionId?: string | null) => {
@@ -1652,6 +1775,9 @@ ${sql.trim()}
     openTableStructure,
     closeTableStructure,
     openTableQuery,
+    setBrowsePage,
+    setBrowsePageSize,
+    refreshBrowse,
     loadTableStructure,
     columnStatsTarget,
     openColumnStats,

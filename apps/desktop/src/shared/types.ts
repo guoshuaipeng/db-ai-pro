@@ -151,6 +151,8 @@ export type EditorTabState = {
   sql: string
   /** Bound connection for this tab; null = use workspace active. No secrets. */
   connectionId?: string | null
+  /** Table browse paging meta; absent for free SQL tabs. */
+  browse?: import('./tablePaging').TableBrowseState
 }
 
 export type AiTurnState = {

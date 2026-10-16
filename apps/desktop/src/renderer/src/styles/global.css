@@ -2756,3 +2756,39 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #6ea8fe) 55%, transparent);
 }
 
+
+
+/* M36 table browse pagination */
+.browse-pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: #161b22;
+  border-bottom: 1px solid var(--border, #2a3140);
+  color: var(--muted, #9aa4b2);
+  font-size: 12px;
+}
+.browse-pager .browse-page-info {
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #e6edf3);
+  margin-left: 4px;
+}
+.browse-pager .browse-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+.browse-pager .browse-page-size select {
+  background: #0d1117;
+  color: var(--text, #e6edf3);
+  border: 1px solid var(--border, #2a3140);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+.browse-pager .tiny-btn:disabled {
+  opacity: 0.45;
+}

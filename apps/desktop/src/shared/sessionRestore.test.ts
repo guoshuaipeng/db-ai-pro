@@ -46,4 +46,26 @@ describe('sessionRestore', () => {
     expect(pickActiveEditorId(tabs, 'b')).toBe('b')
     expect(pickActiveEditorId(tabs, 'missing')).toBe('a')
   })
+
+  it('keeps browse paging meta without secrets', () => {
+    const tabs = normalizeSessionTabs([
+      {
+        id: 't1',
+        title: 'orders',
+        sql: 'SELECT 1',
+        connectionId: 'c1',
+        browse: { connectionId: 'c1', tableName: 'orders', page: 2, pageSize: 500, totalRows: 1200 },
+        password: 'x',
+      },
+    ])
+    expect(tabs[0].browse).toEqual({
+      connectionId: 'c1',
+      tableName: 'orders',
+      page: 2,
+      pageSize: 500,
+      totalRows: 1200,
+    })
+    expect('password' in tabs[0]).toBe(false)
+  })
+
 })
