@@ -25,6 +25,7 @@ import {
 } from '@shared/tablePaging'
 import { INITIAL_TABS } from '@shared/session'
 import { isTabDirty, withCleanBaseline } from '@shared/tabDirty'
+import { suggestedSqlFileName, tabTitleFromSqlPath } from '@shared/sqlFileName'
 import {
   connectionEndpointCopiedToast,
   connectionEndpointText,
@@ -202,6 +203,8 @@ type WorkspaceValue = {
   runningSince: number | null
   tabDisconnected: (tab: EditorTabState) => boolean
   updateSql: (sql: string) => void
+  saveEditorSqlToFile: () => Promise<void>
+  openSqlFile: () => Promise<void>
   newTab: () => void
   closeTab: (id: string) => void
   isEditorDirty: (id: string) => boolean
@@ -1110,6 +1113,68 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         return { ...rest, sql }
       }),
     )
+  }
+
+  const saveEditorSqlToFile = async () => {
+    if (!activeEditor) {
+      pushToast('info', '没有打开的查询标签')
+      return
+    }
+    try {
+      const result = await api.app.saveTextFile({
+        content: activeEditor.sql,
+        defaultName: suggestedSqlFileName(activeEditor.title),
+        title: '保存 SQL',
+      })
+      if ('cancelled' in result) {
+        pushToast('info', '已取消保存')
+        return
+      }
+      if ('error' in result) {
+        pushToast('error', result.error)
+        return
+      }
+      const title = tabTitleFromSqlPath(result.path)
+      setEditorTabs((tabs) =>
+        tabs.map((tab) =>
+          tab.id === activeEditor.id
+            ? withCleanBaseline({ ...tab, title, sql: activeEditor.sql })
+            : tab,
+        ),
+      )
+      pushToast('success', `已保存 ${result.path.replace(/^.*[/\\]/, '')}`)
+    } catch (error) {
+      pushToast('error', error instanceof Error ? error.message : '保存失败')
+    }
+  }
+
+  const openSqlFile = async () => {
+    try {
+      const result = await api.app.openTextFile({ title: '打开 SQL' })
+      if ('cancelled' in result) {
+        pushToast('info', '已取消打开')
+        return
+      }
+      if ('error' in result) {
+        pushToast('error', result.error)
+        return
+      }
+      const id = crypto.randomUUID()
+      const title = tabTitleFromSqlPath(result.path)
+      setEditorTabs((tabs) => [
+        ...tabs,
+        withCleanBaseline({
+          id,
+          title,
+          sql: result.content,
+          connectionId: activeConnectionId,
+        }),
+      ])
+      setActiveEditorId(id)
+      pushToast('success', `已打开 ${result.path.replace(/^.*[/\\]/, '')}`)
+    } catch (error) {
+      pushToast('error', error instanceof Error ? error.message : '打开失败')
+    }
   }
 
   const newTab = () => {
@@ -2273,6 +2338,8 @@ ${sql.trim()}
     },
     tabDisconnected: (tab) => isTabDisconnected(tab, connections.map((row) => row.id)),
     updateSql,
+    saveEditorSqlToFile,
+    openSqlFile,
     newTab,
     closeTab,
     isEditorDirty,

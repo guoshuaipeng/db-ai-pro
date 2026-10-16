@@ -28,6 +28,8 @@ const api: DesktopApi = {
   app: {
     openUserData: () => ipcRenderer.invoke('app:openUserData'),
     openLogs: () => ipcRenderer.invoke('app:openLogs'),
+    saveTextFile: (input) => ipcRenderer.invoke('app:saveTextFile', input),
+    openTextFile: (input) => ipcRenderer.invoke('app:openTextFile', input),
   },
   connections: {
     list: () => ipcRenderer.invoke('connections:list'),

@@ -286,6 +286,58 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     return err ? { ok: false as const, error: err } : { ok: true as const, path }
   })
 
+  ipcMain.handle(
+    'app:saveTextFile',
+    async (
+      _event,
+      input: { content: string; defaultName?: string; title?: string },
+    ) => {
+      try {
+        const win = getWindow()
+        const options = {
+          title: input.title?.trim() || '保存 SQL',
+          defaultPath: input.defaultName?.trim() || 'query.sql',
+          filters: [
+            { name: 'SQL', extensions: ['sql'] },
+            { name: 'All Files', extensions: ['*'] },
+          ],
+        }
+        const result = win
+          ? await dialog.showSaveDialog(win, options)
+          : await dialog.showSaveDialog(options)
+        if (result.canceled || !result.filePath) return { cancelled: true as const }
+        writeFileSync(result.filePath, input.content ?? '', 'utf8')
+        return { path: result.filePath }
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : '保存失败' }
+      }
+    },
+  )
+
+  ipcMain.handle('app:openTextFile', async (_event, input?: { title?: string }) => {
+    try {
+      const win = getWindow()
+      const options = {
+        title: input?.title?.trim() || '打开 SQL',
+        properties: ['openFile'] as Array<'openFile'>,
+        filters: [
+          { name: 'SQL', extensions: ['sql'] },
+          { name: 'Text', extensions: ['txt'] },
+          { name: 'All Files', extensions: ['*'] },
+        ],
+      }
+      const result = win
+        ? await dialog.showOpenDialog(win, options)
+        : await dialog.showOpenDialog(options)
+      if (result.canceled || !result.filePaths[0]) return { cancelled: true as const }
+      const path = result.filePaths[0]
+      const content = readFileSync(path, 'utf8')
+      return { path, content }
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : '打开失败' }
+    }
+  })
+
   ipcMain.handle('connections:list', () => listConnections())
   ipcMain.handle('connections:listGroups', () => listConnectionGroups())
   ipcMain.handle(

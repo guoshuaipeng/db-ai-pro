@@ -300,6 +300,8 @@ export function createPreviewApi(): DesktopApi {
     app: {
       openUserData: async () => ({ ok: false as const, error: '预览模式无法打开系统文件夹' }),
       openLogs: async () => ({ ok: false as const, error: '预览模式无法打开系统文件夹' }),
+      saveTextFile: async () => ({ error: '预览模式无法保存文件' }),
+      openTextFile: async () => ({ error: '预览模式无法打开文件' }),
     },
     connections: {
       list: async () => memory.connections,

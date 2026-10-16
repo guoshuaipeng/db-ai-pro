@@ -55,6 +55,14 @@ export type DesktopApi = {
   app: {
     openUserData: () => Promise<{ ok: true; path: string } | { ok: false; error: string }>
     openLogs: () => Promise<{ ok: true; path: string } | { ok: false; error: string }>
+    saveTextFile: (input: {
+      content: string
+      defaultName?: string
+      title?: string
+    }) => Promise<{ path: string } | { cancelled: true } | { error: string }>
+    openTextFile: (input?: {
+      title?: string
+    }) => Promise<{ path: string; content: string } | { cancelled: true } | { error: string }>
   }
   connections: {
     list: () => Promise<ConnectionPublic[]>

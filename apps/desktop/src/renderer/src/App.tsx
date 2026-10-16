@@ -165,6 +165,12 @@ export function App() {
         case 'query.rollbackTxn':
           void ws.rollbackTxn()
           break
+        case 'query.saveToFile':
+          void ws.saveEditorSqlToFile()
+          break
+        case 'query.openFromFile':
+          void ws.openSqlFile()
+          break
         case 'query.format':
           emitDataai('dataai:format-sql')
           break
@@ -366,6 +372,16 @@ export function App() {
       if (meta && event.shiftKey && key === 's') {
         event.preventDefault()
         emitDataai('dataai:save-favorite')
+        return
+      }
+      if (meta && !event.shiftKey && key === 's') {
+        event.preventDefault()
+        void ws.saveEditorSqlToFile()
+        return
+      }
+      if (meta && !event.shiftKey && key === 'o') {
+        event.preventDefault()
+        void ws.openSqlFile()
         return
       }
       if (meta && !event.shiftKey && key === 'w') {

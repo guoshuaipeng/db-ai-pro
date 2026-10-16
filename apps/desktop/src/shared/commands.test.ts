@@ -57,6 +57,11 @@ describe('filterCommands', () => {
     expect(filterCommands('连接地址').some((item) => item.id === 'connection.copyEndpoint')).toBe(true)
   })
 
+  it('finds save/open sql file commands', () => {
+    expect(filterCommands('保存 SQL').some((item) => item.id === 'query.saveToFile')).toBe(true)
+    expect(filterCommands('打开 SQL').some((item) => item.id === 'query.openFromFile')).toBe(true)
+  })
+
   it('finds query templates', () => {
     expect(filterCommands('模板').some((item) => item.id === 'query.templates')).toBe(true)
     expect(filterCommands('COUNT').some((item) => item.id === 'query.tpl.selectCount')).toBe(true)

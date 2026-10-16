@@ -118,6 +118,22 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'query.saveToFile',
+    title: '保存 SQL 到文件',
+    subtitle: '将当前标签写入 .sql（Ctrl+S）',
+    keywords: 'save file export sql 保存 文件',
+    shortcut: 'Ctrl+S',
+    category: 'query',
+  },
+  {
+    id: 'query.openFromFile',
+    title: '从文件打开 SQL',
+    subtitle: '打开 .sql 到新标签（Ctrl+O）',
+    keywords: 'open file import sql 打开 文件',
+    shortcut: 'Ctrl+O',
+    category: 'query',
+  },
+  {
     id: 'query.format',
     title: '格式化 SQL',
     subtitle: '美化当前编辑器 / 选区',
