@@ -2,6 +2,12 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 3.38.0 — M77 对象树展开状态恢复
+
+- 启动不再自动展开全部库 / 表；默认只展开连接根节点
+- 用户展开 / 折叠写入 `workspace.json`，下次启动按上次状态恢复
+- 搜索对象树时仍临时展开匹配路径；刷新对象树保留已有展开标记
+
 ## 3.37.0 — M76 CSV UTF-8 BOM（Excel 友好）
 
 - 导出 / 复制 CSV 默认带 UTF-8 BOM，Windows Excel 直接打开中文不乱码

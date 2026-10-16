@@ -11,7 +11,7 @@ import {
 import { getApi } from '../bridge'
 import { emitDataai } from '../appEvents'
 import { connectionErrorNode } from '@shared/schema'
-import { replaceConnectionNode, seedExpanded } from '@shared/schemaTreeRefresh'
+import { normalizeExpanded, replaceConnectionNode, seedExpanded } from '@shared/schemaTreeRefresh'
 import { changesSchema, quoteIdentIfNeeded, statementTitle } from '@shared/sql'
 import {
   DEFAULT_PAGE_SIZE,
@@ -651,6 +651,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           }
           setActiveConnectionId(restoreConnectionId)
         }
+        if (workspace?.expanded) {
+          setExpanded(normalizeExpanded(workspace.expanded))
+        }
         await refreshSchema(rows, restoreConnectionId)
         loaded.current = true
         setReady(true)
@@ -678,6 +681,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       editorRatio,
       sidebarOpen,
       aiOpen,
+      expanded: normalizeExpanded(expanded),
     }
     const handle = window.setTimeout(() => {
       void api.workspace.save(state)
@@ -694,6 +698,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     editorRatio,
     sidebarOpen,
     aiOpen,
+    expanded,
   ])
 
   useEffect(() => {

@@ -20,6 +20,7 @@ import { DEFAULT_PREFS, normalizePrefs, type AppPrefs } from '@shared/prefs'
 import { upsertConnGroup } from '@shared/connGroups'
 import { normalizeSessionTabs, pickActiveEditorId, SESSION_TAB_CAP } from '@shared/sessionRestore'
 import { normalizeLayout } from '@shared/layoutBounds'
+import { normalizeExpanded } from '@shared/schemaTreeRefresh'
 import {
   EMPTY_RECENT,
   normalizeRecentItems,
@@ -293,6 +294,7 @@ export function loadWorkspace(): WorkspaceState | null {
         editorTabs.length === 0
           ? parsed.activeEditorId
           : pickActiveEditorId(editorTabs, parsed.activeEditorId),
+      expanded: normalizeExpanded(parsed.expanded),
     }
     return base
   } catch {

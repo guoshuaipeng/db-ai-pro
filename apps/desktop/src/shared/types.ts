@@ -189,6 +189,8 @@ export type WorkspaceState = {
   editorRatio: number
   sidebarOpen: boolean
   aiOpen: boolean
+  /** Object-tree expand flags; omitted on older workspaces. */
+  expanded?: Record<string, boolean>
 }
 
 export type FavoriteFolder = {

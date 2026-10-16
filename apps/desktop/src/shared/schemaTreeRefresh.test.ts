@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   collectNodeIds,
+  isTreeNodeExpanded,
+  normalizeExpanded,
   replaceConnectionNode,
   seedExpanded,
 } from './schemaTreeRefresh'
@@ -26,6 +28,31 @@ describe('schemaTreeRefresh', () => {
     expect(next.c1).toBe(true)
     expect(next['c1:db']).toBe(false)
     expect(next['c1:table:t1']).toBe(false)
+  })
+
+  it('defaults only connection roots open (not databases)', () => {
+    const tree = [
+      sample('c1', 'connection', [
+        sample('c1:db', 'database', [sample('c1:table:t1', 'table')]),
+      ]),
+    ]
+    const next = seedExpanded(tree, {})
+    expect(next.c1).toBe(true)
+    expect(next['c1:db']).toBe(false)
+    expect(next['c1:table:t1']).toBe(false)
+  })
+
+  it('isTreeNodeExpanded respects search and defaults', () => {
+    const db = sample('c1:db', 'database')
+    expect(isTreeNodeExpanded(db, {}, false)).toBe(false)
+    expect(isTreeNodeExpanded(db, {}, true)).toBe(true)
+    expect(isTreeNodeExpanded(db, { 'c1:db': true }, false)).toBe(true)
+    expect(isTreeNodeExpanded(sample('c1', 'connection'), {}, false)).toBe(true)
+  })
+
+  it('normalizeExpanded keeps booleans only', () => {
+    expect(normalizeExpanded({ a: true, b: false, c: 'x', d: 1 })).toEqual({ a: true, b: false })
+    expect(normalizeExpanded(null)).toEqual({})
   })
 
   it('replaces a connection root', () => {

@@ -4,6 +4,7 @@ import { dialectInfo } from '@shared/types'
 import { formatLatency } from '@shared/connHealth'
 import { bucketSchemaByGroup, colorForTag, CONN_COLOR_TAGS } from '@shared/connGroups'
 import { quoteIdentIfNeeded } from '@shared/sql'
+import { isTreeNodeExpanded } from '@shared/schemaTreeRefresh'
 import { qualifyBrowseTable } from '@shared/tablePaging'
 import { setSqlDragData } from '@shared/sqlDragDrop'
 import type { Dialect, SchemaNode } from '@shared/types'
@@ -300,7 +301,7 @@ function TreeNode({
   onMenu: (id: string | null) => void
 }) {
   const ws = useWorkspace()
-  const expanded = ws.search.trim() ? true : ws.expanded[node.id] !== false
+  const expanded = isTreeNodeExpanded(node, ws.expanded, Boolean(ws.search.trim()))
   const hasChildren = (node.children?.length ?? 0) > 0
   const selected = ws.selectedId === node.id || (node.kind === 'connection' && ws.activeConnection?.id === node.id && !ws.selectedId)
   const connection = ws.connections.find((item) => item.id === node.id)
