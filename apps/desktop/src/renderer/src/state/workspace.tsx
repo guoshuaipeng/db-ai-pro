@@ -118,6 +118,7 @@ import {
 import { formatExplainText } from '@shared/explain'
 import { analyzeDestructiveSql } from '@shared/destructiveSql'
 import { analyzeReadOnlySql, isReadOnlyEffective } from '@shared/readOnlySql'
+import { resolveReadOnlyBlockSource } from '@shared/readOnlySqlUi'
 import { DEFAULT_SLOW_QUERY_MS, isSlowQuery } from '@shared/slowQuery'
 import {
   DEFAULT_EDITOR_FONT_SIZE,
@@ -216,6 +217,13 @@ type DialogState =
       reasons: string[]
       preview: string
       onDecide: (decision: DestructiveDecision) => void
+    }
+  | {
+      type: 'readOnlyBlock'
+      verb: string | null
+      statement: string
+      reason: string
+      source: 'global' | 'connection' | 'both'
     }
   | {
       type: 'unsaved'
@@ -1730,7 +1738,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const readOnlyHit = analyzeReadOnlySql(sql)
     const readOnlyForConn = isReadOnlyEffective(globalReadOnly, connection.readOnly)
     if (readOnlyForConn && readOnlyHit.blocked) {
-      pushToast('info', readOnlyHit.reason)
+      setDialog({
+        type: 'readOnlyBlock',
+        verb: readOnlyHit.verb,
+        statement: readOnlyHit.statement,
+        reason: readOnlyHit.reason,
+        source: resolveReadOnlyBlockSource(globalReadOnly, Boolean(connection.readOnly)),
+      })
       return
     }
     if (!(await confirmIfDestructive(sql))) {
@@ -2153,7 +2167,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
     const readOnlyHit = analyzeReadOnlySql(sql)
     if (readOnlyActive && readOnlyHit.blocked) {
-      pushToast('info', readOnlyHit.reason)
+      setDialog({
+        type: 'readOnlyBlock',
+        verb: readOnlyHit.verb,
+        statement: readOnlyHit.statement,
+        reason: readOnlyHit.reason,
+        source: resolveReadOnlyBlockSource(globalReadOnly, Boolean(activeConnection?.readOnly)),
+      })
       return
     }
     applySql(sql)

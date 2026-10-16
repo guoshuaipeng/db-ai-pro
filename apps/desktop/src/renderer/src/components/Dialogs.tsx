@@ -48,6 +48,22 @@ import {
   destructiveSkipSessionLabel,
   destructiveSkipSessionTitle,
 } from '@shared/destructiveSqlUi'
+import {
+  readOnlyBlockAllowedBody,
+  readOnlyBlockAllowedTitle,
+  readOnlyBlockBody,
+  readOnlyBlockCopiedToast,
+  readOnlyBlockCopyFailToast,
+  readOnlyBlockCopyLabel,
+  readOnlyBlockDisableConnectionLabel,
+  readOnlyBlockDisableGlobalLabel,
+  readOnlyBlockDismissLabel,
+  readOnlyBlockFootnote,
+  readOnlyBlockKicker,
+  readOnlyBlockPreviewAria,
+  readOnlyBlockPreviewLabel,
+  readOnlyBlockTitle,
+} from '@shared/readOnlySqlUi'
 import { EmptyState } from './EmptyState'
 
 export function Dialogs() {
@@ -80,6 +96,9 @@ export function Dialogs() {
   }
   if (ws.dialog.type === 'destructive') {
     return <DestructiveSqlDialog dialog={ws.dialog} pushToast={ws.pushToast} />
+  }
+  if (ws.dialog.type === 'readOnlyBlock') {
+    return <ReadOnlyBlockDialog dialog={ws.dialog} />
   }
   if (ws.dialog.type === 'delete') {
     const connection = ws.dialog.connection
@@ -828,3 +847,105 @@ function DestructiveSqlDialog({
     </div>
   )
 }
+
+function ReadOnlyBlockDialog({
+  dialog,
+}: {
+  dialog: {
+    verb: string | null
+    statement: string
+    reason: string
+    source: 'global' | 'connection' | 'both'
+  }
+}) {
+  const ws = useWorkspace()
+  const cancelRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    cancelRef.current?.focus()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        ws.closeDialog()
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [ws])
+
+  const copyStatement = () => {
+    const text = dialog.statement.trim()
+    if (!text) return
+    void navigator.clipboard.writeText(text).then(
+      () => ws.pushToast('success', readOnlyBlockCopiedToast()),
+      () => ws.pushToast('error', readOnlyBlockCopyFailToast()),
+    )
+  }
+
+  return (
+    <div className="overlay" role="presentation" onMouseDown={ws.closeDialog}>
+      <div
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="readonly-block-title"
+        aria-describedby="readonly-block-copy"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <p className="readonly-block-kicker">{readOnlyBlockKicker()}</p>
+        <h2 id="readonly-block-title">{readOnlyBlockTitle(dialog.verb)}</h2>
+        <p id="readonly-block-copy" className="dialog-copy">
+          {readOnlyBlockBody(dialog.source)}
+        </p>
+        <p className="dialog-meta">{dialog.reason}</p>
+        <EmptyState
+          compact
+          title={readOnlyBlockAllowedTitle()}
+          body={readOnlyBlockAllowedBody()}
+        />
+        {dialog.statement.trim() ? (
+          <>
+            <div className="readonly-block-preview-head">
+              <span className="readonly-block-preview-label">{readOnlyBlockPreviewLabel()}</span>
+              <button type="button" className="btn btn-ghost tiny-btn" onClick={copyStatement}>
+                {readOnlyBlockCopyLabel()}
+              </button>
+            </div>
+            <pre className="readonly-block-preview" aria-label={readOnlyBlockPreviewAria()} tabIndex={0}>
+              {dialog.statement}
+            </pre>
+          </>
+        ) : null}
+        <p className="readonly-block-footnote">{readOnlyBlockFootnote()}</p>
+        <div className="dialog-actions dialog-actions-wrap">
+          <button ref={cancelRef} type="button" className="btn btn-primary" onClick={ws.closeDialog}>
+            {readOnlyBlockDismissLabel()}
+          </button>
+          {(dialog.source === 'connection' || dialog.source === 'both') && (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                void ws.toggleConnectionReadOnly().then(() => ws.closeDialog())
+              }}
+            >
+              {readOnlyBlockDisableConnectionLabel()}
+            </button>
+          )}
+          {(dialog.source === 'global' || dialog.source === 'both') && (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                void ws.setGlobalReadOnly(false).then(() => ws.closeDialog())
+              }}
+            >
+              {readOnlyBlockDisableGlobalLabel()}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
