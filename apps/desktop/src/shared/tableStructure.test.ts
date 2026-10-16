@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { composeCreateTable, ddlLabelFor } from './tableStructure'
+import { composeCreateTable, ddlLabelFor, formatForeignKeyGlance } from './tableStructure'
 
 describe('tableStructure helpers', () => {
   it('labels DDL sources per dialect', () => {
@@ -20,5 +20,18 @@ describe('tableStructure helpers', () => {
     expect(ddl).toContain('CREATE TABLE "orders"')
     expect(ddl).toContain('"id" INTEGER PRIMARY KEY')
     expect(ddl).toContain('DEFAULT 0')
+  })
+})
+
+describe('foreign key glance', () => {
+  it('formats local → remote', () => {
+    expect(
+      formatForeignKeyGlance({
+        name: 'fk_orders_customer',
+        columns: ['customer_id'],
+        refTable: 'customers',
+        refColumns: ['id'],
+      }),
+    ).toBe('customer_id → customers(id)')
   })
 })

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { TableStructure } from '@shared/tableStructure'
+import { formatForeignKeyGlance } from '@shared/tableStructure'
 import { useWorkspace } from '../state/workspace'
 import { SampleFillDialog } from './SampleFillDialog'
 
-type Tab = 'columns' | 'ddl' | 'indexes'
+type Tab = 'columns' | 'indexes' | 'relations' | 'ddl'
 
 export function TableStructurePanel() {
   const ws = useWorkspace()
@@ -117,6 +118,7 @@ export function TableStructurePanel() {
             [
               { id: 'columns' as const, label: '列' },
               { id: 'indexes' as const, label: '索引' },
+              { id: 'relations' as const, label: '关系' },
               { id: 'ddl' as const, label: 'DDL' },
             ] as const
           ).map((item) => (
@@ -201,6 +203,57 @@ export function TableStructurePanel() {
               </ul>
             )
           )}
+
+          {!loading && !error && structure && tab === 'relations' && (
+            (structure.foreignKeys?.length ?? 0) === 0 ? (
+              <p className="structure-status">没有外键 / 引用关系（或当前驱动未返回）。</p>
+            ) : (
+              <ul className="structure-index-list structure-fk-list">
+                {structure.foreignKeys.map((fk) => (
+                  <li key={fk.name} className="structure-index-item structure-fk-item">
+                    <div className="structure-index-main">
+                      <strong>{fk.name}</strong>
+                      <span className="structure-index-flags">FOREIGN KEY</span>
+                    </div>
+                    <p className="structure-fk-glance">
+                      <code>{formatForeignKeyGlance(fk)}</code>
+                    </p>
+                    {(fk.onUpdate || fk.onDelete) && (
+                      <p className="structure-fk-actions-meta">
+                        {fk.onUpdate ? `ON UPDATE ${fk.onUpdate}` : ''}
+                        {fk.onUpdate && fk.onDelete ? ' · ' : ''}
+                        {fk.onDelete ? `ON DELETE ${fk.onDelete}` : ''}
+                      </p>
+                    )}
+                    <div className="structure-fk-nav">
+                      <button
+                        type="button"
+                        className="btn btn-ghost tiny-btn structure-fk-link"
+                        onClick={() => {
+                          ws.openTableStructure(structure.connectionId, fk.refTable)
+                        }}
+                        title={`查看表结构：${fk.refTable}`}
+                      >
+                        结构 · {fk.refTable}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost tiny-btn"
+                        onClick={() => {
+                          ws.openTableQuery(structure.connectionId, fk.refTable)
+                          ws.closeTableStructure()
+                        }}
+                        title={`打开查询：${fk.refTable}`}
+                      >
+                        查询 · {fk.refTable}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )
+          )}
+
           {!loading && !error && structure && tab === 'ddl' && (
             <div className="structure-ddl">
               <div className="structure-ddl-bar">

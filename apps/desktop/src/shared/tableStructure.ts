@@ -16,14 +16,31 @@ export type TableIndexInfo = {
   columns: string[]
 }
 
+export type TableForeignKeyInfo = {
+  name: string
+  columns: string[]
+  refTable: string
+  refColumns: string[]
+  onUpdate?: string
+  onDelete?: string
+}
+
 export type TableStructure = {
   connectionId: string
   tableName: string
   dialect: Dialect
   columns: TableColumnInfo[]
   indexes: TableIndexInfo[]
+  foreignKeys: TableForeignKeyInfo[]
   ddl: string | null
   ddlLabel: string
+}
+
+/** Human-readable FK line for lists / empty-state tests. */
+export function formatForeignKeyGlance(fk: TableForeignKeyInfo): string {
+  const local = fk.columns.join(', ') || '?'
+  const remote = fk.refColumns.join(', ') || '?'
+  return `${local} → ${fk.refTable}(${remote})`
 }
 
 export function ddlLabelFor(dialect: Dialect): string {

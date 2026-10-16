@@ -1875,6 +1875,28 @@ button:disabled { cursor: default; opacity: 0.45; }
   font-size: 11px;
   color: #a5b4fc;
 }
+.structure-fk-glance {
+  margin: 6px 0 0;
+  color: #cbd5e1;
+}
+.structure-fk-glance code {
+  color: #e2e8f0;
+  font-size: 12px;
+}
+.structure-fk-actions-meta {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #64748b;
+}
+.structure-fk-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.structure-fk-link {
+  color: #93c5fd !important;
+}
 .structure-index-item code {
   color: #cbd5e1;
   font-size: 12px;

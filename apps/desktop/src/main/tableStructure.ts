@@ -3,7 +3,7 @@ import type { RowDataPacket } from 'mysql2'
 import type { Client } from 'pg'
 import type Database from 'better-sqlite3'
 import type { ConnectionPool } from 'mssql'
-import { composeCreateTable, ddlLabelFor, type TableColumnInfo, type TableIndexInfo, type TableStructure } from '@shared/tableStructure'
+import { composeCreateTable, ddlLabelFor, type TableColumnInfo, type TableIndexInfo, type TableForeignKeyInfo, type TableStructure } from '@shared/tableStructure'
 import { quoteIdent, identStyle } from '@shared/sql'
 import type { Dialect } from '@shared/types'
 import type { SqlTarget } from './target'
@@ -16,6 +16,35 @@ function str(value: unknown): string {
   if (value == null) return ''
   return String(value)
 }
+
+function mergeForeignKeys(
+  rows: Array<{ name: string; column: string; refTable: string; refColumn: string; onUpdate?: string; onDelete?: string; seq?: number }>,
+): TableForeignKeyInfo[] {
+  const map = new Map<string, TableForeignKeyInfo>()
+  const ordered = [...rows].sort((a, b) => {
+    const byName = a.name.localeCompare(b.name)
+    if (byName !== 0) return byName
+    return (a.seq ?? 0) - (b.seq ?? 0)
+  })
+  for (const row of ordered) {
+    const key = row.name || `${row.refTable}:${row.column}`
+    const existing = map.get(key) ?? {
+      name: row.name || key,
+      columns: [],
+      refTable: row.refTable,
+      refColumns: [],
+      onUpdate: row.onUpdate,
+      onDelete: row.onDelete,
+    }
+    if (row.column) existing.columns.push(row.column)
+    if (row.refColumn) existing.refColumns.push(row.refColumn)
+    if (row.onUpdate) existing.onUpdate = row.onUpdate
+    if (row.onDelete) existing.onDelete = row.onDelete
+    map.set(key, existing)
+  }
+  return [...map.values()]
+}
+
 
 export function inspectSqliteTable(
   db: Database.Database,
@@ -60,12 +89,35 @@ export function inspectSqliteTable(
     .prepare(`SELECT sql FROM sqlite_master WHERE type IN ('table','view') AND name = ?`)
     .get(tableName) as { sql: string | null } | undefined
 
+
+  const fkRows = db.prepare(`PRAGMA foreign_key_list(${q('sqlite', tableName)})`).all() as Array<{
+    id: number
+    seq: number
+    table: string
+    from: string
+    to: string
+    on_update: string
+    on_delete: string
+  }>
+  const foreignKeys = mergeForeignKeys(
+    fkRows.map((row) => ({
+      name: `fk_${tableName}_${row.id}`,
+      column: row.from,
+      refTable: row.table,
+      refColumn: row.to,
+      onUpdate: row.on_update,
+      onDelete: row.on_delete,
+      seq: row.seq,
+    })),
+  )
+
   return {
     connectionId: target.id,
     tableName,
     dialect: 'sqlite',
     columns,
     indexes,
+    foreignKeys,
     ddl: ddlRow?.sql?.trim() || composeCreateTable(tableName, columns, (n) => q('sqlite', n)),
     ddlLabel: ddlLabelFor('sqlite'),
   }
@@ -127,12 +179,34 @@ export async function inspectMysqlTable(
     ddl = composeCreateTable(tableName, columns, (n) => q(dialect, n))
   }
 
+
+  const [fkRows] = await conn.query<RowDataPacket[]>(
+    `SELECT CONSTRAINT_NAME AS name, COLUMN_NAME AS column_name,
+            REFERENCED_TABLE_NAME AS ref_table, REFERENCED_COLUMN_NAME AS ref_column,
+            ORDINAL_POSITION AS seq
+     FROM information_schema.KEY_COLUMN_USAGE
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+       AND REFERENCED_TABLE_NAME IS NOT NULL
+     ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION`,
+    [tableName],
+  )
+  const foreignKeys = mergeForeignKeys(
+    fkRows.map((row) => ({
+      name: str(row.name),
+      column: str(row.column_name),
+      refTable: str(row.ref_table),
+      refColumn: str(row.ref_column),
+      seq: Number(row.seq) || 0,
+    })),
+  )
+
   return {
     connectionId: target.id,
     tableName,
     dialect,
     columns,
     indexes: [...indexMap.values()],
+    foreignKeys,
     ddl,
     ddlLabel: ddlLabelFor(dialect),
   }
@@ -205,12 +279,47 @@ export async function inspectPostgresTable(
     return { name: row.indexname, unique: unique || primary, primary, columns: columnsList }
   })
 
+
+  const fkResult = await client.query<{
+    name: string
+    column_name: string
+    ref_table: string
+    ref_column: string
+    seq: number
+  }>(
+    `SELECT tc.constraint_name AS name,
+            kcu.column_name AS column_name,
+            ccu.table_name AS ref_table,
+            ccu.column_name AS ref_column,
+            kcu.ordinal_position AS seq
+     FROM information_schema.table_constraints AS tc
+     JOIN information_schema.key_column_usage AS kcu
+       ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+     JOIN information_schema.constraint_column_usage AS ccu
+       ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+     WHERE tc.constraint_type = 'FOREIGN KEY'
+       AND tc.table_schema = 'public'
+       AND tc.table_name = $1
+     ORDER BY tc.constraint_name, kcu.ordinal_position`,
+    [tableName],
+  )
+  const foreignKeys = mergeForeignKeys(
+    fkResult.rows.map((row) => ({
+      name: row.name,
+      column: row.column_name,
+      refTable: row.ref_table,
+      refColumn: row.ref_column,
+      seq: Number(row.seq) || 0,
+    })),
+  )
+
   return {
     connectionId: target.id,
     tableName,
     dialect: 'postgresql',
     columns,
     indexes,
+    foreignKeys,
     ddl: composeCreateTable(tableName, columns, (n) => q('postgresql', n)),
     ddlLabel: ddlLabelFor('postgresql'),
   }
@@ -288,12 +397,42 @@ export async function inspectMssqlTable(
     indexMap.set(name, existing)
   }
 
+  const fkResult = await pool
+    .request()
+    .input('table', tableName)
+    .query(`
+      SELECT
+        fk.name AS name,
+        pc.name AS column_name,
+        rt.name AS ref_table,
+        rc.name AS ref_column,
+        fkc.constraint_column_id AS seq
+      FROM sys.foreign_keys fk
+      INNER JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+      INNER JOIN sys.tables t ON t.object_id = fk.parent_object_id
+      INNER JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+      INNER JOIN sys.tables rt ON rt.object_id = fk.referenced_object_id
+      INNER JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+      WHERE t.name = @table
+      ORDER BY fk.name, fkc.constraint_column_id
+    `)
+  const foreignKeys = mergeForeignKeys(
+    fkResult.recordset.map((row: Record<string, unknown>) => ({
+      name: str(row.name),
+      column: str(row.column_name),
+      refTable: str(row.ref_table),
+      refColumn: str(row.ref_column),
+      seq: Number(row.seq) || 0,
+    })),
+  )
+
   return {
     connectionId: target.id,
     tableName,
     dialect: 'sqlserver',
     columns,
     indexes: [...indexMap.values()],
+    foreignKeys,
     ddl: composeCreateTable(tableName, columns, (n) => q('sqlserver', n)),
     ddlLabel: ddlLabelFor('sqlserver'),
   }

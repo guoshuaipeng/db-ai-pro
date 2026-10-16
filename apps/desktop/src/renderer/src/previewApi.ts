@@ -288,6 +288,19 @@ export function createPreviewApi(): DesktopApi {
           { name: 'name', dataType: 'TEXT', nullable: true, defaultValue: null, primaryKey: false, ordinal: 1 },
         ],
         indexes: [{ name: 'sqlite_autoindex_' + table + '_1', unique: true, primary: true, columns: ['id'] }],
+        foreignKeys:
+          table === 'orders'
+            ? [
+                {
+                  name: 'fk_orders_customer',
+                  columns: ['customer_id'],
+                  refTable: 'customers',
+                  refColumns: ['id'],
+                  onUpdate: 'NO ACTION',
+                  onDelete: 'NO ACTION',
+                },
+              ]
+            : [],
         ddl: 'CREATE TABLE "' + table + '" (\n  "id" INTEGER PRIMARY KEY,\n  "name" TEXT\n);',
         ddlLabel: 'sqlite_master',
       }),
