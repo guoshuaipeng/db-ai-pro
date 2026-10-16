@@ -26,7 +26,7 @@ export function ShortcutsHelp({ open, onClose }: { open: boolean; onClose: () =>
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h2 id="shortcuts-title">键盘快捷键</h2>
-        <p className="dialog-copy">与 Monaco 常用编辑键尽量错开；冲突时以编辑器内快捷键为准，可用命令面板（Ctrl+K / Ctrl+P）搜索表、列与收藏。收藏片段支持 {'{{table}}'} / {'{{limit}}'} 等占位符，插入时弹出填写框。</p>
+        <p className="dialog-copy">与 Monaco 常用编辑键尽量错开；冲突时以编辑器内快捷键为准。多光标（Alt+单击 / Ctrl+Alt+↑↓）为 Monaco 内置，无需额外实现。可用命令面板（Ctrl+K / Ctrl+P）搜索表、列与收藏。收藏片段支持 {'{{table}}'} / {'{{limit}}'} 等占位符，插入时弹出填写框。</p>
         <ul className="shortcut-list">
           {SHORTCUT_HELP.map((row) => (
             <li key={row.action} className="shortcut-row">

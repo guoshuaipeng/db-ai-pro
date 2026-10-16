@@ -116,6 +116,15 @@ export function EditorPane() {
             <button
               type="button"
               className="btn btn-ghost run-btn"
+              onClick={() => emitDataai('dataai:toggle-comment')}
+              disabled={ws.running}
+              title="切换行注释（Ctrl+/）"
+            >
+              注释
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost run-btn"
               onClick={() => emitDataai('dataai:format-sql')}
               disabled={ws.running}
               title="格式化 SQL（Shift+Alt+F）"

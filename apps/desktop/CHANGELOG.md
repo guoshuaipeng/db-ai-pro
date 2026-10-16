@@ -2,6 +2,11 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 3.1.0 — M40 行注释切换 + 多光标说明
+
+- Ctrl+/（及工具栏「注释」/ Ctrl+K）切换 SQL `--` 行注释；语言配置已含 lineComment
+- F1 快捷键说明补充 Monaco 多光标（Alt+单击 / Ctrl+Alt+↑↓），沿用编辑器内置能力
+
 ## 3.0.0 — M39 编辑器小地图 + 字号
 
 - Monaco 小地图可在设置 / Ctrl+K 开关（默认关闭）

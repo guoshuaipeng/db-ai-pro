@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { editor, languages, type IDisposable } from 'monaco-editor/editor/editor.api'
+import { KeyCode, KeyMod, editor, languages, type IDisposable } from 'monaco-editor/editor/editor.api'
 import { conf, language } from 'monaco-editor/languages/definitions/sql/sql'
 import editorWorker from 'monaco-editor/editor/editor.worker?worker'
 import { filterSuggestions, type SchemaSuggestItem } from '@shared/schemaSuggest'
@@ -180,6 +180,18 @@ export function SqlEditor({
       },
     })
     instanceRef.current = instance
+
+    // Ensure Ctrl+/ toggles SQL `--` line comments (language conf already sets lineComment).
+    instance.addAction({
+      id: 'dataai.toggleLineComment',
+      label: '切换行注释',
+      keybindings: [KeyMod.CtrlCmd | KeyCode.Slash],
+      precondition: undefined,
+      run: (ed) => {
+        void ed.getAction('editor.action.commentLine')?.run()
+      },
+    })
+
     const position = instance.getPosition()
     if (position) onCursorRef.current({ line: position.lineNumber, column: position.column })
     const cursorSub = instance.onDidChangeCursorPosition((event) => {
@@ -247,6 +259,17 @@ export function SqlEditor({
           }
         }
         instance.focus()
+      }),
+    [],
+  )
+
+  useEffect(
+    () =>
+      onDataai('dataai:toggle-comment', () => {
+        const instance = instanceRef.current
+        if (!instance) return
+        instance.focus()
+        void instance.getAction('editor.action.commentLine')?.run()
       }),
     [],
   )

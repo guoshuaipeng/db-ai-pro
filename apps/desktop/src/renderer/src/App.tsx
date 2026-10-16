@@ -135,6 +135,9 @@ export function App() {
         case 'query.format':
           emitDataai('dataai:format-sql')
           break
+        case 'editor.toggleComment':
+          emitDataai('dataai:toggle-comment')
+          break
         case 'editor.find':
           emitDataai('dataai:find')
           break

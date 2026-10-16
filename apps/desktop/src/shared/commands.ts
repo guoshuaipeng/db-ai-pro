@@ -78,6 +78,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'editor.toggleComment',
+    title: '切换行注释',
+    subtitle: 'SQL -- 注释 / 取消注释',
+    keywords: 'comment 注释 toggle',
+    shortcut: 'Ctrl+/',
+    category: 'query',
+  },
+  {
     id: 'editor.find',
     title: '在编辑器中查找',
     subtitle: 'Monaco 查找',
@@ -296,6 +304,8 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '运行 SQL', keys: 'Ctrl+Enter · F5' },
   { action: '执行计划', keys: 'Ctrl+Shift+E' },
   { action: '格式化 SQL', keys: 'Shift+Alt+F' },
+  { action: '切换行注释', keys: 'Ctrl+/' },
+  { action: '多光标（Monaco 内置）', keys: 'Alt+单击 · Ctrl+Alt+↑/↓' },
   { action: '查找', keys: 'Ctrl+F' },
   { action: '替换', keys: 'Ctrl+H' },
   { action: '新建查询', keys: 'Ctrl+T' },
@@ -309,4 +319,8 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '最近表 / 最近查询', keys: '标题栏「最近」· Ctrl+K' },
   { action: '全局搜索表 / 列 / 收藏', keys: 'Ctrl+K · Ctrl+P 输入关键字' },
   { action: '只读 / 安全模式', keys: '设置 · Ctrl+K「只读」' },
+  { action: '窗口置顶', keys: '标题栏「置顶」· Ctrl+K' },
+  { action: '放大 / 缩小 / 重置缩放', keys: 'Ctrl+= · Ctrl+- · Ctrl+0' },
+  { action: '编辑器小地图', keys: '设置 · Ctrl+K「小地图」' },
+  { action: '编辑器字号', keys: '设置 → 外观' },
 ]

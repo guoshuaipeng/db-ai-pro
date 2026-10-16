@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — editor minimap + font size",
+  "description": "DataAI TypeScript desktop — comment toggle + multi-cursor hint",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",
