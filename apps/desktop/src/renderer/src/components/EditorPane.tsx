@@ -14,7 +14,9 @@ import { TabConnectionSelect } from './TabConnectionSelect'
 import { SqlEditor } from './SqlEditor'
 import { ResultGrid, ResultToolbar } from './ResultGrid'
 import { ResultSummaryBar } from './ResultSummaryBar'
+import { QueryErrorPanel } from './QueryErrorPanel'
 import { resultGridEmptyBody, resultGridEmptyTitle } from '@shared/resultSummary'
+import { looksLikeQueryError } from '@shared/queryError'
 import {
   resultMessageCopiedToast,
   resultMessageCopyKind,
@@ -848,7 +850,17 @@ export function ResultPane() {
         />
       )}
       {active?.kind === 'plan' && <pre className="message-log plan-log">{active.message}</pre>}
-      {active?.kind === 'message' && <pre className="message-log">{active.message}</pre>}
+      {active?.kind === 'message' &&
+        (looksLikeQueryError(active.message) || lastRun?.ok === false ? (
+          <QueryErrorPanel
+            message={active.message ?? ''}
+            sql={ws.activeEditor?.sql ?? ''}
+            onToast={ws.pushToast}
+            onRepair={(sql, error) => void ws.repairAi(sql, error)}
+          />
+        ) : (
+          <pre className="message-log">{active.message}</pre>
+        ))}
       {active?.kind === 'grid' &&
         active.columns &&
         view === 'table' &&
