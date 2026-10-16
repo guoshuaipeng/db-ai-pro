@@ -64,3 +64,18 @@ export function dbVisibilityEmptyBody(): string {
   return '没有可显示的库。可能是账号无权列出，或实例上尚无用户库。可重试，或检查连接权限后在对象树中刷新。'
 }
 
+
+/** Check every name in `universe`; names outside keep previous state. */
+export function checkFilteredDatabases(
+  universe: readonly string[],
+  checked: ReadonlySet<string>,
+): Set<string> {
+  const next = new Set(checked)
+  for (const name of universe) next.add(name)
+  return next
+}
+
+/** Keep only names that appear in `universe` (typically the visible/filtered list). */
+export function keepOnlyFilteredDatabases(universe: readonly string[]): Set<string> {
+  return new Set(universe)
+}

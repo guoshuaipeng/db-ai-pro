@@ -5268,6 +5268,17 @@ body.is-col-resizing .grid-col-resizer {
   gap: 8px;
   margin-bottom: 10px;
 }
+.db-vis-warn {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #fbbf24;
+  background: color-mix(in srgb, #fbbf24 12%, transparent);
+  border: 1px solid color-mix(in srgb, #fbbf24 28%, transparent);
+}
+
 .db-vis-list {
   max-height: min(360px, 50vh);
   overflow: auto;

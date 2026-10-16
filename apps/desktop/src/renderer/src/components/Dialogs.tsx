@@ -7,11 +7,24 @@ import type { ImportPlanItem } from '@shared/connectionTransfer'
 import { getApi } from '../bridge'
 import { useWorkspace } from '../state/workspace'
 import {
+  checkFilteredDatabases,
   dbVisibilityEmptyBody,
   filterDatabaseNames,
   invertDatabaseChecked,
+  keepOnlyFilteredDatabases,
   whitelistForSave,
 } from '@shared/dbVisibility'
+import {
+  dbVisibilityCheckListLabel,
+  dbVisibilityCheckListTitle,
+  dbVisibilityCheckboxAria,
+  dbVisibilityDialogCopy,
+  dbVisibilityListAria,
+  dbVisibilityNoneCheckedWarning,
+  dbVisibilityOnlyListLabel,
+  dbVisibilityOnlyListTitle,
+  dbVisibilitySelectionSummary,
+} from '@shared/dbVisibilityUi'
 import {
   connectionDialectHelp,
   connectionNamePlaceholder,
@@ -581,9 +594,7 @@ function DbVisibilityDialog({ connection }: { connection: ConnectionPublic }) {
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h2 id="db-vis-title">显示的库 — {connection.name}</h2>
-        <p className="dialog-copy">
-          勾选后会出现在对象树中。全部勾选表示显示实例上所有库（与未设置白名单相同）。
-        </p>
+        <p className="dialog-copy">{dbVisibilityDialogCopy()}</p>
         {loading ? (
           <p className="dialog-meta">正在列出数据库…</p>
         ) : error ? (
@@ -645,10 +656,33 @@ function DbVisibilityDialog({ connection }: { connection: ConnectionPublic }) {
               >
                 反选
               </button>
-              <span className="dialog-meta">
-                已选 {checked.size} / {allDbs.length}
+              <button
+                type="button"
+                className="btn btn-ghost"
+                title={dbVisibilityCheckListTitle(Boolean(filterQuery.trim()))}
+                disabled={filteredDbs.length === 0}
+                onClick={() => setChecked((prev) => checkFilteredDatabases(filteredDbs, prev))}
+              >
+                {dbVisibilityCheckListLabel()}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                title={dbVisibilityOnlyListTitle(Boolean(filterQuery.trim()))}
+                disabled={filteredDbs.length === 0}
+                onClick={() => setChecked(keepOnlyFilteredDatabases(filteredDbs))}
+              >
+                {dbVisibilityOnlyListLabel()}
+              </button>
+              <span className="dialog-meta" role="status" aria-live="polite">
+                {dbVisibilitySelectionSummary(checked.size, allDbs.length)}
               </span>
             </div>
+            {checked.size === 0 ? (
+              <p className="db-vis-warn" role="status">
+                {dbVisibilityNoneCheckedWarning()}
+              </p>
+            ) : null}
             {filteredDbs.length === 0 ? (
               <EmptyState
                 compact
@@ -665,12 +699,13 @@ function DbVisibilityDialog({ connection }: { connection: ConnectionPublic }) {
                 }
               />
             ) : (
-              <div className="db-vis-list" role="group" aria-label="数据库列表">
+              <div className="db-vis-list" role="group" aria-label={dbVisibilityListAria()}>
                 {filteredDbs.map((name) => (
                   <label key={name} className="checkline db-vis-item">
                     <input
                       type="checkbox"
                       checked={checked.has(name)}
+                      aria-label={dbVisibilityCheckboxAria(name, checked.has(name))}
                       onChange={() => toggle(name)}
                     />
                     <span>{name}</span>

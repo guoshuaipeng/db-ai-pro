@@ -167,6 +167,7 @@ import type {
   StatementResult,
   WorkspaceState,
 } from '@shared/types'
+import { dbVisibilitySavedToast } from '@shared/dbVisibilityUi'
 
 export type ResultTab = {
   id: string
@@ -2413,7 +2414,7 @@ ${sql.trim()}
     const rows = await api.connections.list()
     setConnections(rows)
     setDialog(null)
-    pushToast('success', '显示的库已更新')
+    pushToast('success', dbVisibilitySavedToast(whitelist))
     void refreshSchemaTree(connectionId)
   }
 
