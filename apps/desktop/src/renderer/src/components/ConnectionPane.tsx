@@ -11,6 +11,10 @@ import {
   healthProbeMenuLabel,
   healthProbeMenuTitle,
 } from '@shared/connHealthUi'
+import {
+  duplicateConnectionMenuLabel,
+  duplicateConnectionMenuTitle,
+} from '@shared/duplicateConnectionUi'
 import { bucketSchemaByGroup, colorForTag, CONN_COLOR_TAGS } from '@shared/connGroups'
 import { quoteIdentIfNeeded } from '@shared/sql'
 import { countOpenExpands, isTreeNodeExpanded } from '@shared/schemaTreeRefresh'
@@ -670,12 +674,13 @@ function TreeNode({
             <button
               type="button"
               role="menuitem"
+              title={duplicateConnectionMenuTitle()}
               onClick={() => {
                 onMenu(null)
                 void ws.duplicateConnection(connection.id)
               }}
             >
-              复制连接
+              {duplicateConnectionMenuLabel()}
             </button>
             <button
               type="button"

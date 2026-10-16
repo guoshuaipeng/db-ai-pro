@@ -64,6 +64,7 @@ import {
   readOnlyBlockPreviewLabel,
   readOnlyBlockTitle,
 } from '@shared/readOnlySqlUi'
+import { duplicateConnectionDialogHint } from '@shared/duplicateConnectionUi'
 import { EmptyState } from './EmptyState'
 
 export function Dialogs() {
@@ -331,6 +332,9 @@ function ConnectionDialog() {
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h2 id="connection-title">{existing ? '编辑连接' : '新建连接'}</h2>
+        {existing && /副本/.test(existing.name) ? (
+          <p className="dialog-copy duplicate-conn-hint">{duplicateConnectionDialogHint()}</p>
+        ) : null}
         <label className="field">
           <span>名称</span>
           <input

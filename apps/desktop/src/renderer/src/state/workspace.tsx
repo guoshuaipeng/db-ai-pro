@@ -189,6 +189,10 @@ import type {
 } from '@shared/types'
 import { dbVisibilitySavedToast } from '@shared/dbVisibilityUi'
 import { expandRestoredToast } from '@shared/treeExpandPersistUi'
+import {
+  duplicateConnectionFailToast,
+  duplicateConnectionSuccessToast,
+} from '@shared/duplicateConnectionUi'
 
 export type ResultTab = {
   id: string
@@ -2426,9 +2430,18 @@ ${sql.trim()}
       setConnections(rows)
       setActiveConnectionId(saved.id)
       await refreshSchema(rows, saved.id)
-      pushToast('success', `已复制为「${saved.name}」`)
+      if (!sidebarOpen) setSidebarOpen(true)
+      setSearch('')
+      setSelectedId(saved.id)
+      setExpanded((current) => ({ ...current, [saved.id]: true }))
+      window.setTimeout(() => emitDataai('dataai:reveal-connection', { connectionId: saved.id }), 40)
+      setDialog({ type: 'connection', connection: saved })
+      pushToast('success', duplicateConnectionSuccessToast(saved.name))
     } catch (error) {
-      pushToast('error', error instanceof Error ? error.message : '复制连接失败')
+      pushToast(
+        'error',
+        duplicateConnectionFailToast(error instanceof Error ? error.message : undefined),
+      )
     }
   }
 

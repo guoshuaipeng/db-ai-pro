@@ -5950,3 +5950,14 @@ body.is-col-resizing .grid-col-resizer {
   color: var(--ink-secondary);
   line-height: 1.4;
 }
+
+.duplicate-conn-hint {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-secondary);
+  background: color-mix(in srgb, var(--accent, #9eb4ff) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #9eb4ff) 28%, transparent);
+}
