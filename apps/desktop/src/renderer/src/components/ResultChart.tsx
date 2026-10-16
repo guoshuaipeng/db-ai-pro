@@ -1,5 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { analyzeChartData, type ChartModel } from '@shared/chartData'
+import {
+  chartAxisMeta,
+  chartBarLabel,
+  chartCopySummaryLabel,
+  chartExportPngLabel,
+  chartKicker,
+  chartLineLabel,
+  chartPngFailedToast,
+  chartPngSavedToast,
+  chartSeriesToggleHint,
+  chartSkipFromAnalysis,
+  chartSummaryCopiedToast,
+  formatChartSummaryClipboard,
+} from '@shared/chartUi'
+import { useWorkspace } from '../state/workspace'
+import { EmptyState } from './EmptyState'
 
 export type ChartKind = 'bar' | 'line'
 
@@ -11,6 +27,7 @@ function drawChart(
   kind: ChartKind,
   width: number,
   height: number,
+  visibleKeys: Set<string>,
 ): void {
   const dpr = window.devicePixelRatio || 1
   canvas.width = Math.max(1, Math.floor(width * dpr))
@@ -27,20 +44,19 @@ function drawChart(
   const plotW = Math.max(10, width - pad.left - pad.right)
   const plotH = Math.max(10, height - pad.top - pad.bottom)
 
-  const allValues = model.series.flatMap((series) => series.values)
-  let min = Math.min(0, ...allValues)
-  let max = Math.max(...allValues, 0)
+  const series = model.series.filter((row) => visibleKeys.has(row.key))
+  const allValues = series.flatMap((row) => row.values)
+  let min = Math.min(0, ...(allValues.length ? allValues : [0]))
+  let max = Math.max(...(allValues.length ? allValues : [0]), 0)
   if (min === max) {
     min -= 1
     max += 1
   }
   const span = max - min || 1
 
-  // background
   ctx.fillStyle = 'rgba(15, 23, 42, 0.35)'
   ctx.fillRect(0, 0, width, height)
 
-  // grid + y labels
   ctx.strokeStyle = 'rgba(148, 163, 184, 0.18)'
   ctx.fillStyle = 'rgba(148, 163, 184, 0.85)'
   ctx.font = '11px Inter, system-ui, sans-serif'
@@ -65,18 +81,21 @@ function drawChart(
 
   const yAt = (value: number) => pad.top + plotH * (1 - (value - min) / span)
 
-  if (kind === 'bar') {
+  if (series.length === 0) {
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.85)'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('已隐藏全部系列', pad.left + plotW / 2, pad.top + plotH / 2)
+  } else if (kind === 'bar') {
     const groupW = plotW / n
-    const seriesCount = model.series.length
+    const seriesCount = series.length
     const barW = Math.max(2, Math.min(18, (groupW * 0.7) / seriesCount))
-    model.series.forEach((series, seriesIndex) => {
-      ctx.fillStyle = SERIES_COLORS[seriesIndex % SERIES_COLORS.length]
-      series.values.forEach((value, index) => {
+    series.forEach((row, seriesIndex) => {
+      const colorIndex = model.series.findIndex((s) => s.key === row.key)
+      ctx.fillStyle = SERIES_COLORS[(colorIndex >= 0 ? colorIndex : seriesIndex) % SERIES_COLORS.length]
+      row.values.forEach((value, index) => {
         const x =
-          pad.left +
-          groupW * index +
-          (groupW - barW * seriesCount) / 2 +
-          barW * seriesIndex
+          pad.left + groupW * index + (groupW - barW * seriesCount) / 2 + barW * seriesIndex
         const y0 = yAt(0)
         const y1 = yAt(value)
         const top = Math.min(y0, y1)
@@ -85,12 +104,13 @@ function drawChart(
       })
     })
   } else {
-    model.series.forEach((series, seriesIndex) => {
-      const color = SERIES_COLORS[seriesIndex % SERIES_COLORS.length]
+    series.forEach((row, seriesIndex) => {
+      const colorIndex = model.series.findIndex((s) => s.key === row.key)
+      const color = SERIES_COLORS[(colorIndex >= 0 ? colorIndex : seriesIndex) % SERIES_COLORS.length]
       ctx.strokeStyle = color
       ctx.lineWidth = 2
       ctx.beginPath()
-      series.values.forEach((value, index) => {
+      row.values.forEach((value, index) => {
         const x = pad.left + (n === 1 ? plotW / 2 : (plotW * index) / (n - 1))
         const y = yAt(value)
         if (index === 0) ctx.moveTo(x, y)
@@ -98,7 +118,7 @@ function drawChart(
       })
       ctx.stroke()
       ctx.fillStyle = color
-      series.values.forEach((value, index) => {
+      row.values.forEach((value, index) => {
         const x = pad.left + (n === 1 ? plotW / 2 : (plotW * index) / (n - 1))
         const y = yAt(value)
         ctx.beginPath()
@@ -108,7 +128,6 @@ function drawChart(
     })
   }
 
-  // x labels (sparse)
   ctx.fillStyle = 'rgba(148, 163, 184, 0.9)'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
@@ -121,18 +140,18 @@ function drawChart(
     ctx.fillText(model.labels[i] ?? '', x, pad.top + plotH + 10)
   }
 
-  // legend
   let legendX = pad.left
   const legendY = 8
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  model.series.forEach((series, index) => {
-    const color = SERIES_COLORS[index % SERIES_COLORS.length]
+  series.forEach((row) => {
+    const colorIndex = model.series.findIndex((s) => s.key === row.key)
+    const color = SERIES_COLORS[(colorIndex >= 0 ? colorIndex : 0) % SERIES_COLORS.length]
     ctx.fillStyle = color
     ctx.fillRect(legendX, legendY, 10, 10)
     ctx.fillStyle = 'rgba(226, 232, 240, 0.92)'
-    ctx.fillText(series.key, legendX + 14, legendY + 5)
-    legendX += Math.min(160, 24 + ctx.measureText(series.key).width + 16)
+    ctx.fillText(row.key, legendX + 14, legendY + 5)
+    legendX += Math.min(160, 24 + ctx.measureText(row.key).width + 16)
   })
 }
 
@@ -143,11 +162,17 @@ export function ResultChart({
   columns: string[]
   rows: Record<string, unknown>[]
 }) {
+  const ws = useWorkspace()
   const analysis = useMemo(() => analyzeChartData(columns, rows), [columns, rows])
   const [kind, setKind] = useState<ChartKind>('bar')
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [size, setSize] = useState({ w: 640, h: 280 })
+  const [hiddenSeries, setHiddenSeries] = useState<string[]>([])
+
+  useEffect(() => {
+    setHiddenSeries([])
+  }, [columns, rows])
 
   useEffect(() => {
     const el = wrapRef.current
@@ -163,18 +188,58 @@ export function ResultChart({
     return () => ro.disconnect()
   }, [])
 
+  const visibleKeys = useMemo(() => {
+    if (!analysis.ok) return new Set<string>()
+    return new Set(analysis.series.map((s) => s.key).filter((key) => !hiddenSeries.includes(key)))
+  }, [analysis, hiddenSeries])
+
   useEffect(() => {
     if (!analysis.ok || !canvasRef.current) return
-    drawChart(canvasRef.current, analysis, kind, size.w, size.h)
-  }, [analysis, kind, size])
+    drawChart(canvasRef.current, analysis, kind, size.w, size.h, visibleKeys)
+  }, [analysis, kind, size, visibleKeys])
 
   if (!analysis.ok) {
+    const empty = chartSkipFromAnalysis(analysis)
     return (
       <div className="chart-empty" role="status">
-        <p>当前结果不适合绘图</p>
-        <span>{analysis.reason}</span>
+        <EmptyState compact kicker={chartKicker()} title={empty.title} body={empty.body} />
       </div>
     )
+  }
+
+  const toggleSeries = (key: string) => {
+    setHiddenSeries((current) =>
+      current.includes(key) ? current.filter((item) => item !== key) : [...current, key],
+    )
+  }
+
+  const copySummary = () => {
+    const text = formatChartSummaryClipboard(analysis, kind)
+    void navigator.clipboard.writeText(text).then(
+      () => ws.pushToast('success', chartSummaryCopiedToast()),
+      () => ws.pushToast('error', '复制失败'),
+    )
+  }
+
+  const exportPng = () => {
+    const canvas = canvasRef.current
+    if (!canvas) {
+      ws.pushToast('error', chartPngFailedToast())
+      return
+    }
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        ws.pushToast('error', chartPngFailedToast())
+        return
+      }
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `dataai-chart-${kind}.png`
+      anchor.click()
+      URL.revokeObjectURL(url)
+      ws.pushToast('success', chartPngSavedToast())
+    }, 'image/png')
   }
 
   return (
@@ -186,21 +251,46 @@ export function ResultChart({
             className={kind === 'bar' ? 'btn btn-ghost tiny-btn is-active' : 'btn btn-ghost tiny-btn'}
             onClick={() => setKind('bar')}
           >
-            柱状
+            {chartBarLabel()}
           </button>
           <button
             type="button"
             className={kind === 'line' ? 'btn btn-ghost tiny-btn is-active' : 'btn btn-ghost tiny-btn'}
             onClick={() => setKind('line')}
           >
-            折线
+            {chartLineLabel()}
           </button>
         </div>
-        <span className="chart-meta">
-          {analysis.labelColumn ? `横轴：${analysis.labelColumn}` : '横轴：行号'}
-          {analysis.truncated ? ` · 已截取前 120 / ${analysis.rowCount} 行` : ` · ${analysis.rowCount} 行`}
-        </span>
+        <span className="chart-meta">{chartAxisMeta(analysis)}</span>
+        <div className="chart-toolbar-actions">
+          <button type="button" className="btn btn-ghost tiny-btn" onClick={copySummary}>
+            {chartCopySummaryLabel()}
+          </button>
+          <button type="button" className="btn btn-ghost tiny-btn" onClick={exportPng}>
+            {chartExportPngLabel()}
+          </button>
+        </div>
       </div>
+      {analysis.series.length > 1 ? (
+        <div className="chart-series" role="group" aria-label={chartSeriesToggleHint()}>
+          {analysis.series.map((series, index) => {
+            const on = !hiddenSeries.includes(series.key)
+            return (
+              <button
+                key={series.key}
+                type="button"
+                className={on ? 'chart-series-chip is-on' : 'chart-series-chip'}
+                aria-pressed={on}
+                style={{ ['--chart-series-color' as string]: SERIES_COLORS[index % SERIES_COLORS.length] }}
+                onClick={() => toggleSeries(series.key)}
+                title={chartSeriesToggleHint()}
+              >
+                {series.key}
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
       <canvas ref={canvasRef} className="chart-canvas" role="img" aria-label="结果图表" />
     </div>
   )
