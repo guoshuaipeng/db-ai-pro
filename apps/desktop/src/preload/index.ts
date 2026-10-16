@@ -10,6 +10,10 @@ const api: DesktopApi = {
     maximize: () => ipcRenderer.invoke('window:maximize'),
     close: () => ipcRenderer.invoke('window:close'),
     isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+    setAlwaysOnTop: (value) => ipcRenderer.invoke('window:setAlwaysOnTop', value),
+    isAlwaysOnTop: () => ipcRenderer.invoke('window:isAlwaysOnTop'),
+    setZoomFactor: (factor) => ipcRenderer.invoke('window:setZoomFactor', factor),
+    getZoomFactor: () => ipcRenderer.invoke('window:getZoomFactor'),
   },
   prefs: {
     get: () => ipcRenderer.invoke('prefs:get'),

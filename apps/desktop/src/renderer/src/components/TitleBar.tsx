@@ -8,8 +8,11 @@ type TitleBarProps = {
   version?: string
   sidebarOpen: boolean
   aiOpen: boolean
+  alwaysOnTop?: boolean
+  zoomLabel?: string
   onToggleSidebar: () => void
   onToggleAi: () => void
+  onToggleAlwaysOnTop?: () => void
   onOpenPalette: () => void
   onOpenSettings: () => void
   recentTables?: RecentTableItem[]
@@ -24,8 +27,11 @@ export function TitleBar({
   version,
   sidebarOpen,
   aiOpen,
+  alwaysOnTop = false,
+  zoomLabel,
   onToggleSidebar,
   onToggleAi,
+  onToggleAlwaysOnTop,
   onOpenPalette,
   onOpenSettings,
   recentTables = [],
@@ -157,6 +163,20 @@ export function TitleBar({
             </div>
           )}
         </div>
+        {zoomLabel ? (
+          <span className="title-zoom" title="界面缩放（Ctrl+= / Ctrl+- / Ctrl+0）">
+            {zoomLabel}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          className={alwaysOnTop ? 'pill is-active' : 'pill'}
+          onClick={() => onToggleAlwaysOnTop?.()}
+          title={alwaysOnTop ? '取消窗口置顶' : '窗口置顶'}
+          aria-pressed={alwaysOnTop}
+        >
+          置顶
+        </button>
         <button type="button" className="pill palette-trigger" onClick={onOpenPalette} title="命令 / 对象搜索 (Ctrl+K · Ctrl+P)">
           Ctrl+K
         </button>

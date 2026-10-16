@@ -17,7 +17,12 @@ import { CommandPalette } from './components/CommandPalette'
 import type { SqlFavorite } from '@shared/types'
 import { ShortcutsHelp } from './components/ShortcutsHelp'
 import { SettingsCenter, type SettingsTab } from './components/SettingsCenter'
-import { DEFAULT_PREFS, type AppPrefs } from '@shared/prefs'
+import {
+  DEFAULT_PREFS,
+  formatZoomPercent,
+  stepZoomFactor,
+  type AppPrefs,
+} from '@shared/prefs'
 import { LAYOUT } from '@shared/layoutBounds'
 import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
 import { getApi } from './bridge'
@@ -64,6 +69,39 @@ export function App() {
       cancelled = true
     }
   }, [])
+
+  const applyZoom = useCallback(async (factor: number) => {
+    try {
+      const result = await getApi().window.setZoomFactor(factor)
+      setPrefs((current) => ({ ...current, zoomFactor: result.zoomFactor }))
+    } catch {
+      const next = await getApi().prefs.save({ zoomFactor: factor })
+      setPrefs(next)
+    }
+  }, [])
+
+  const toggleAlwaysOnTop = useCallback(async () => {
+    const nextValue = !prefs.alwaysOnTop
+    try {
+      const result = await getApi().window.setAlwaysOnTop(nextValue)
+      setPrefs((current) => ({ ...current, alwaysOnTop: result.alwaysOnTop }))
+    } catch {
+      const next = await getApi().prefs.save({ alwaysOnTop: nextValue })
+      setPrefs(next)
+    }
+  }, [prefs.alwaysOnTop])
+
+  const zoomIn = useCallback(() => {
+    void applyZoom(stepZoomFactor(prefs.zoomFactor, 1))
+  }, [applyZoom, prefs.zoomFactor])
+
+  const zoomOut = useCallback(() => {
+    void applyZoom(stepZoomFactor(prefs.zoomFactor, -1))
+  }, [applyZoom, prefs.zoomFactor])
+
+  const zoomReset = useCallback(() => {
+    void applyZoom(1)
+  }, [applyZoom])
 
   const runCommand = useCallback(
     (command: CommandDef) => {
@@ -147,6 +185,18 @@ export function App() {
         case 'ai.clear':
           ws.clearAiMemory()
           break
+        case 'view.alwaysOnTop':
+          void toggleAlwaysOnTop()
+          break
+        case 'view.zoomIn':
+          zoomIn()
+          break
+        case 'view.zoomOut':
+          zoomOut()
+          break
+        case 'view.zoomReset':
+          zoomReset()
+          break
         case 'help.shortcuts':
           setShortcutsOpen(true)
           break
@@ -157,7 +207,7 @@ export function App() {
           break
       }
     },
-    [ws],
+    [ws, toggleAlwaysOnTop, zoomIn, zoomOut, zoomReset],
   )
 
   useEffect(() => {
@@ -229,11 +279,27 @@ export function App() {
       if (meta && event.shiftKey && key === 'a') {
         event.preventDefault()
         ws.toggleAi()
+        return
+      }
+      if (meta && !event.shiftKey && (key === '=' || key === '+')) {
+        event.preventDefault()
+        zoomIn()
+        return
+      }
+      if (meta && !event.shiftKey && key === '-') {
+        event.preventDefault()
+        zoomOut()
+        return
+      }
+      if (meta && !event.shiftKey && key === '0') {
+        event.preventDefault()
+        zoomReset()
+        return
       }
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [ws, paletteOpen, shortcutsOpen, settingsOpen])
+  }, [ws, paletteOpen, shortcutsOpen, settingsOpen, zoomIn, zoomOut, zoomReset])
 
   if (!ws.ready) {
     return (
@@ -271,8 +337,11 @@ export function App() {
         version={ws.meta?.version}
         sidebarOpen={ws.sidebarOpen}
         aiOpen={ws.aiOpen}
+        alwaysOnTop={prefs.alwaysOnTop}
+        zoomLabel={formatZoomPercent(prefs.zoomFactor)}
         onToggleSidebar={ws.toggleSidebar}
         onToggleAi={ws.toggleAi}
+        onToggleAlwaysOnTop={() => void toggleAlwaysOnTop()}
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenSettings={() => openSettings('model')}
         recentTables={ws.recentTables}
@@ -387,8 +456,11 @@ export function App() {
         <span className="status-spacer" />
         {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
+        <span className="status-item status-muted status-zoom" title="界面缩放">
+          {formatZoomPercent(prefs.zoomFactor)}
+        </span>
         <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '2.6.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '2.8.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (

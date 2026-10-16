@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow, Menu, shell } from 'electron'
 import { INITIAL_TABS } from '@shared/session'
 import { closeAllHandles, ensureFirstLaunchSample, registerIpc } from './ipc'
+import { loadPrefs } from './store'
 import { seedRetailDatabase } from './sampleDb'
 import { executeScript, openDatabase } from './sqlite'
 
@@ -38,7 +39,16 @@ function createWindow(): BrowserWindow {
     },
   })
 
-  win.once('ready-to-show', () => win.show())
+  win.once('ready-to-show', () => {
+    const prefs = loadPrefs()
+    win.setAlwaysOnTop(prefs.alwaysOnTop === true)
+    try {
+      win.webContents.setZoomFactor(prefs.zoomFactor ?? 1)
+    } catch {
+      /* ignore invalid zoom on some platforms */
+    }
+    win.show()
+  })
   win.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }

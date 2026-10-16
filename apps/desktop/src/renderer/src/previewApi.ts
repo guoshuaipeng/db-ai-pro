@@ -1,5 +1,6 @@
 import { pushRecentQuery, pushRecentTable, type RecentQueryItem, type RecentTableItem } from '@shared/recentItems'
 import type { DesktopApi } from '@shared/contract'
+import { DEFAULT_PREFS, type AppPrefs } from '@shared/prefs'
 import { connectionErrorNode } from '@shared/schema'
 import { draftAlterTable, draftCreateTable } from '@shared/ddlDraft'
 import { draftLocalAnswer, SAMPLE_CONNECTION_ID, SAMPLE_CONNECTION_NAME } from '@shared/session'
@@ -24,6 +25,7 @@ const memory = {
   favorites: [] as SqlFavorite[],
   connectionGroups: [] as import('@shared/types').ConnectionGroup[],
   recent: { version: 1 as const, tables: [] as RecentTableItem[], queries: [] as RecentQueryItem[] },
+  prefs: { ...DEFAULT_PREFS } as AppPrefs,
   favoriteFolders: [] as import('@shared/types').FavoriteFolder[],
   workspace: null as WorkspaceState | null,
   settings: {
@@ -199,6 +201,20 @@ export function createPreviewApi(): DesktopApi {
       maximize: async () => ({ maximized: false }),
       close: async () => undefined,
       isMaximized: async () => false,
+      setAlwaysOnTop: async (value) => {
+        memory.prefs = { ...memory.prefs, alwaysOnTop: value === true }
+        return { alwaysOnTop: memory.prefs.alwaysOnTop }
+      },
+      isAlwaysOnTop: async () => memory.prefs.alwaysOnTop === true,
+      setZoomFactor: async (factor) => {
+        const zoomFactor =
+          typeof factor === 'number' && Number.isFinite(factor)
+            ? Math.min(2, Math.max(0.5, Math.round(factor * 100) / 100))
+            : 1
+        memory.prefs = { ...memory.prefs, zoomFactor }
+        return { zoomFactor }
+      },
+      getZoomFactor: async () => memory.prefs.zoomFactor ?? 1,
     },
     recent: {
       list: async () => memory.recent,
@@ -222,28 +238,35 @@ export function createPreviewApi(): DesktopApi {
       },
     },
     prefs: {
-      get: async () => ({
-        density: 'comfortable' as const,
-        highContrast: false,
-        queryTimeoutSec: 30,
-        restoreTabsOnLaunch: true,
-        globalReadOnly: false,
-        slowQueryMs: 1000,
-      }),
-      save: async (input) => ({
-        density: input.density === 'compact' ? ('compact' as const) : ('comfortable' as const),
-        highContrast: input.highContrast === true,
-        queryTimeoutSec:
-          typeof input.queryTimeoutSec === 'number' && Number.isFinite(input.queryTimeoutSec)
-            ? Math.min(600, Math.max(0, Math.round(input.queryTimeoutSec)))
-            : 30,
-        restoreTabsOnLaunch: input.restoreTabsOnLaunch !== false,
-        globalReadOnly: input.globalReadOnly === true,
-        slowQueryMs:
-          typeof input.slowQueryMs === 'number' && Number.isFinite(input.slowQueryMs)
-            ? Math.min(600000, Math.max(50, Math.round(input.slowQueryMs)))
-            : 1000,
-      }),
+      get: async () => ({ ...memory.prefs }),
+      save: async (input) => {
+        memory.prefs = {
+          density: input.density === 'compact' ? 'compact' : input.density === 'comfortable' ? 'comfortable' : memory.prefs.density,
+          highContrast:
+            input.highContrast === undefined ? memory.prefs.highContrast : input.highContrast === true,
+          queryTimeoutSec:
+            typeof input.queryTimeoutSec === 'number' && Number.isFinite(input.queryTimeoutSec)
+              ? Math.min(600, Math.max(0, Math.round(input.queryTimeoutSec)))
+              : memory.prefs.queryTimeoutSec,
+          restoreTabsOnLaunch:
+            input.restoreTabsOnLaunch === undefined
+              ? memory.prefs.restoreTabsOnLaunch
+              : input.restoreTabsOnLaunch !== false,
+          globalReadOnly:
+            input.globalReadOnly === undefined ? memory.prefs.globalReadOnly : input.globalReadOnly === true,
+          slowQueryMs:
+            typeof input.slowQueryMs === 'number' && Number.isFinite(input.slowQueryMs)
+              ? Math.min(600000, Math.max(50, Math.round(input.slowQueryMs)))
+              : memory.prefs.slowQueryMs,
+          alwaysOnTop:
+            input.alwaysOnTop === undefined ? memory.prefs.alwaysOnTop : input.alwaysOnTop === true,
+          zoomFactor:
+            typeof input.zoomFactor === 'number' && Number.isFinite(input.zoomFactor)
+              ? Math.min(2, Math.max(0.5, Math.round(input.zoomFactor * 100) / 100))
+              : memory.prefs.zoomFactor,
+        }
+        return { ...memory.prefs }
+      },
     },
     app: {
       openUserData: async () => ({ ok: false as const, error: '预览模式无法打开系统文件夹' }),

@@ -287,6 +287,22 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
     }
   }
 
+  const setAlwaysOnTop = async (alwaysOnTop: boolean) => {
+    setBusy(true)
+    try {
+      try {
+        const result = await api.window.setAlwaysOnTop(alwaysOnTop)
+        const next = await api.prefs.get()
+        onPrefs({ ...next, alwaysOnTop: result.alwaysOnTop })
+      } catch {
+        const next = await api.prefs.save({ alwaysOnTop })
+        onPrefs(next)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="settings-card">
       <p className="settings-lead">界面保持深色一体壳。可调节信息密度与对比度，适配 1366×768 与更宽屏。侧栏 / 编辑器 / 助手分隔比例会自动记住。</p>
@@ -357,6 +373,22 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
           onClick={() => void setGlobalReadOnly(!prefs.globalReadOnly)}
         >
           {prefs.globalReadOnly ? '已开启' : '已关闭'}
+        </button>
+      </div>
+      <div className="contrast-block">
+        <div className="contrast-copy">
+          <strong>窗口置顶</strong>
+          <span>始终显示在其他窗口之上。也可点标题栏「置顶」或 Ctrl+K 搜索「置顶」。</span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={prefs.alwaysOnTop}
+          className={prefs.alwaysOnTop ? 'contrast-switch is-on' : 'contrast-switch'}
+          disabled={busy}
+          onClick={() => void setAlwaysOnTop(!prefs.alwaysOnTop)}
+        >
+          {prefs.alwaysOnTop ? '已开启' : '已关闭'}
         </button>
       </div>
     </div>

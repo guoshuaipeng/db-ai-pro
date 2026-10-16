@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — table browse pagination",
+  "description": "DataAI TypeScript desktop — always-on-top + zoom shortcuts",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

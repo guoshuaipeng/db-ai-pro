@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { clampQueryTimeoutSec, normalizePrefs } from './prefs'
+import {
+  clampQueryTimeoutSec,
+  clampZoomFactor,
+  formatZoomPercent,
+  normalizePrefs,
+  stepZoomFactor,
+} from './prefs'
 
 describe('normalizePrefs', () => {
   it('defaults unknown values', () => {
@@ -24,7 +30,6 @@ describe('normalizePrefs', () => {
     expect(normalizePrefs({ restoreTabsOnLaunch: false }).restoreTabsOnLaunch).toBe(false)
     expect(normalizePrefs({ restoreTabsOnLaunch: true }).restoreTabsOnLaunch).toBe(true)
   })
-})
 
   it('defaults globalReadOnly off', () => {
     expect(normalizePrefs(null).globalReadOnly).toBe(false)
@@ -35,4 +40,21 @@ describe('normalizePrefs', () => {
     expect(normalizePrefs(null).slowQueryMs).toBe(1000)
     expect(normalizePrefs({ slowQueryMs: 2500 }).slowQueryMs).toBe(2500)
   })
+})
 
+describe('window chrome prefs', () => {
+  it('defaults alwaysOnTop off and zoom 100%', () => {
+    expect(normalizePrefs(null).alwaysOnTop).toBe(false)
+    expect(normalizePrefs({ alwaysOnTop: true }).alwaysOnTop).toBe(true)
+    expect(normalizePrefs(null).zoomFactor).toBe(1)
+    expect(normalizePrefs({ zoomFactor: 1.25 }).zoomFactor).toBe(1.25)
+  })
+
+  it('clamps and steps zoom', () => {
+    expect(clampZoomFactor(0.1)).toBe(0.5)
+    expect(clampZoomFactor(9)).toBe(2)
+    expect(stepZoomFactor(1, 1)).toBe(1.1)
+    expect(stepZoomFactor(1, -1)).toBe(0.9)
+    expect(formatZoomPercent(1.25)).toBe('125%')
+  })
+})

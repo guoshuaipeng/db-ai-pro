@@ -2792,3 +2792,16 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
 .browse-pager .tiny-btn:disabled {
   opacity: 0.45;
 }
+
+
+/* M37 pin + zoom */
+.title-zoom {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted, #9aa4b2);
+  padding: 0 6px;
+  user-select: none;
+}
+.statusbar .status-zoom {
+  font-variant-numeric: tabular-nums;
+}

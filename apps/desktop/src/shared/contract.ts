@@ -29,6 +29,10 @@ export type DesktopApi = {
     maximize: () => Promise<{ maximized: boolean }>
     close: () => Promise<{ closed: boolean } | void>
     isMaximized: () => Promise<boolean>
+    setAlwaysOnTop: (value: boolean) => Promise<{ alwaysOnTop: boolean }>
+    isAlwaysOnTop: () => Promise<boolean>
+    setZoomFactor: (factor: number) => Promise<{ zoomFactor: number }>
+    getZoomFactor: () => Promise<number>
   }
   prefs: {
     get: () => Promise<AppPrefs>

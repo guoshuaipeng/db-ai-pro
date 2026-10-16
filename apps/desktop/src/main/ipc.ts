@@ -4,6 +4,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 
 const require = createRequire(import.meta.url)
 const pkg = require('../../package.json') as { version: string }
+import { clampZoomFactor } from '@shared/prefs'
 import { connectionErrorNode } from '@shared/schema'
 import { tablesFromDescribe } from '@shared/describeParse'
 import { SAMPLE_CONNECTION_ID, SAMPLE_CONNECTION_NAME } from '@shared/session'
@@ -209,6 +210,24 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
   })
   ipcMain.handle('window:isMaximized', () => Boolean(getWindow()?.isMaximized()))
 
+  ipcMain.handle('window:setAlwaysOnTop', (_event, value: boolean) => {
+    const next = savePrefs({ alwaysOnTop: value === true })
+    getWindow()?.setAlwaysOnTop(next.alwaysOnTop)
+    return { alwaysOnTop: next.alwaysOnTop }
+  })
+  ipcMain.handle('window:isAlwaysOnTop', () => Boolean(getWindow()?.isAlwaysOnTop()))
+  ipcMain.handle('window:setZoomFactor', (_event, factor: number) => {
+    const next = savePrefs({ zoomFactor: clampZoomFactor(factor) })
+    const win = getWindow()
+    if (win) win.webContents.setZoomFactor(next.zoomFactor)
+    return { zoomFactor: next.zoomFactor }
+  })
+  ipcMain.handle('window:getZoomFactor', () => {
+    const win = getWindow()
+    if (win) return win.webContents.getZoomFactor()
+    return loadPrefs().zoomFactor
+  })
+
   ipcMain.handle('recent:list', () => listRecentItems())
   ipcMain.handle(
     'recent:recordTable',
@@ -226,7 +245,15 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
   )
   ipcMain.handle('recent:clear', () => clearRecentItems())
   ipcMain.handle('prefs:get', () => loadPrefs())
-  ipcMain.handle('prefs:save', (_event, input: Partial<import('@shared/prefs').AppPrefs>) => savePrefs(input))
+  ipcMain.handle('prefs:save', (_event, input: Partial<import('@shared/prefs').AppPrefs>) => {
+    const next = savePrefs(input)
+    const win = getWindow()
+    if (win) {
+      if (input.alwaysOnTop !== undefined) win.setAlwaysOnTop(next.alwaysOnTop)
+      if (input.zoomFactor !== undefined) win.webContents.setZoomFactor(next.zoomFactor)
+    }
+    return next
+  })
 
   ipcMain.handle('app:openUserData', async () => {
     const path = userData

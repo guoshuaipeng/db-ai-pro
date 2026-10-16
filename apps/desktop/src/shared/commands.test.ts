@@ -24,4 +24,9 @@ describe('filterCommands', () => {
     const hits = filterCommands('收藏')
     expect(hits[0]?.id).toBe('query.favorites')
   })
+
+  it('finds pin and zoom commands', () => {
+    expect(filterCommands('置顶').some((item) => item.id === 'view.alwaysOnTop')).toBe(true)
+    expect(filterCommands('zoom').some((item) => item.id === 'view.zoomIn')).toBe(true)
+  })
 })

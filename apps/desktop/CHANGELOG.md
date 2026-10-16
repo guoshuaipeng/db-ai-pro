@@ -2,6 +2,11 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 2.8.0 — M37 窗口置顶 + 缩放快捷键
+
+- 标题栏 / 设置 / Ctrl+K「置顶」切换始终置顶，偏好持久化
+- Ctrl+= / Ctrl+- / Ctrl+0 调整 webContents 缩放；标题栏与状态栏显示百分比
+
 ## 2.7.0 — M36 表数据分页
 
 - 打开表浏览时用 LIMIT/OFFSET（SQL Server 为 OFFSET/FETCH）分页，可选 100/500/1000
