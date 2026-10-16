@@ -2718,6 +2718,36 @@ body.is-col-resizing .grid-col-resizer {
   gap: 6px;
   flex-shrink: 0;
 }
+
+.structure-tab-count {
+  display: inline-block;
+  margin-left: 6px;
+  min-width: 1.1em;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--muted, #8b95a8);
+  background: rgba(255,255,255,0.06);
+}
+.structure-tab.is-active .structure-tab-count {
+  color: var(--ink);
+  background: rgba(91, 141, 239, 0.18);
+}
+.structure-filter-bar {
+  padding: 0 0 10px;
+}
+.structure-col-filter {
+  max-width: 420px;
+}
+.structure-ddl-meta {
+  font-size: 11px;
+  color: var(--muted, #8b95a8);
+  margin-right: auto;
+}
+.structure-body .empty-state {
+  margin: 12px 4px;
+}
+
 .structure-tabs {
   display: flex;
   gap: 4px;

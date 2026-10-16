@@ -68,3 +68,71 @@ export function composeCreateTable(
   })
   return `CREATE TABLE ${quote(tableName)} (\n${lines.join(',\n')}\n);`
 }
+
+
+export function filterStructureColumns(
+  columns: readonly TableColumnInfo[],
+  query: string,
+): TableColumnInfo[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return columns.slice()
+  return columns.filter((column) => {
+    const hay = `${column.name} ${column.dataType} ${column.defaultValue ?? ''}`.toLowerCase()
+    return hay.includes(q)
+  })
+}
+
+export type StructureDdlSummary = {
+  isEmpty: boolean
+  lineCount: number
+  statusLabel: string
+}
+
+export function summarizeStructureDdl(ddl: string | null | undefined): StructureDdlSummary {
+  const text = (ddl ?? '').replace(/\r\n/g, '\n').trim()
+  if (!text || text === '（没有可用的 DDL）') {
+    return { isEmpty: true, lineCount: 0, statusLabel: '没有可用的 DDL' }
+  }
+  const lineCount = text.split('\n').filter((line) => line.trim().length > 0).length
+  return {
+    isEmpty: false,
+    lineCount,
+    statusLabel: `${lineCount.toLocaleString('zh-CN')} 行 DDL`,
+  }
+}
+
+export function structureColumnsEmptyBody(hasFilter: boolean): string {
+  if (hasFilter) return '没有匹配的列。试试更短的关键字，或清除筛选。'
+  return '当前表没有列信息（或驱动未返回）。'
+}
+
+export function structureIndexesEmptyBody(): string {
+  return '当前驱动未返回索引，或该表没有索引。'
+}
+
+export function structureRelationsEmptyBody(): string {
+  return '没有外键 / 引用关系（或当前驱动未返回）。'
+}
+
+export function structureDdlEmptyBody(): string {
+  return '引擎没有返回可用的 CREATE 文本。可切换到「列」查看字段，或在支持 SHOW CREATE 的库上重试。'
+}
+
+export function structureDdlCopiedToast(): string {
+  return '已复制 DDL'
+}
+
+export function structureDdlAppliedToast(): string {
+  return 'DDL 已写入编辑器'
+}
+
+export function structureTabBadge(
+  tab: 'columns' | 'indexes' | 'relations' | 'ddl',
+  structure: Pick<TableStructure, 'columns' | 'indexes' | 'foreignKeys' | 'ddl'>,
+): string {
+  if (tab === 'columns') return String(structure.columns.length)
+  if (tab === 'indexes') return String(structure.indexes.length)
+  if (tab === 'relations') return String(structure.foreignKeys?.length ?? 0)
+  const summary = summarizeStructureDdl(structure.ddl)
+  return summary.isEmpty ? '0' : String(summary.lineCount)
+}

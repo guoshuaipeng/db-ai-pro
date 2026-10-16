@@ -1,7 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { TableStructure } from '@shared/tableStructure'
-import { formatForeignKeyGlance } from '@shared/tableStructure'
+import {
+  filterStructureColumns,
+  formatForeignKeyGlance,
+  structureColumnsEmptyBody,
+  structureDdlAppliedToast,
+  structureDdlCopiedToast,
+  structureDdlEmptyBody,
+  structureIndexesEmptyBody,
+  structureRelationsEmptyBody,
+  structureTabBadge,
+  summarizeStructureDdl,
+} from '@shared/tableStructure'
 import { useWorkspace } from '../state/workspace'
+import { EmptyState } from './EmptyState'
 import { SampleFillDialog } from './SampleFillDialog'
 
 type Tab = 'columns' | 'indexes' | 'relations' | 'ddl'
@@ -15,11 +27,13 @@ export function TableStructurePanel() {
   const [structure, setStructure] = useState<TableStructure | null>(null)
   const [copied, setCopied] = useState(false)
   const [sampleOpen, setSampleOpen] = useState(false)
+  const [columnFilter, setColumnFilter] = useState('')
 
   useEffect(() => {
     if (!target) {
       setStructure(null)
       setError('')
+      setColumnFilter('')
       return
     }
     let cancelled = false
@@ -27,6 +41,7 @@ export function TableStructurePanel() {
     setError('')
     setTab('columns')
     setCopied(false)
+    setColumnFilter('')
     void ws
       .loadTableStructure(target.connectionId, target.tableName)
       .then((next) => {
@@ -46,22 +61,52 @@ export function TableStructurePanel() {
   useEffect(() => {
     if (!target) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        ws.closeTableStructure()
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      if (tab === 'columns' && columnFilter.trim()) {
+        setColumnFilter('')
+        return
       }
+      ws.closeTableStructure()
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [target, ws])
+  }, [target, ws, tab, columnFilter])
+
+  const filteredColumns = useMemo(() => {
+    if (!structure) return []
+    return filterStructureColumns(structure.columns, columnFilter)
+  }, [structure, columnFilter])
+
+  const ddlSummary = useMemo(
+    () => summarizeStructureDdl(structure?.ddl),
+    [structure?.ddl],
+  )
 
   if (!target) return null
 
   const copyDdl = async () => {
-    if (!structure?.ddl) return
-    await navigator.clipboard.writeText(structure.ddl)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1800)
+    if (!structure?.ddl?.trim()) {
+      ws.pushToast('info', '没有可复制的 DDL')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(structure.ddl)
+      setCopied(true)
+      ws.pushToast('success', structureDdlCopiedToast())
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch {
+      ws.pushToast('error', '复制失败')
+    }
+  }
+
+  const applyDdl = () => {
+    if (!structure?.ddl?.trim()) {
+      ws.pushToast('info', '没有可写入的 DDL')
+      return
+    }
+    ws.applySql(structure.ddl)
+    ws.pushToast('success', structureDdlAppliedToast())
   }
 
   return (
@@ -151,6 +196,9 @@ export function TableStructurePanel() {
               onClick={() => setTab(item.id)}
             >
               {item.label}
+              {structure ? (
+                <span className="structure-tab-count">{structureTabBadge(item.id, structure)}</span>
+              ) : null}
             </button>
           ))}
         </nav>
@@ -158,77 +206,123 @@ export function TableStructurePanel() {
         <div className="structure-body">
           {loading && <p className="structure-status">正在读取结构…</p>}
           {error && <p className="field-error">{error}</p>}
+
           {!loading && !error && structure && tab === 'columns' && (
-            <div className="structure-table-wrap">
-              <table className="structure-table">
-                <thead>
-                  <tr>
-                    <th scope="col">#</th>
-                    <th scope="col">列名</th>
-                    <th scope="col">类型</th>
-                    <th scope="col">可空</th>
-                    <th scope="col">默认值</th>
-                    <th scope="col">主键</th>
-                    <th scope="col">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {structure.columns.map((column) => (
-                    <tr key={column.name}>
-                      <td className="is-num">{column.ordinal}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="structure-ident-hit"
-                          title="Alt/Ctrl+单击插入列名"
-                          onClick={(event) => {
-                            if (event.altKey || event.ctrlKey || event.metaKey) {
-                              event.preventDefault()
-                              ws.insertObjectIdent(column.name, structure.dialect)
-                            }
-                          }}
-                        >
-                          <code>{column.name}</code>
-                        </button>
-                      </td>
-                      <td className="is-type">{column.dataType || '—'}</td>
-                      <td>{column.nullable ? 'YES' : 'NO'}</td>
-                      <td className="is-default">{column.defaultValue ?? '—'}</td>
-                      <td>{column.primaryKey ? 'PK' : ''}</td>
-                      <td className="structure-col-actions">
-                        <button
-                          type="button"
-                          className="btn btn-ghost tiny-btn"
-                          title="插入方言正确引用的列名到编辑器"
-                          onClick={() => ws.insertObjectIdent(column.name, structure.dialect)}
-                        >
-                          插入
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost tiny-btn"
-                          onClick={() =>
-                            ws.openColumnStats({
-                              source: 'table',
-                              connectionId: structure.connectionId,
-                              tableName: structure.tableName,
-                              column: column.name,
-                              dialect: structure.dialect,
-                            })
-                          }
-                        >
-                          统计
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="structure-filter-bar">
+                <label className="history-filter structure-col-filter">
+                  <span className="history-filter-label">筛选</span>
+                  <input
+                    className="history-filter-input"
+                    value={columnFilter}
+                    onChange={(event) => setColumnFilter(event.target.value)}
+                    placeholder="列名 / 类型…"
+                    aria-label="筛选列"
+                    spellCheck={false}
+                  />
+                  <span className="history-filter-count">
+                    {filteredColumns.length}/{structure.columns.length}
+                  </span>
+                  {columnFilter.trim() ? (
+                    <button type="button" className="btn btn-ghost tiny-btn" onClick={() => setColumnFilter('')}>
+                      清除
+                    </button>
+                  ) : null}
+                </label>
+              </div>
+              {structure.columns.length === 0 || filteredColumns.length === 0 ? (
+                <EmptyState
+                  compact
+                  kicker="列"
+                  title={structure.columns.length === 0 ? '没有列信息' : '没有匹配的列'}
+                  body={structureColumnsEmptyBody(Boolean(columnFilter.trim()) && structure.columns.length > 0)}
+                  actions={
+                    columnFilter.trim() ? (
+                      <button type="button" className="btn btn-ghost" onClick={() => setColumnFilter('')}>
+                        清除筛选
+                      </button>
+                    ) : null
+                  }
+                />
+              ) : (
+                <div className="structure-table-wrap">
+                  <table className="structure-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">列名</th>
+                        <th scope="col">类型</th>
+                        <th scope="col">可空</th>
+                        <th scope="col">默认值</th>
+                        <th scope="col">主键</th>
+                        <th scope="col">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredColumns.map((column) => (
+                        <tr key={column.name}>
+                          <td className="is-num">{column.ordinal}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="structure-ident-hit"
+                              title="Alt/Ctrl+单击插入列名"
+                              onClick={(event) => {
+                                if (event.altKey || event.ctrlKey || event.metaKey) {
+                                  event.preventDefault()
+                                  ws.insertObjectIdent(column.name, structure.dialect)
+                                }
+                              }}
+                            >
+                              <code>{column.name}</code>
+                            </button>
+                          </td>
+                          <td className="is-type">{column.dataType || '—'}</td>
+                          <td>{column.nullable ? 'YES' : 'NO'}</td>
+                          <td className="is-default">{column.defaultValue ?? '—'}</td>
+                          <td>{column.primaryKey ? 'PK' : ''}</td>
+                          <td className="structure-col-actions">
+                            <button
+                              type="button"
+                              className="btn btn-ghost tiny-btn"
+                              title="插入方言正确引用的列名到编辑器"
+                              onClick={() => ws.insertObjectIdent(column.name, structure.dialect)}
+                            >
+                              插入
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost tiny-btn"
+                              onClick={() =>
+                                ws.openColumnStats({
+                                  source: 'table',
+                                  connectionId: structure.connectionId,
+                                  tableName: structure.tableName,
+                                  column: column.name,
+                                  dialect: structure.dialect,
+                                })
+                              }
+                            >
+                              统计
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
+
           {!loading && !error && structure && tab === 'indexes' && (
             structure.indexes.length === 0 ? (
-              <p className="structure-status">当前驱动未返回索引，或该表没有索引。</p>
+              <EmptyState
+                compact
+                kicker="索引"
+                title="没有索引"
+                body={structureIndexesEmptyBody()}
+              />
             ) : (
               <ul className="structure-index-list">
                 {structure.indexes.map((index) => (
@@ -248,7 +342,12 @@ export function TableStructurePanel() {
 
           {!loading && !error && structure && tab === 'relations' && (
             (structure.foreignKeys?.length ?? 0) === 0 ? (
-              <p className="structure-status">没有外键 / 引用关系（或当前驱动未返回）。</p>
+              <EmptyState
+                compact
+                kicker="关系"
+                title="没有外键关系"
+                body={structureRelationsEmptyBody()}
+              />
             ) : (
               <ul className="structure-index-list structure-fk-list">
                 {structure.foreignKeys.map((fk) => (
@@ -297,15 +396,32 @@ export function TableStructurePanel() {
           )}
 
           {!loading && !error && structure && tab === 'ddl' && (
-            <div className="structure-ddl">
-              <div className="structure-ddl-bar">
-                <span className="structure-ddl-label">{structure.ddlLabel}</span>
-                <button type="button" className="btn btn-ghost tiny-btn" disabled={!structure.ddl} onClick={() => void copyDdl()}>
-                  {copied ? '已复制' : '复制 DDL'}
-                </button>
+            ddlSummary.isEmpty ? (
+              <EmptyState
+                compact
+                kicker="DDL"
+                title="没有可用的 DDL"
+                body={structureDdlEmptyBody()}
+              />
+            ) : (
+              <div className="structure-ddl">
+                <div className="structure-ddl-bar">
+                  <span className="structure-ddl-label">{structure.ddlLabel}</span>
+                  <span className="structure-ddl-meta">{ddlSummary.statusLabel}</span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost tiny-btn"
+                    onClick={() => void copyDdl()}
+                  >
+                    {copied ? '已复制' : '复制 DDL'}
+                  </button>
+                  <button type="button" className="btn btn-ghost tiny-btn" onClick={applyDdl}>
+                    写入编辑器
+                  </button>
+                </div>
+                <pre className="structure-ddl-code">{structure.ddl}</pre>
               </div>
-              <pre className="structure-ddl-code">{structure.ddl || '（没有可用的 DDL）'}</pre>
-            </div>
+            )
           )}
         </div>
       </div>

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { composeCreateTable, ddlLabelFor, formatForeignKeyGlance } from './tableStructure'
+import {
+  composeCreateTable,
+  ddlLabelFor,
+  filterStructureColumns,
+  formatForeignKeyGlance,
+  structureTabBadge,
+  summarizeStructureDdl,
+} from './tableStructure'
 
 describe('tableStructure helpers', () => {
   it('labels DDL sources per dialect', () => {
@@ -33,5 +40,27 @@ describe('foreign key glance', () => {
         refColumns: ['id'],
       }),
     ).toBe('customer_id → customers(id)')
+  })
+})
+
+
+describe('structure polish helpers', () => {
+  const columns = [
+    { name: 'id', dataType: 'INTEGER', nullable: false, defaultValue: null, primaryKey: true, ordinal: 0 },
+    { name: 'email', dataType: 'TEXT', nullable: true, defaultValue: null, primaryKey: false, ordinal: 1 },
+  ]
+
+  it('filters columns and summarizes ddl', () => {
+    expect(filterStructureColumns(columns, 'mail')).toHaveLength(1)
+    expect(summarizeStructureDdl('CREATE TABLE t (\n  id INT\n);').lineCount).toBe(3)
+    expect(summarizeStructureDdl(null).isEmpty).toBe(true)
+    expect(
+      structureTabBadge('columns', {
+        columns,
+        indexes: [],
+        foreignKeys: [],
+        ddl: null,
+      }),
+    ).toBe('2')
   })
 })
