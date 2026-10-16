@@ -3231,9 +3231,20 @@ body.is-col-resizing .grid-col-resizer {
 
 /* Schema diff */
 .schema-diff-shell { width: min(960px, 94vw); }
+.schema-diff-lead {
+  margin: 0 16px 8px;
+  color: var(--ink-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.schema-diff-swap {
+  align-self: end;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
 .schema-diff-controls {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: 1fr auto 1fr auto;
   gap: 10px;
   align-items: end;
   padding: 12px 16px 0;
@@ -3255,11 +3266,19 @@ body.is-col-resizing .grid-col-resizer {
   margin-bottom: 10px;
 }
 .schema-diff-pill {
+  appearance: none;
+  border: 0;
+  font: inherit;
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 999px;
   background: #1a2030;
   color: #cbd5e1;
+  cursor: pointer;
+}
+.schema-diff-pill.is-filter-on {
+  outline: 1px solid color-mix(in srgb, var(--accent, #9eb4ff) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #9eb4ff) 25%, transparent);
 }
 .schema-diff-pill.is-added { color: #86efac; background: #14532d55; }
 .schema-diff-pill.is-removed { color: #fca5a5; background: #7f1d1d55; }
