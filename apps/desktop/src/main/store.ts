@@ -14,6 +14,15 @@ import type {
 } from '@shared/types'
 import { QUERY_HISTORY_LIMIT, pushQueryHistory } from '@shared/queryHistory'
 import { upsertFavorite } from '@shared/favorites'
+import {
+  applyImportPlan,
+  isConnectionBundle,
+  planConnectionImport,
+  sanitizeTransferRow,
+  type ConnectionBundle,
+  type ImportPlanItem,
+  type TransferConnection,
+} from '@shared/connectionTransfer'
 import { createId } from './sampleDb'
 import { migrateConnectionPlaintext, migrateSettingsPlaintext } from './migratePlaintext'
 import { encryptionAvailable, openSecret, sealSecret } from './secrets'
@@ -349,4 +358,63 @@ export function removeFavorite(id: string): void {
     'favorites.json',
     listFavorites().filter((row) => row.id !== id),
   )
+}
+
+
+function toTransfer(row: StoredConnection): TransferConnection {
+  return sanitizeTransferRow({
+    id: row.id,
+    name: row.name,
+    dialect: row.dialect,
+    filePath: row.filePath,
+    host: row.host,
+    port: row.port,
+    database: row.database,
+    username: row.username,
+    passwordCipher: row.passwordCipher,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  })
+}
+
+export function exportConnectionsBundle(): ConnectionBundle {
+  return {
+    version: 1,
+    kind: 'dataai-connections',
+    exportedAt: new Date().toISOString(),
+    connections: loadConnectionsRaw().map(toTransfer),
+  }
+}
+
+export function previewConnectionImport(raw: unknown): { plan: ImportPlanItem[] } | { error: string } {
+  if (!isConnectionBundle(raw)) return { error: '不是 DataAI 连接导出文件（需要 version=1 / dataai-connections）' }
+  const incoming = raw.connections.map((row) => sanitizeTransferRow(row))
+  const existing = loadConnectionsRaw().map(toTransfer)
+  return { plan: planConnectionImport(existing, incoming) }
+}
+
+export function applyConnectionImport(
+  plan: ImportPlanItem[],
+): { connections: ReturnType<typeof listConnections>; imported: number } | { error: string } {
+  if (!Array.isArray(plan) || plan.length === 0) return { error: '没有可导入的连接' }
+  const existing = loadConnectionsRaw().map(toTransfer)
+  const next = applyImportPlan(existing, plan, createId)
+  const stored: StoredConnection[] = next.map((row) => ({
+    id: row.id,
+    name: row.name,
+    dialect: row.dialect,
+    filePath: row.filePath,
+    host: row.host,
+    port: row.port,
+    database: row.database,
+    username: row.username,
+    passwordCipher: row.passwordCipher,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }))
+  writeJson('connections.json', stored)
+  return {
+    connections: stored.map(toPublic),
+    imported: plan.filter((item) => item.decision !== 'skip').length,
+  }
 }

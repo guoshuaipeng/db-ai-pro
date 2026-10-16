@@ -41,14 +41,21 @@ export function AiPane() {
           <p className="ai-kicker">助手</p>
           <h2>{ws.aiIntent === 'create' ? 'AI 建表' : ws.aiIntent === 'alter' ? 'AI 改表' : '自然语言转 SQL'}</h2>
         </div>
-        <button
-          type="button"
-          className={ws.settings?.hasKey ? 'pill is-ready' : 'pill'}
-          onClick={() => setSettingsOpen((open) => !open)}
-          aria-expanded={settingsOpen}
-        >
-          {ws.settings?.hasKey ? '模型已就绪' : '本地预览'}
-        </button>
+        <div className="ai-head-actions">
+          {ws.aiTurns.length > 0 && (
+            <button type="button" className="tiny-btn btn btn-ghost" onClick={ws.clearAiMemory} title="清空会话记忆">
+              清空
+            </button>
+          )}
+          <button
+            type="button"
+            className={ws.settings?.hasKey ? 'pill is-ready' : 'pill'}
+            onClick={() => setSettingsOpen((open) => !open)}
+            aria-expanded={settingsOpen}
+          >
+            {ws.settings?.hasKey ? '模型已就绪' : '本地预览'}
+          </button>
+        </div>
       </div>
 
       <div className="intent-tabs" role="tablist" aria-label="助手模式">

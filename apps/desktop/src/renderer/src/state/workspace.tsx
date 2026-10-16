@@ -14,6 +14,9 @@ import { changesSchema, identStyle, selectAll, selectAllWithRowid, statementTitl
 import { INITIAL_TABS } from '@shared/session'
 import { countTreeNodes, extrasFromConnections, filterNodes } from '@shared/tree'
 import { isKvDialect } from '@shared/types'
+import { trimAiTurns } from '@shared/aiMemory'
+import { formatExplainText } from '@shared/explain'
+import type { ImportPlanItem } from '@shared/connectionTransfer'
 import type { AiIntent } from '@shared/types'
 import type {
   AiSettingsPublic,
@@ -32,7 +35,7 @@ import type {
 export type ResultTab = {
   id: string
   title: string
-  kind: 'grid' | 'message'
+  kind: 'grid' | 'message' | 'plan'
   columns?: string[]
   rows?: Record<string, unknown>[]
   message?: string
@@ -46,6 +49,7 @@ type DialogState =
   | null
   | { type: 'connection'; connection?: ConnectionPublic }
   | { type: 'delete'; connection: ConnectionPublic }
+  | { type: 'import'; path: string; plan: ImportPlanItem[] }
 
 type WorkspaceValue = {
   ready: boolean
@@ -70,6 +74,11 @@ type WorkspaceValue = {
   setActiveResult: (id: string) => void
   running: boolean
   run: () => Promise<void>
+  explain: () => Promise<void>
+  clearAiMemory: () => void
+  exportConnections: () => Promise<void>
+  importConnections: () => Promise<void>
+  applyImportPlan: (plan: ImportPlanItem[]) => Promise<void>
   loadHistory: (connectionId: string) => Promise<QueryHistoryEntry[]>
   clearHistory: (connectionId: string) => Promise<void>
   removeHistory: (connectionId: string, entryId: string) => Promise<void>
@@ -261,7 +270,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (workspace) {
           setEditorTabs(workspace.editorTabs.length ? workspace.editorTabs : seedTabs())
           setActiveEditorId(workspace.activeEditorId || workspace.editorTabs[0]?.id || 'query-1')
-          setAiTurns(workspace.aiTurns ?? [])
+          setAiTurns(trimAiTurns(workspace.aiTurns ?? []))
           setSidebarWidth(workspace.sidebarWidth || 252)
           setAiWidth(workspace.aiWidth || 360)
           setEditorRatio(workspace.editorRatio || 1.35)
@@ -290,7 +299,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       activeConnectionId,
       editorTabs,
       activeEditorId,
-      aiTurns,
+      aiTurns: trimAiTurns(aiTurns),
       sidebarWidth,
       aiWidth,
       editorRatio,
@@ -448,6 +457,105 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     } finally {
       setRunning(false)
     }
+  }
+
+
+  const explain = async () => {
+    if (!activeEditor || running) return
+    if (!activeConnection) {
+      pushToast('info', '先在左侧选择一个连接')
+      return
+    }
+    if (isKvDialect(activeConnection.dialect)) {
+      pushToast('info', 'Redis 不支持 SQL 执行计划')
+      return
+    }
+    setRunning(true)
+    try {
+      const statements = await api.sql.explain({ connectionId: activeConnection.id, sql: activeEditor.sql })
+      const planTab: ResultTab = {
+        id: 'explain-plan',
+        title: '执行计划',
+        kind: 'plan',
+        message: statements
+          .map((result, index) => {
+            if (!result.ok) return `【${index + 1}】${result.error ?? '失败'}`
+            if (result.columns && result.rows) return formatExplainText(result.columns, result.rows)
+            return result.statement || `计划 ${index + 1}`
+          })
+          .join('\n\n'),
+      }
+      const gridTabs: ResultTab[] = []
+      statements.forEach((result, index) => {
+        if (result.ok && result.columns) {
+          gridTabs.push({
+            id: `explain-grid-${index}`,
+            title: gridTabs.length === 0 ? '计划表' : `计划表 ${gridTabs.length + 1}`,
+            kind: 'grid',
+            columns: result.columns,
+            rows: result.rows ?? [],
+          })
+        }
+      })
+      const messageTab: ResultTab = {
+        id: 'messages',
+        title: '消息',
+        kind: 'message',
+        message: statements
+          .map((result, index) => {
+            if (!result.ok) return `计划 ${index + 1} · ${result.error ?? '失败'}`
+            return `计划 ${index + 1} · ${result.rows?.length ?? 0} 行 · ${result.elapsedMs} ms`
+          })
+          .join('\n'),
+      }
+      const next: ResultState = {
+        tabs: [planTab, ...gridTabs, messageTab],
+        activeId: planTab.id,
+      }
+      setResultMap((current) => ({ ...current, [activeEditor.id]: next }))
+      const failed = statements.find((statement) => !statement.ok)
+      if (failed) pushToast('error', failed.error ?? '执行计划失败')
+      else pushToast('success', '已生成执行计划')
+    } catch (error) {
+      pushToast('error', error instanceof Error ? error.message : '执行计划失败')
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const clearAiMemory = () => {
+    setAiTurns([])
+    pushToast('success', '已清空助手会话')
+  }
+
+  const exportConnections = async () => {
+    const result = await api.connections.exportBundle()
+    if (!result.path) {
+      pushToast('info', '已取消导出')
+      return
+    }
+    pushToast('success', `已导出 ${result.count} 个连接`)
+  }
+
+  const importConnections = async () => {
+    const result = await api.connections.importPreview()
+    if ('cancelled' in result) {
+      pushToast('info', '已取消导入')
+      return
+    }
+    if ('error' in result) {
+      pushToast('error', result.error)
+      return
+    }
+    setDialog({ type: 'import', path: result.path, plan: result.plan })
+  }
+
+  const applyImportPlan = async (plan: ImportPlanItem[]) => {
+    const result = await api.connections.importApply(plan)
+    setConnections(result.connections)
+    setDialog(null)
+    await refreshSchema(result.connections, activeConnectionId)
+    pushToast('success', `已导入 ${result.imported} 个连接`)
   }
 
   const tableNames = useMemo(() => {
@@ -711,6 +819,11 @@ ${sql.trim()}
     },
     running,
     run,
+    explain,
+    clearAiMemory,
+    exportConnections,
+    importConnections,
+    applyImportPlan,
     loadHistory,
     clearHistory,
     removeHistory,

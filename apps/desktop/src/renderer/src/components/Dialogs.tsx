@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { DIALECTS, dialectInfo, needsServerDatabase } from '@shared/types'
 import type { ConnectionInput, Dialect } from '@shared/types'
+import type { ImportPlanItem } from '@shared/connectionTransfer'
 import { useWorkspace } from '../state/workspace'
 
 export function Dialogs() {
@@ -33,8 +34,94 @@ export function Dialogs() {
       </div>
     )
   }
+  if (ws.dialog.type === 'import') {
+    return <ImportDialog path={ws.dialog.path} plan={ws.dialog.plan} />
+  }
   return <ConnectionDialog />
 }
+
+function ImportDialog({ path, plan: initial }: { path: string; plan: ImportPlanItem[] }) {
+  const ws = useWorkspace()
+  const [plan, setPlan] = useState(initial)
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') ws.closeDialog()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [ws])
+
+  const setDecision = (index: number, decision: ImportPlanItem['decision']) => {
+    setPlan((rows) => rows.map((row, i) => (i === index ? { ...row, decision } : row)))
+  }
+
+  const counts = {
+    replace: plan.filter((row) => row.decision === 'replace').length,
+    keep: plan.filter((row) => row.decision === 'keep-both').length,
+    skip: plan.filter((row) => row.decision === 'skip').length,
+  }
+
+  return (
+    <div className="overlay" role="presentation" onMouseDown={ws.closeDialog}>
+      <div
+        className="dialog dialog-wide"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="import-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <h2 id="import-title">导入连接</h2>
+        <p className="dialog-copy">
+          来自 <code className="inline-code">{path}</code>。密码仅含密封密文，不会写入明文。
+        </p>
+        <p className="dialog-meta">
+          覆盖 {counts.replace} · 新建 {counts.keep} · 跳过 {counts.skip}
+        </p>
+        <ul className="import-list">
+          {plan.map((item, index) => (
+            <li key={`${item.incoming.id}:${index}`} className="import-item">
+              <div className="import-main">
+                <strong>{item.incoming.name}</strong>
+                <span className="import-sub">
+                  {item.incoming.dialect}
+                  {item.incoming.host ? ` · ${item.incoming.host}` : ''}
+                  {item.incoming.database ? ` / ${item.incoming.database}` : ''}
+                  {item.incoming.filePath ? ` · ${item.incoming.filePath}` : ''}
+                </span>
+                <span className="import-reason">{item.reason}</span>
+              </div>
+              <select
+                className="import-select"
+                value={item.decision}
+                onChange={(event) => setDecision(index, event.target.value as ImportPlanItem['decision'])}
+                aria-label={`${item.incoming.name} 的导入方式`}
+              >
+                <option value="replace">覆盖</option>
+                <option value="keep-both">新建</option>
+                <option value="skip">跳过</option>
+              </select>
+            </li>
+          ))}
+        </ul>
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-ghost" onClick={ws.closeDialog}>
+            取消
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={plan.every((row) => row.decision === 'skip')}
+            onClick={() => void ws.applyImportPlan(plan)}
+          >
+            确认导入
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 function ConnectionDialog() {
   const ws = useWorkspace()

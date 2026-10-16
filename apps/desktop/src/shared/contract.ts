@@ -14,6 +14,7 @@ import type {
   StatementResult,
   WorkspaceState,
 } from './types'
+import type { ConnectionBundle, ImportPlanItem } from './connectionTransfer'
 
 export type DesktopApi = {
   meta: () => Promise<AppMeta>
@@ -25,9 +26,15 @@ export type DesktopApi = {
     test: (input: ConnectionInput) => Promise<{ ok: boolean; error?: string }>
     seedSample: () => Promise<ConnectionPublic>
     pickFile: (mode: 'open' | 'save') => Promise<string | null>
+    exportBundle: () => Promise<{ path: string | null; count: number }>
+    importPreview: () => Promise<
+      { path: string; plan: ImportPlanItem[] } | { error: string; path?: string } | { cancelled: true }
+    >
+    importApply: (plan: ImportPlanItem[]) => Promise<{ connections: ConnectionPublic[]; imported: number }>
   }
   sql: {
     execute: (payload: { connectionId: string; sql: string }) => Promise<StatementResult[]>
+    explain: (payload: { connectionId: string; sql: string }) => Promise<StatementResult[]>
     updateSqliteCell: (payload: {
       connectionId: string
       table: string
@@ -81,3 +88,5 @@ export type DesktopApi = {
     save: (state: WorkspaceState) => Promise<void>
   }
 }
+
+export type { ConnectionBundle, ImportPlanItem }

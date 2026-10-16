@@ -21,9 +21,17 @@ export function ConnectionPane() {
     <aside className="sidebar" ref={root} aria-label="连接">
       <div className="side-head">
         <h1>连接</h1>
-        <button type="button" className="icon-btn" aria-label="新建连接" onClick={ws.openCreate}>
-          <IconPlus />
-        </button>
+        <div className="side-head-actions">
+          <button type="button" className="tiny-btn btn btn-ghost" onClick={() => void ws.importConnections()}>
+            导入
+          </button>
+          <button type="button" className="tiny-btn btn btn-ghost" onClick={() => void ws.exportConnections()}>
+            导出
+          </button>
+          <button type="button" className="icon-btn" aria-label="新建连接" onClick={ws.openCreate}>
+            <IconPlus />
+          </button>
+        </div>
       </div>
       <label className="search">
         <IconSearch />

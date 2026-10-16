@@ -189,7 +189,7 @@ export function createPreviewApi(): DesktopApi {
   }
 
   return {
-    meta: async () => ({ version: '0.7.0', encryption: 'unavailable', mode: 'preview' }),
+    meta: async () => ({ version: '0.8.0', encryption: 'unavailable', mode: 'preview' }),
     connections: {
       list: async () => memory.connections,
       save: async (input: ConnectionInput) => {
@@ -245,6 +245,9 @@ export function createPreviewApi(): DesktopApi {
         return { ok: false, error: '这个类型还不能查询。' }
       },
       pickFile: async () => null,
+      exportBundle: async () => ({ path: null, count: 0 }),
+      importPreview: async () => ({ cancelled: true as const }),
+      importApply: async () => ({ connections: memory.connections, imported: 0 }),
     },
     sql: {
       execute: async ({ connectionId, sql }) => {
@@ -268,6 +271,15 @@ export function createPreviewApi(): DesktopApi {
       updateSqliteCell: async () => {
         throw new Error('预览模式不支持改单元格')
       },
+      explain: async ({ sql }) => [
+        {
+          statement: `EXPLAIN ${sql.trim()}`,
+          ok: true,
+          columns: ['id', 'detail'],
+          rows: [{ id: 0, detail: '预览模式：此处仅为示意执行计划' }],
+          elapsedMs: 1,
+        },
+      ],
     },
     history: {
       list: async (connectionId: string) => memory.history[connectionId] ?? [],

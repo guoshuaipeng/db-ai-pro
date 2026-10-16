@@ -12,6 +12,9 @@ import { canInspect, dialectInfo, isKvDialect } from '@shared/types'
 import { streamAnswer, streamRepair } from './ai'
 import { streamAlterTable, streamCreateTable } from './aiDdl'
 import { explainDbError } from './errors'
+import { buildExplainSql } from '@shared/explain'
+import type { ImportPlanItem } from '@shared/connectionTransfer'
+import { writeFileSync, readFileSync } from 'node:fs'
 import { ensureParent, seedRetailDatabase } from './sampleDb'
 import { encryptionAvailable } from './secrets'
 import {
@@ -27,14 +30,17 @@ import { readRedisValue, scanRedisKeys } from './redis'
 import { databaseExists, openDatabase } from './sqlite'
 import {
   appendQueryHistory,
+  applyConnectionImport,
   clearQueryHistory,
   connectionPassword,
+  exportConnectionsBundle,
   getConnection,
   hasConnectionStore,
   listConnections,
   listFavorites,
   listQueryHistory,
   loadWorkspace,
+  previewConnectionImport,
   removeConnection,
   removeFavorite,
   removeQueryHistoryEntry,
@@ -214,6 +220,42 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     return result.canceled ? null : (result.filePaths[0] ?? null)
   })
 
+  ipcMain.handle('connections:export', async () => {
+    const bundle = exportConnectionsBundle()
+    const win = getWindow()
+    const options = {
+      title: '导出连接',
+      defaultPath: `dataai-connections-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: 'DataAI Connections', extensions: ['json'] }],
+    }
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return { path: null, count: 0 }
+    writeFileSync(result.filePath, JSON.stringify(bundle, null, 2), 'utf8')
+    return { path: result.filePath, count: bundle.connections.length }
+  })
+
+  ipcMain.handle('connections:importPreview', async () => {
+    const win = getWindow()
+    const options = {
+      title: '导入连接',
+      properties: ['openFile'] as Array<'openFile'>,
+      filters: [{ name: 'DataAI Connections', extensions: ['json'] }],
+    }
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+    if (picked.canceled || !picked.filePaths[0]) return { cancelled: true as const }
+    const path = picked.filePaths[0]
+    try {
+      const raw = JSON.parse(readFileSync(path, 'utf8')) as unknown
+      const preview = previewConnectionImport(raw)
+      if ('error' in preview) return { error: preview.error, path }
+      return { path, plan: preview.plan }
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : '无法读取导入文件', path }
+    }
+  })
+
+  ipcMain.handle('connections:importApply', (_event, plan: ImportPlanItem[]) => applyConnectionImport(plan))
+
   ipcMain.handle('sql:execute', async (_event, payload: { connectionId: string; sql: string }) => {
     const row = getConnection(payload.connectionId)
     if (!row) return { error: '连接不存在' }
@@ -239,6 +281,19 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
         error: message,
       })
       return { error: message }
+    }
+  })
+
+  ipcMain.handle('sql:explain', async (_event, payload: { connectionId: string; sql: string }) => {
+    const row = getConnection(payload.connectionId)
+    if (!row) return { error: '连接不存在' }
+    if (!dialectInfo(row.dialect).executable) return { error: '这个类型还不能查询执行计划' }
+    const built = buildExplainSql(row.dialect, payload.sql)
+    if (!built.ok) return { error: built.error }
+    try {
+      return { results: await executeSession(targetFromStored(row), built.sql) }
+    } catch (error) {
+      return { error: explainDbError(error) }
     }
   })
 

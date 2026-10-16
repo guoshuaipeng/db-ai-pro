@@ -54,6 +54,15 @@ export function EditorPane() {
             <button type="button" className="icon-btn" aria-label="新建查询" onClick={ws.newTab}>
               <IconPlus />
             </button>
+            <button
+              type="button"
+              className="btn btn-ghost run-btn"
+              onClick={() => void ws.explain()}
+              disabled={ws.running}
+              title="EXPLAIN / 执行计划"
+            >
+              计划
+            </button>
             <button type="button" className="btn btn-primary run-btn" onClick={() => void ws.run()} disabled={ws.running}>
               <IconPlay />
               {ws.running ? '执行中' : '运行'}
@@ -110,6 +119,7 @@ export function ResultPane() {
           <p className="hint">F5 或 Ctrl/⌘ Enter · Ctrl+Space 补全</p>
         </div>
       )}
+      {active?.kind === 'plan' && <pre className="message-log plan-log">{active.message}</pre>}
       {active?.kind === 'message' && <pre className="message-log">{active.message}</pre>}
       {active?.kind === 'grid' && active.columns && (
         <ResultGrid columns={active.columns} rows={active.rows ?? []} key={active.id} />

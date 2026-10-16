@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { DesktopApi } from '@shared/contract'
 import type { AiEvent, AiSettingsInput, ConnectionInput, WorkspaceState } from '@shared/types'
+import type { ImportPlanItem } from '@shared/connectionTransfer'
 
 const api: DesktopApi = {
   meta: () => ipcRenderer.invoke('meta:get'),
@@ -24,10 +25,22 @@ const api: DesktopApi = {
       return result.connection
     },
     pickFile: (mode) => ipcRenderer.invoke('connections:pickFile', mode),
+    exportBundle: () => ipcRenderer.invoke('connections:export'),
+    importPreview: () => ipcRenderer.invoke('connections:importPreview'),
+    importApply: async (plan: ImportPlanItem[]) => {
+      const result = await ipcRenderer.invoke('connections:importApply', plan)
+      if (result?.error) throw new Error(result.error)
+      return result
+    },
   },
   sql: {
     execute: async (payload) => {
       const result = await ipcRenderer.invoke('sql:execute', payload)
+      if (result?.error) throw new Error(result.error)
+      return result.results
+    },
+    explain: async (payload) => {
+      const result = await ipcRenderer.invoke('sql:explain', payload)
       if (result?.error) throw new Error(result.error)
       return result.results
     },

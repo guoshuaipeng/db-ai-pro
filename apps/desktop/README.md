@@ -1,12 +1,12 @@
 # DataAI Desktop (TypeScript)
 
-Milestone 7：
+Milestone 8：
 
-- Monaco SQL 补全：按当前连接 schema 提示表/列（Ctrl+Space / 输入触发）
-- 收藏 SQL 片段：全局或按连接保存，暗色面板插入编辑器
-- 对象树搜索：主机 / 库 / 表 / 列过滤，显示匹配统计
-- 保留 M3–M6：助手、Redis、建改表、虚拟滚动、SQL Server、Excel、tip 脚本、密钥密封、查询历史
-- 版本 **0.7.0**
+- SQL 执行计划（SQLite EXPLAIN QUERY PLAN / MySQL·PG EXPLAIN / SQL Server SHOWPLAN_ALL）
+- 助手会话记忆：启动恢复、可清空、保存时裁剪；不含密钥明文
+- 连接导入/导出 JSON（仅密封 passwordCipher，导入可覆盖/新建/跳过）
+- 保留 M3–M7
+- 版本 **0.8.0**
 
 ## Soft QA
 
