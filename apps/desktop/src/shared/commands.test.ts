@@ -70,6 +70,10 @@ describe('filterCommands', () => {
     expect(filterCommands('列名').some((item) => item.id === 'result.copyHeaders')).toBe(true)
   })
 
+  it('finds copy result message command', () => {
+    expect(filterCommands('复制输出').some((item) => item.id === 'result.copyMessage')).toBe(true)
+  })
+
   it('finds query templates', () => {
     expect(filterCommands('模板').some((item) => item.id === 'query.templates')).toBe(true)
     expect(filterCommands('COUNT').some((item) => item.id === 'query.tpl.selectCount')).toBe(true)

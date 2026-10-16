@@ -190,6 +190,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'result.copyMessage',
+    title: '复制结果输出',
+    subtitle: '消息 / 执行计划文本写入剪贴板',
+    keywords: 'copy message plan explain output 复制 输出 计划 错误',
+    shortcut: '结果工具栏「复制输出」',
+    category: 'query',
+  },
+  {
     id: 'editor.replace',
     title: '在编辑器中替换',
     subtitle: 'Monaco 查找替换',

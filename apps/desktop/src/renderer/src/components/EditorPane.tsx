@@ -9,6 +9,11 @@ import { TabConnectionSelect } from './TabConnectionSelect'
 import { SqlEditor } from './SqlEditor'
 import { ResultGrid, ResultToolbar } from './ResultGrid'
 import { ResultSummaryBar } from './ResultSummaryBar'
+import {
+  resultMessageCopiedToast,
+  resultMessageCopyKind,
+  resultMessageCopyText,
+} from '@shared/resultMessageCopy'
 import { filterResultRows } from '@shared/resultFilter'
 import { ResultChart } from './ResultChart'
 import { canChartResult } from '@shared/chartData'
@@ -543,6 +548,28 @@ export function ResultPane() {
     setGridVisibleColumns(null)
   }, [active?.id])
 
+  const copyResultMessage = async () => {
+    const kind = resultMessageCopyKind(active?.kind, active?.message)
+    const text = resultMessageCopyText(active?.message)
+    if (kind === 'empty' || !text) {
+      ws.pushToast('info', resultMessageCopiedToast('empty'))
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(text)
+      ws.pushToast('success', resultMessageCopiedToast(kind))
+    } catch {
+      ws.pushToast('error', '复制失败，请检查剪贴板权限')
+    }
+  }
+
+  useEffect(() => {
+    return onDataai('dataai:result-copy-message', () => {
+      void copyResultMessage()
+    })
+  }, [active?.id, active?.kind, active?.message])
+
+
   useEffect(() => {
     if (!chartable && view === 'chart') setView('table')
   }, [chartable, view])
@@ -682,7 +709,24 @@ export function ResultPane() {
         </div>
       ) : results && results.tabs.length > 0 ? (
         <div className="result-toolbar-row">
-          <span className="result-count">输出</span>
+          <span className="result-count">
+            {active?.kind === 'plan' ? '执行计划' : '输出'}
+          </span>
+          {(active?.kind === 'message' || active?.kind === 'plan') && (
+            <button
+              type="button"
+              className="btn btn-ghost tiny-btn"
+              title={
+                active.kind === 'plan'
+                  ? '复制执行计划文本到剪贴板'
+                  : '复制输出 / 错误信息到剪贴板'
+              }
+              disabled={!resultMessageCopyText(active.message).trim()}
+              onClick={() => void copyResultMessage()}
+            >
+              复制输出
+            </button>
+          )}
         </div>
       ) : null}
 

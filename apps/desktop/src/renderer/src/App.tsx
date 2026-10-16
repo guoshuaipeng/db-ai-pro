@@ -201,6 +201,9 @@ export function App() {
         case 'result.copyHeaders':
           emitDataai('dataai:result-copy-headers')
           break
+        case 'result.copyMessage':
+          emitDataai('dataai:result-copy-message')
+          break
         case 'editor.replace':
           emitDataai('dataai:replace')
           break
