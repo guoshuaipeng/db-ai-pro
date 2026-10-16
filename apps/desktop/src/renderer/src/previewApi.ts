@@ -243,6 +243,10 @@ export function createPreviewApi(): DesktopApi {
       save: async (input) => {
         memory.prefs = {
           density: input.density === 'compact' ? 'compact' : input.density === 'comfortable' ? 'comfortable' : memory.prefs.density,
+          accent:
+            input.accent === 'mint' || input.accent === 'violet' || input.accent === 'azure'
+              ? input.accent
+              : memory.prefs.accent,
           highContrast:
             input.highContrast === undefined ? memory.prefs.highContrast : input.highContrast === true,
           queryTimeoutSec:

@@ -36,8 +36,12 @@ export function editorLineHeight(fontSize: number): number {
 
 export type UiDensity = 'comfortable' | 'compact'
 
+export type UiAccent = 'azure' | 'mint' | 'violet'
+
 export type AppPrefs = {
   density: UiDensity
+  /** Dark-theme accent hue for chrome highlights. */
+  accent: UiAccent
   /** Stronger borders / text for accessibility. */
   highContrast: boolean
   /** Soft query timeout in seconds. 0 = no timeout. Default 30. */
@@ -70,6 +74,7 @@ export type AppPrefs = {
 
 export const DEFAULT_PREFS: AppPrefs = {
   density: 'comfortable',
+  accent: 'azure',
   highContrast: false,
   queryTimeoutSec: 30,
   restoreTabsOnLaunch: true,
@@ -100,6 +105,7 @@ export function normalizePrefs(value: unknown): AppPrefs {
   const row = value as Partial<AppPrefs>
   return {
     density: row.density === 'compact' ? 'compact' : 'comfortable',
+    accent: row.accent === 'mint' || row.accent === 'violet' ? row.accent : 'azure',
     highContrast: row.highContrast === true,
     queryTimeoutSec: clampQueryTimeoutSec(
       row.queryTimeoutSec === undefined ? DEFAULT_PREFS.queryTimeoutSec : row.queryTimeoutSec,

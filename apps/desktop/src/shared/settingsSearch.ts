@@ -19,6 +19,12 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     keywords: '舒适 紧凑 comfortable compact 间距 留白',
   },
   {
+    id: 'accent',
+    tab: 'appearance',
+    title: '强调色',
+    keywords: '主题 深色 accent 颜色 霁青 薄荷 雾紫',
+  },
+  {
     id: 'highContrast',
     tab: 'appearance',
     title: '高对比度',

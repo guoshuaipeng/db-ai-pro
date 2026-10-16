@@ -645,7 +645,7 @@ case 'query.openFromFile':
 
 
   return (
-    <div className="app" data-density={prefs.density} data-contrast={prefs.highContrast ? 'high' : 'normal'}>
+    <div className="app" data-density={prefs.density} data-contrast={prefs.highContrast ? 'high' : 'normal'} data-accent={prefs.accent}>
       <TitleBar
         crumb={ws.breadcrumb}
         crumbColor={resolveTabConnectionColor(ws.activeConnection?.id, ws.connections)}

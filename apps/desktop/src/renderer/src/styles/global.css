@@ -3352,6 +3352,110 @@ body.is-col-resizing .grid-col-resizer {
   border-bottom-color: var(--line-strong);
 }
 
+
+/* Dark accent themes (M148) */
+.app[data-accent='mint'] {
+  --accent: #7dd3c0;
+  --accent-soft: rgba(125, 211, 192, 0.16);
+  --focus: #b8f0e4;
+}
+.app[data-accent='violet'] {
+  --accent: #c4b5fd;
+  --accent-soft: rgba(196, 181, 253, 0.16);
+  --focus: #ddd6fe;
+}
+.app[data-accent='azure'] {
+  --accent: #9eb4ff;
+  --accent-soft: rgba(158, 180, 255, 0.16);
+  --focus: #c5d0ff;
+}
+.app[data-contrast='high'][data-accent='mint'] {
+  --accent: #9aebda;
+  --focus: #d7fff6;
+}
+.app[data-contrast='high'][data-accent='violet'] {
+  --accent: #d8ccff;
+  --focus: #f0e9ff;
+}
+
+/* Dark chrome scrollbars */
+.app {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+.app *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.app *::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.app *::-webkit-scrollbar-thumb:hover {
+  background: rgba(158, 180, 255, 0.55);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+.app *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.accent-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.accent-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--hairline);
+  background: rgba(15, 23, 42, 0.55);
+  color: var(--ink);
+  cursor: pointer;
+}
+.accent-card:hover {
+  border-color: var(--line-strong);
+}
+.accent-card.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft);
+  background: var(--accent-soft);
+}
+.accent-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+.accent-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.accent-card-copy strong {
+  font-size: 13px;
+}
+.accent-card-copy span {
+  font-size: 12px;
+  color: var(--ink-secondary);
+  line-height: 1.4;
+}
+@media (max-width: 900px) {
+  .accent-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .contrast-block {
   margin-top: 16px;
   padding-top: 14px;

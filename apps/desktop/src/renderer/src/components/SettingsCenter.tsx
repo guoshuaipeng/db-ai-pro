@@ -10,6 +10,7 @@ import {
   formatZoomPercent,
   stepZoomFactor,
   type AppPrefs,
+  type UiAccent,
   type UiDensity,
 } from '@shared/prefs'
 import {
@@ -22,6 +23,14 @@ import {
 } from '@shared/settingsSearch'
 import { Mark } from './icons'
 import { EmptyState } from './EmptyState'
+import {
+  ACCENT_OPTIONS,
+  accentChangedToast,
+  appearanceThemeKicker,
+  appearanceThemeLead,
+  appearanceThemeTitle,
+  highContrastHint,
+} from '@shared/appearanceTheme'
 import {
   QUERY_TIMEOUT_PRESETS,
   queryTimeoutHint,
@@ -565,6 +574,17 @@ function AppearancePanel({
     }
   }
 
+  const setAccent = async (accent: UiAccent) => {
+    setBusy(true)
+    try {
+      const next = await api.prefs.save({ accent })
+      onPrefs(next)
+      ws.pushToast('success', accentChangedToast(accent))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const setRestoreTabs = async (restoreTabsOnLaunch: boolean) => {
     setBusy(true)
     try {
@@ -698,11 +718,34 @@ function AppearancePanel({
 
   return (
     <div className="settings-card">
-      {show('density') || show('highContrast') || show('zoom') ? (
-        <p className="settings-lead">
-          界面保持深色一体壳。可调节信息密度、对比度与缩放，适配 1366×768 与更宽屏。侧栏 / 编辑器 /
-          助手分隔比例会自动记住。
-        </p>
+      {show('density') || show('highContrast') || show('zoom') || show('accent') ? (
+        <EmptyState
+          compact
+          kicker={appearanceThemeKicker()}
+          title={appearanceThemeTitle()}
+          body={appearanceThemeLead()}
+        />
+      ) : null}
+      {show('accent') ? (
+        <div className="accent-grid" role="radiogroup" aria-label="强调色">
+          {ACCENT_OPTIONS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="radio"
+              aria-checked={prefs.accent === item.id}
+              className={prefs.accent === item.id ? 'accent-card is-active' : 'accent-card'}
+              disabled={busy}
+              onClick={() => void setAccent(item.id)}
+            >
+              <span className="accent-swatch" style={{ background: item.swatch }} aria-hidden="true" />
+              <span className="accent-card-copy">
+                <strong>{item.label}</strong>
+                <span>{item.blurb}</span>
+              </span>
+            </button>
+          ))}
+        </div>
       ) : null}
       {show('density') ? (
         <div className="density-grid" role="radiogroup" aria-label="界面密度">
@@ -771,7 +814,7 @@ function AppearancePanel({
         <div className="contrast-block">
           <div className="contrast-copy">
             <strong>高对比度</strong>
-            <span>加强边框、文字与焦点环，便于投影或弱光环境阅读。仍保持深色壳。</span>
+            <span>{highContrastHint()}</span>
           </div>
           <button
             type="button"
