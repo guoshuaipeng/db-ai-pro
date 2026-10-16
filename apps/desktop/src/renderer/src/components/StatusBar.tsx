@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { dialectInfo } from '@shared/types'
 import { formatElapsedMs } from '@shared/slowQuery'
 import { statusHealthView } from '@shared/statusBar'
+import { statusBarRerunTitle } from '@shared/statusBarRerun'
 import type { ConnHealth } from '@shared/connHealth'
 import type { ConnectionPublic } from '@shared/types'
 
@@ -27,6 +28,8 @@ type StatusBarProps = {
   onOpenPalette: () => void
   onOpenShortcuts: () => void
   onOpenGotoLine: () => void
+  onRerunLast: () => void
+  lastRunKind?: 'run' | 'explain' | null
   onZoomReset: () => void
 }
 
@@ -52,6 +55,8 @@ export function StatusBar({
   onOpenPalette,
   onOpenShortcuts,
   onOpenGotoLine,
+  onRerunLast,
+  lastRunKind,
   onZoomReset,
 }: StatusBarProps) {
   const healthView = statusHealthView(health)
@@ -121,13 +126,20 @@ export function StatusBar({
       {running ? (
         <RunningElapsed since={runningSince} />
       ) : lastRunLabel ? (
-        <span
+        <button
+          type="button"
           className={
-            lastRunOk === false ? 'status-item is-warn' : lastRunSlow ? 'status-item is-slow' : 'status-item'
+            lastRunOk === false
+              ? 'status-item status-btn is-warn'
+              : lastRunSlow
+                ? 'status-item status-btn is-slow'
+                : 'status-item status-btn'
           }
+          title={statusBarRerunTitle(lastRunKind)}
+          onClick={onRerunLast}
         >
           {lastRunLabel}
-        </span>
+        </button>
       ) : null}
       <span className="status-spacer" />
       {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}

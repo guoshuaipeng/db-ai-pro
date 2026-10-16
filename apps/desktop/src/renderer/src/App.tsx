@@ -31,6 +31,7 @@ import {
 } from '@shared/prefs'
 import { LAYOUT } from '@shared/layoutBounds'
 import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
+import { statusBarRerunAction } from '@shared/statusBarRerun'
 import { shouldCancelRunOnEscape } from '@shared/escCancelRun'
 import { isUiModalOpen } from './uiModal'
 import { getApi } from './bridge'
@@ -548,6 +549,11 @@ export function App() {
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenGotoLine={() => setGotoOpen(true)}
+        lastRunKind={ws.lastRun?.kind ?? null}
+        onRerunLast={() => {
+          if (statusBarRerunAction(ws.lastRun?.kind) === 'explain') void ws.explain()
+          else emitDataai('dataai:request-run')
+        }}
         onZoomReset={zoomReset}
       />
       <div className="toast-viewport" aria-live="polite">

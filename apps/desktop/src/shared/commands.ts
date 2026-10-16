@@ -412,6 +412,7 @@ export function filterCommands(query: string, catalog: CommandDef[] = COMMAND_CA
 export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '命令 / 对象搜索', keys: 'Ctrl+K · Ctrl+P' },
   { action: '运行 SQL（有选区则只跑选区）', keys: 'Ctrl+Enter · F5' },
+  { action: '再次运行 / 再次查看计划', keys: '状态栏结果摘要（点击）' },
   { action: '收藏当前 SQL', keys: 'Ctrl+Shift+S · 工具栏「收藏」' },
   { action: '执行计划', keys: 'Ctrl+Shift+E' },
   { action: '格式化 SQL', keys: 'Shift+Alt+F' },
