@@ -120,9 +120,16 @@ export const COMMAND_CATALOG: CommandDef[] = [
   {
     id: 'query.saveToFile',
     title: '保存 SQL 到文件',
-    subtitle: '将当前标签写入 .sql（Ctrl+S）',
+    subtitle: '写回已关联文件，或弹出另存对话框（Ctrl+S）',
     keywords: 'save file export sql 保存 文件',
     shortcut: 'Ctrl+S',
+    category: 'query',
+  },
+  {
+    id: 'query.saveAsFile',
+    title: '另存为 SQL 文件',
+    subtitle: '将当前标签保存到新的 .sql 路径',
+    keywords: 'save as 另存为 sql 文件',
     category: 'query',
   },
   {

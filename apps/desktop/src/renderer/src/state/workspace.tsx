@@ -58,7 +58,17 @@ import {
   isTabDirty,
   withCleanBaseline,
 } from '@shared/tabDirty'
-import { suggestedSqlFileName, tabTitleFromSqlPath } from '@shared/sqlFileName'
+import { tabTitleFromSqlPath } from '@shared/sqlFileName'
+import {
+  defaultSqlSaveName,
+  sqlFileEmptySaveBody,
+  sqlFileOpenDialogTitle,
+  sqlFileOpenedToast,
+  sqlFileSaveAsDialogTitle,
+  sqlFileSaveDialogTitle,
+  sqlFileSavedToast,
+  sqlFileTabTitle,
+} from '@shared/sqlFileTab'
 import {
   connectionEndpointCopiedToast,
   connectionEndpointText,
@@ -242,8 +252,9 @@ type WorkspaceValue = {
   tabDisconnected: (tab: EditorTabState) => boolean
   updateSql: (sql: string) => void
   saveEditorSqlToFile: () => Promise<void>
+  saveEditorSqlAs: () => Promise<void>
   openSqlFile: () => Promise<void>
-  openSqlTabsFromTexts: (items: { title: string; sql: string }[]) => void
+  openSqlTabsFromTexts: (items: { title: string; sql: string; filePath?: string }[]) => void
   newTab: () => void
   closeTab: (id: string) => void
   /** Accept current SQL as clean baseline for a tab. */
@@ -1208,16 +1219,31 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     )
   }
 
+  const applySavedSqlFile = (editorId: string, sql: string, filePath: string) => {
+    const title = sqlFileTabTitle(filePath)
+    setEditorTabs((tabs) =>
+      tabs.map((tab) =>
+        tab.id === editorId ? withCleanBaseline({ ...tab, title, sql, filePath }) : tab,
+      ),
+    )
+  }
+
   const saveEditorSqlToFile = async () => {
     if (!activeEditor) {
       pushToast('info', '没有打开的查询标签')
       return
     }
+    if (!activeEditor.sql.trim()) {
+      pushToast('info', sqlFileEmptySaveBody())
+      return
+    }
     try {
+      const linked = activeEditor.filePath?.trim() || ''
       const result = await api.app.saveTextFile({
         content: activeEditor.sql,
-        defaultName: suggestedSqlFileName(activeEditor.title),
-        title: '保存 SQL',
+        defaultName: defaultSqlSaveName(activeEditor.title, activeEditor.filePath),
+        title: sqlFileSaveDialogTitle(),
+        ...(linked ? { path: linked } : {}),
       })
       if ('cancelled' in result) {
         pushToast('info', '已取消保存')
@@ -1227,26 +1253,55 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         pushToast('error', result.error)
         return
       }
-      const title = tabTitleFromSqlPath(result.path)
-      setEditorTabs((tabs) =>
-        tabs.map((tab) =>
-          tab.id === activeEditor.id
-            ? withCleanBaseline({ ...tab, title, sql: activeEditor.sql })
-            : tab,
-        ),
-      )
-      pushToast('success', `已保存 ${result.path.replace(/^.*[/\\]/, '')}`)
+      applySavedSqlFile(activeEditor.id, activeEditor.sql, result.path)
+      pushToast('success', sqlFileSavedToast(result.path))
     } catch (error) {
       pushToast('error', error instanceof Error ? error.message : '保存失败')
     }
   }
 
-  const openSqlTabsFromTexts = (items: { title: string; sql: string }[]) => {
+  const saveEditorSqlAs = async () => {
+    if (!activeEditor) {
+      pushToast('info', '没有打开的查询标签')
+      return
+    }
+    if (!activeEditor.sql.trim()) {
+      pushToast('info', sqlFileEmptySaveBody())
+      return
+    }
+    try {
+      const result = await api.app.saveTextFile({
+        content: activeEditor.sql,
+        defaultName: defaultSqlSaveName(activeEditor.title, activeEditor.filePath),
+        title: sqlFileSaveAsDialogTitle(),
+      })
+      if ('cancelled' in result) {
+        pushToast('info', '已取消保存')
+        return
+      }
+      if ('error' in result) {
+        pushToast('error', result.error)
+        return
+      }
+      applySavedSqlFile(activeEditor.id, activeEditor.sql, result.path)
+      pushToast('success', sqlFileSavedToast(result.path))
+    } catch (error) {
+      pushToast('error', error instanceof Error ? error.message : '保存失败')
+    }
+  }
+
+  const openSqlTabsFromTexts = (items: { title: string; sql: string; filePath?: string }[]) => {
     const cleaned = items
-      .map((item) => ({
-        title: tabTitleFromSqlPath(item.title),
-        sql: item.sql,
-      }))
+      .map((item) => {
+        const sourcePath = (item.filePath ?? item.title).trim()
+        const looksPath = /[/\\]/.test(sourcePath) || /\.sql$/i.test(sourcePath)
+        const filePath = looksPath ? sourcePath : item.filePath?.trim() || undefined
+        return {
+          title: tabTitleFromSqlPath(sourcePath),
+          sql: item.sql,
+          filePath,
+        }
+      })
       .filter((item) => item.title.length > 0)
     if (cleaned.length === 0) {
       pushToast('info', '没有可打开的 .sql / .txt 文件')
@@ -1256,6 +1311,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       id: crypto.randomUUID(),
       title: item.title,
       sql: item.sql,
+      ...(item.filePath ? { filePath: item.filePath } : {}),
     }))
     setEditorTabs((tabs) => [
       ...tabs,
@@ -1277,7 +1333,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const openSqlFile = async () => {
     try {
-      const result = await api.app.openTextFile({ title: '打开 SQL' })
+      const result = await api.app.openTextFile({ title: sqlFileOpenDialogTitle() })
       if ('cancelled' in result) {
         pushToast('info', '已取消打开')
         return
@@ -1286,7 +1342,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         pushToast('error', result.error)
         return
       }
-      openSqlTabsFromTexts([{ title: result.path, sql: result.content }])
+      openSqlTabsFromTexts([{ title: result.path, sql: result.content, filePath: result.path }])
+      pushToast('success', sqlFileOpenedToast(result.path))
     } catch (error) {
       pushToast('error', error instanceof Error ? error.message : '打开失败')
     }
@@ -2473,6 +2530,7 @@ ${sql.trim()}
     tabDisconnected: (tab) => isTabDisconnected(tab, connections.map((row) => row.id)),
     updateSql,
     saveEditorSqlToFile,
+    saveEditorSqlAs,
     openSqlFile,
     openSqlTabsFromTexts,
     newTab,

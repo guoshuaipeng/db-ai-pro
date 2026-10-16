@@ -180,7 +180,10 @@ export function App() {
         case 'query.saveToFile':
           void ws.saveEditorSqlToFile()
           break
-        case 'query.openFromFile':
+                case 'query.saveAsFile':
+          void ws.saveEditorSqlAs()
+          break
+case 'query.openFromFile':
           void ws.openSqlFile()
           break
         case 'query.format':

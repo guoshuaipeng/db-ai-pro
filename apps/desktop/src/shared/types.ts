@@ -155,6 +155,8 @@ export type EditorTabState = {
   id: string
   title: string
   sql: string
+  /** Absolute path when this tab is linked to a .sql file on disk. */
+  filePath?: string | null
   /** Bound connection for this tab; null = use workspace active. No secrets. */
   connectionId?: string | null
   /** Table browse paging meta; absent for free SQL tabs. */

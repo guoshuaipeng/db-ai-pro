@@ -22,11 +22,14 @@ export function normalizeSessionTab(raw: unknown): EditorTabState | null {
           : null
   const browse = normalizeBrowseState(row.browse)
   const pinned = row.pinned === true
+  const filePath =
+    typeof row.filePath === 'string' && row.filePath.trim() ? row.filePath.trim() : null
   return {
     id: row.id.trim(),
     title: sanitizeTabTitle(row.title),
     sql: row.sql,
     connectionId,
+    ...(filePath ? { filePath } : {}),
     ...(browse ? { browse } : {}),
     ...(pinned ? { pinned: true } : {}),
   }

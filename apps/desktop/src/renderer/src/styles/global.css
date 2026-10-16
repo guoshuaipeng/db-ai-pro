@@ -5111,3 +5111,35 @@ body.is-col-resizing .grid-col-resizer {
 .tab.is-dirty.is-active {
   box-shadow: inset 3px 0 0 rgba(252, 165, 165, 0.95);
 }
+
+
+.sql-file-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 0 12px 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: rgba(6, 78, 59, 0.32);
+  color: #a7f3d0;
+}
+.sql-file-banner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+}
+.sql-file-banner-copy strong {
+  font-size: 13px;
+  color: #d1fae5;
+}
+.sql-file-banner-copy span {
+  opacity: 0.92;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

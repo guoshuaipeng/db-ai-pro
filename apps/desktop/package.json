@@ -1,6 +1,6 @@
 {
   "name": "dataai-desktop",
-  "version": "3.105.0",
+  "version": "3.106.0",
   "private": true,
   "type": "module",
   "description": "DataAI TypeScript desktop — multi-statement count",

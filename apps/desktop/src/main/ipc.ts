@@ -290,9 +290,14 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     'app:saveTextFile',
     async (
       _event,
-      input: { content: string; defaultName?: string; title?: string },
+      input: { content: string; defaultName?: string; title?: string; path?: string },
     ) => {
       try {
+        const direct = input.path?.trim()
+        if (direct) {
+          writeFileSync(direct, input.content ?? '', 'utf8')
+          return { path: direct }
+        }
         const win = getWindow()
         const options = {
           title: input.title?.trim() || '保存 SQL',

@@ -59,6 +59,8 @@ export type DesktopApi = {
       content: string
       defaultName?: string
       title?: string
+      /** When set, overwrite this path without a save dialog. */
+      path?: string
     }) => Promise<{ path: string } | { cancelled: true } | { error: string }>
     openTextFile: (input?: {
       title?: string

@@ -43,6 +43,12 @@ import {
   selectionRunDoneToast,
 } from '@shared/selectionRun'
 import {
+  sqlFileBannerBody,
+  sqlFileBannerTitle,
+  sqlFileSaveAsLabel,
+  sqlFileSaveAsTitle,
+} from '@shared/sqlFileTab'
+import {
   txnBeginButtonLabel,
   txnBeginButtonTitle,
   txnCommitButtonLabel,
@@ -333,7 +339,7 @@ export function EditorPane() {
           id: tab.id,
           label: tabTitleWithDirty(tab.title, isTabDirty(tab)),
           editTitle: tab.title,
-          badge: ws.tabDisconnected(tab) ? '断开' : undefined,
+          badge: ws.tabDisconnected(tab) ? '断开' : tab.filePath ? '文件' : undefined,
           tone: ws.tabDisconnected(tab) ? ('warn' as const) : undefined,
           pinned: tab.pinned === true,
           dirty: isTabDirty(tab),
@@ -522,6 +528,15 @@ export function EditorPane() {
             <button
               type="button"
               className="btn btn-ghost run-btn"
+              onClick={() => void ws.saveEditorSqlAs()}
+              disabled={!ws.activeEditor?.sql?.trim()}
+              title={sqlFileSaveAsTitle()}
+            >
+              {sqlFileSaveAsLabel()}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost run-btn"
               onClick={() => setSaveFavoriteOpen(true)}
               disabled={!ws.activeEditor?.sql?.trim()}
               title="收藏当前 SQL（Ctrl+Shift+S）"
@@ -613,6 +628,25 @@ export function EditorPane() {
             onClick={() => ws.activeEditor && ws.markTabClean(ws.activeEditor.id)}
           >
             {dirtyMarkCleanLabel()}
+          </button>
+        </div>
+      ) : null}
+
+      {ws.activeEditor?.filePath ? (
+        <div className="sql-file-banner" role="status" aria-live="polite">
+          <div className="sql-file-banner-copy">
+            <strong>{sqlFileBannerTitle()}</strong>
+            <span title={ws.activeEditor.filePath}>
+              {sqlFileBannerBody(ws.activeEditor.filePath)}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            title={sqlFileSaveAsTitle()}
+            onClick={() => void ws.saveEditorSqlAs()}
+          >
+            {sqlFileSaveAsLabel()}
           </button>
         </div>
       ) : null}
