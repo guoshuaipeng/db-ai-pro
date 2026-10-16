@@ -618,6 +618,8 @@ export function App() {
         }}
         wordWrap={ws.editorWordWrap}
         onToggleWordWrap={() => void ws.toggleEditorWordWrap()}
+        minimap={ws.editorMinimap}
+        onToggleMinimap={() => void ws.toggleEditorMinimap()}
         onZoomReset={zoomReset}
       />
       <div className="toast-viewport" aria-live="polite">

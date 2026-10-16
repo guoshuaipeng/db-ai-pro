@@ -6,6 +6,7 @@ import { statusBarConnectionTitle } from '@shared/revealConnection'
 import { statusBarRerunTitle } from '@shared/statusBarRerun'
 import { editorSelectionStatusTitle } from '@shared/editorSelection'
 import { statusBarWordWrapLabel, statusBarWordWrapTitle } from '@shared/statusBarWordWrap'
+import { statusBarMinimapLabel, statusBarMinimapTitle } from '@shared/statusBarMinimap'
 import { statusBarReadOnlyLabel, statusBarReadOnlyTitle } from '@shared/statusBarReadOnly'
 import type { ConnHealth } from '@shared/connHealth'
 import type { ConnectionPublic } from '@shared/types'
@@ -34,6 +35,7 @@ type StatusBarProps = {
   modeLabel: string
   zoomLabel: string
   wordWrap: boolean
+  minimap: boolean
   version: string
   onProbeHealth: () => void
   onRevealConnection: () => void
@@ -44,6 +46,7 @@ type StatusBarProps = {
   lastRunKind?: 'run' | 'explain' | null
   onZoomReset: () => void
   onToggleWordWrap: () => void
+  onToggleMinimap: () => void
   onToggleGlobalReadOnly: () => void
 }
 
@@ -69,6 +72,7 @@ export function StatusBar({
   modeLabel,
   zoomLabel,
   wordWrap,
+  minimap,
   version,
   onProbeHealth,
   onRevealConnection,
@@ -79,6 +83,7 @@ export function StatusBar({
   lastRunKind,
   onZoomReset,
   onToggleWordWrap,
+  onToggleMinimap,
   onToggleGlobalReadOnly,
 }: StatusBarProps) {
   const healthView = statusHealthView(health)
@@ -200,6 +205,19 @@ export function StatusBar({
       <span className="status-spacer" />
       {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
       <span className="status-item">{modeLabel}</span>
+      <button
+        type="button"
+        className={
+          minimap
+            ? 'status-item status-btn is-minimap-on'
+            : 'status-item status-muted status-btn'
+        }
+        title={statusBarMinimapTitle(minimap)}
+        aria-pressed={minimap}
+        onClick={onToggleMinimap}
+      >
+        {statusBarMinimapLabel(minimap)}
+      </button>
       <button
         type="button"
         className={
