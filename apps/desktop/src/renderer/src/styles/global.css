@@ -5046,3 +5046,33 @@ body.is-col-resizing .grid-col-resizer {
 .btn.is-txn-begin:not(:disabled) {
   border-color: rgba(56, 189, 248, 0.35);
 }
+
+
+.selection-run-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 12px 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(12, 74, 110, 0.35);
+  color: #bae6fd;
+}
+.selection-run-banner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12px;
+}
+.selection-run-banner-copy strong {
+  font-size: 13px;
+  color: #e0f2fe;
+}
+.selection-run-banner-copy span {
+  opacity: 0.92;
+}
+.btn.is-selection-run:not(:disabled) {
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.45);
+}

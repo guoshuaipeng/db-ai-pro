@@ -33,12 +33,15 @@ import { canChartResult } from '@shared/chartData'
 import { HistoryPanel } from './HistoryPanel'
 import { EmptyState } from './EmptyState'
 import { cancelRunButtonTitle } from '@shared/queryRunStatus'
+import { multiRunEmptyMessagesBody, runBufferStatementCount } from '@shared/multiStatementRun'
 import {
-  multiRunEmptyMessagesBody,
-  runBufferStatementCount,
-  runSqlButtonLabel,
-  runSqlButtonTitle,
-} from '@shared/multiStatementRun'
+  hasEditorSelection,
+  selectionRunBannerBody,
+  selectionRunBannerTitle,
+  selectionRunButtonLabel,
+  selectionRunButtonTitle,
+  selectionRunDoneToast,
+} from '@shared/selectionRun'
 import {
   txnBeginButtonLabel,
   txnBeginButtonTitle,
@@ -216,7 +219,7 @@ export function EditorPane() {
     if (!sqlNeedsQueryParams(sql)) {
       if (mode === 'run') {
         await ws.runSqlText(sql)
-        if (pick.fromSelection) ws.pushToast('info', '已运行选中语句')
+        if (pick.fromSelection) ws.pushToast('info', selectionRunDoneToast())
       } else window.alert('当前 SQL 没有 {{name}} 占位符')
       return
     }
@@ -246,7 +249,7 @@ export function EditorPane() {
     if (writeBack && !pick.fromSelection) ws.updateSql(expanded)
     if (mode === 'run') {
       void ws.runSqlText(expanded).then(() => {
-        if (pick.fromSelection) ws.pushToast('info', '已运行选中语句')
+        if (pick.fromSelection) ws.pushToast('info', selectionRunDoneToast())
       })
     }
   }
@@ -306,6 +309,9 @@ export function EditorPane() {
   )
 
   const runStatementCount = runBufferStatementCount(ws.activeEditor?.sql)
+  const selectionActive = hasEditorSelection(ws.editorSelection)
+  const runLabel = selectionRunButtonLabel(selectionActive, runStatementCount)
+  const runTitle = selectionRunButtonTitle(selectionActive, ws.editorSelection, runStatementCount)
 
   return (
     <section className="editor-pane" aria-label="SQL 编辑器">
@@ -525,12 +531,12 @@ export function EditorPane() {
           ) : (
             <button
               type="button"
-              className="btn btn-primary run-btn"
-              title={runSqlButtonTitle(runStatementCount)}
+              className={selectionActive ? 'btn btn-primary run-btn is-selection-run' : 'btn btn-primary run-btn'}
+              title={runTitle}
               onClick={() => requestRun()}
             >
               <IconPlay />
-              {runSqlButtonLabel(runStatementCount)}
+              {runLabel}
             </button>
           )
         }
@@ -565,6 +571,15 @@ export function EditorPane() {
             >
               {txnRollbackButtonLabel()}
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {selectionActive && ws.editorSelection ? (
+        <div className="selection-run-banner" role="status" aria-live="polite">
+          <div className="selection-run-banner-copy">
+            <strong>{selectionRunBannerTitle()}</strong>
+            <span>{selectionRunBannerBody(ws.editorSelection)}</span>
           </div>
         </div>
       ) : null}
