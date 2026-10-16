@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react'
 import { IconPlay, IconPlus } from './icons'
 import { ScrollTabs } from './ScrollTabs'
 import { SqlEditor } from './SqlEditor'
-import { formatCell, isNumericColumn } from '../format'
+import { ResultGrid, ResultToolbar } from './ResultGrid'
 import { useWorkspace } from '../state/workspace'
 
 export function EditorPane() {
@@ -49,8 +48,11 @@ export function ResultPane() {
           activeId={results.activeId}
           onSelect={ws.setActiveResult}
           trailing={
-            active?.kind === 'grid' ? (
-              <span className="result-count">{active.rows?.length ?? 0} 行</span>
+            active?.kind === 'grid' && active.columns ? (
+              <div className="result-trailing">
+                <span className="result-count">{active.rows?.length ?? 0} 行</span>
+                <ResultToolbar columns={active.columns} rows={active.rows ?? []} />
+              </div>
             ) : (
               <span className="result-count">输出</span>
             )
@@ -71,96 +73,5 @@ export function ResultPane() {
       )}
       {active?.kind === 'grid' && active.rows?.length === 0 && <p className="result-footnote">这条语句没有返回行。</p>}
     </section>
-  )
-}
-
-function ResultGrid({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
-  const numeric = Object.fromEntries(columns.map((column) => [column, isNumericColumn(rows, column)]))
-  const [focus, setFocus] = useState({ row: 0, col: 0 })
-
-  useEffect(() => {
-    setFocus({ row: 0, col: 0 })
-  }, [columns, rows])
-
-  const move = (rowDelta: number, colDelta: number) => {
-    setFocus((current) => ({
-      row: Math.min(Math.max(0, current.row + rowDelta), Math.max(0, rows.length - 1)),
-      col: Math.min(Math.max(0, current.col + colDelta), Math.max(0, columns.length - 1)),
-    }))
-  }
-
-  return (
-    <div
-      className="grid-wrap"
-      tabIndex={0}
-      role="grid"
-      aria-label="结果表格"
-      aria-rowcount={rows.length}
-      aria-colcount={columns.length + 1}
-      onKeyDown={(event) => {
-        if (event.key === 'ArrowDown') {
-          event.preventDefault()
-          move(1, 0)
-        } else if (event.key === 'ArrowUp') {
-          event.preventDefault()
-          move(-1, 0)
-        } else if (event.key === 'ArrowRight') {
-          event.preventDefault()
-          move(0, 1)
-        } else if (event.key === 'ArrowLeft') {
-          event.preventDefault()
-          move(0, -1)
-        } else if (event.key === 'Home') {
-          event.preventDefault()
-          setFocus((current) => ({ ...current, col: 0 }))
-        } else if (event.key === 'End') {
-          event.preventDefault()
-          setFocus((current) => ({ ...current, col: columns.length - 1 }))
-        }
-      }}
-    >
-      <table className="grid">
-        <thead>
-          <tr role="row">
-            <th className="row-index" scope="col" />
-            {columns.map((column) => (
-              <th key={column} scope="col" role="columnheader" className={numeric[column] ? 'is-number' : undefined}>
-                {column}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, rowIndex) => (
-            <tr key={rowIndex} role="row" className={focus.row === rowIndex ? 'is-active' : undefined}>
-              <th className="row-index" scope="row">
-                {rowIndex + 1}
-              </th>
-              {columns.map((column, colIndex) => {
-                const value = row[column]
-                const text = formatCell(value)
-                const focused = focus.row === rowIndex && focus.col === colIndex
-                return (
-                  <td
-                    key={column}
-                    role="gridcell"
-                    title={text}
-                    className={[
-                      numeric[column] ? 'is-number' : '',
-                      value == null ? 'is-null' : '',
-                      focused ? 'is-focused' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                  >
-                    {text}
-                  </td>
-                )
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   )
 }

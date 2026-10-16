@@ -1,5 +1,6 @@
 import type { DesktopApi } from '@shared/contract'
 import { connectionErrorNode } from '@shared/schema'
+import { draftAlterTable, draftCreateTable } from '@shared/ddlDraft'
 import { draftLocalAnswer, SAMPLE_CONNECTION_ID, SAMPLE_CONNECTION_NAME } from '@shared/session'
 import { splitSql } from '@shared/sql'
 import { dialectInfo } from '@shared/types'
@@ -243,6 +244,9 @@ export function createPreviewApi(): DesktopApi {
     },
     sql: {
       execute: async ({ sql }) => splitSql(sql).map((statement) => previewRows(statement)),
+      updateSqliteCell: async () => {
+        throw new Error('预览模式不支持改单元格')
+      },
     },
     redis: {
     scan: async () => [
@@ -287,11 +291,24 @@ export function createPreviewApi(): DesktopApi {
         }
         for (const listener of listeners) listener({ requestId, type: 'done', mode: 'preview' })
       },
-      start: async ({ requestId, prompt }) => {
+      start: async ({ requestId, prompt, intent, referenceTable, targetTable }) => {
         for (const listener of listeners) {
-          listener({ requestId, type: 'progress', mode: 'preview', step: 'search_relevant_tables', detail: '本地预览检索' })
+          listener({
+            requestId,
+            type: 'progress',
+            mode: 'preview',
+            step: intent === 'create' ? '本地建表预览' : intent === 'alter' ? '本地改表预览' : 'search_relevant_tables',
+            detail: referenceTable || targetTable || '本地预览',
+          })
         }
-        const text = draftLocalAnswer(prompt)
+        let text = draftLocalAnswer(prompt)
+        if (intent === 'create') {
+          const sql = draftCreateTable({ prompt, dialect: 'sqlite' })
+          text = `按示例库风格起草建表语句。\n\n\`\`\`sql\n${sql}\n\`\`\``
+        } else if (intent === 'alter') {
+          const sql = draftAlterTable({ prompt, dialect: 'sqlite', table: targetTable || 'customers' })
+          text = `请确认改表语句。\n\n\`\`\`sql\n${sql}\n\`\`\``
+        }
         const chunks = text.match(/.{1,3}/gs) ?? [text]
         for (const delta of chunks) {
           await new Promise((resolve) => setTimeout(resolve, 16))

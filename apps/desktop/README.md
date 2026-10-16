@@ -1,17 +1,16 @@
 # DataAI Desktop (TypeScript)
 
-Electron + React + Vite 桌面端。Milestone 3：
+Electron + React + Vite。Milestone 4：
 
-- 助手工具链：`search_relevant_tables` / `get_table_schema` / `get_column_enums`，深色卡片进度，SQL 失败自动修复
-- Redis：连接、SCAN、string/hash/list/zset/set 深色浏览面板，对象树 Redis 徽章
-- 无 API Key 时示例 SQLite 仍可本地预览
+- AI 建表 / 改表（深色卡片多轮、参考表风格、一键执行、失败修复）
+- 结果表：CSV/JSON 导出、复制、SQLite 确认后单元格编辑
+- 保留 M3：助手工具链 + Redis 浏览器
 
 ## 开发
 
 ```bash
 cd apps/desktop
-npm install --ignore-scripts   # Windows 若无 VS Build Tools，跳过 electron-rebuild
-npm run rebuild:native         # 有 VS 时再编 better-sqlite3
+npm install --ignore-scripts
 npm run dev
 ```
 
@@ -23,4 +22,4 @@ npm run typecheck
 npm run smoke
 ```
 
-版本：0.3.0
+版本：0.4.0

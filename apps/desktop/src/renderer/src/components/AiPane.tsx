@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { parseBlocks } from '@shared/sql'
+import { parseBlocks, extractSql } from '@shared/sql'
 import { ASSISTANT_PROMPTS } from '@shared/session'
+import { ALTER_PROMPTS, CREATE_PROMPTS } from '@shared/ddlDraft'
+import type { AiIntent } from '@shared/types'
 import { IconSend, IconSpark } from './icons'
 import { useWorkspace } from '../state/workspace'
+
+const INTENT_LABEL: Record<AiIntent, string> = {
+  query: '查询',
+  create: '建表',
+  alter: '改表',
+}
 
 export function AiPane() {
   const ws = useWorkspace()
@@ -16,6 +24,9 @@ export function AiPane() {
     el.scrollTop = el.scrollHeight
   }, [ws.aiTurns, ws.aiStreaming])
 
+  const prompts =
+    ws.aiIntent === 'create' ? CREATE_PROMPTS : ws.aiIntent === 'alter' ? ALTER_PROMPTS : ASSISTANT_PROMPTS
+
   const submit = () => {
     const text = draft.trim()
     if (!text) return
@@ -28,7 +39,7 @@ export function AiPane() {
       <div className="ai-head">
         <div>
           <p className="ai-kicker">助手</p>
-          <h2>自然语言转 SQL</h2>
+          <h2>{ws.aiIntent === 'create' ? 'AI 建表' : ws.aiIntent === 'alter' ? 'AI 改表' : '自然语言转 SQL'}</h2>
         </div>
         <button
           type="button"
@@ -39,17 +50,70 @@ export function AiPane() {
           {ws.settings?.hasKey ? '模型已就绪' : '本地预览'}
         </button>
       </div>
+
+      <div className="intent-tabs" role="tablist" aria-label="助手模式">
+        {(['query', 'create', 'alter'] as AiIntent[]).map((intent) => (
+          <button
+            key={intent}
+            type="button"
+            role="tab"
+            aria-selected={ws.aiIntent === intent}
+            className={ws.aiIntent === intent ? 'intent is-active' : 'intent'}
+            onClick={() => ws.setAiIntent(intent)}
+          >
+            {INTENT_LABEL[intent]}
+          </button>
+        ))}
+      </div>
+
+      {ws.aiIntent === 'create' && (
+        <label className="ai-select">
+          <span>参考表风格</span>
+          <select value={ws.referenceTable} onChange={(event) => ws.setReferenceTable(event.target.value)}>
+            <option value="">自动推断</option>
+            {ws.tableNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {ws.aiIntent === 'alter' && (
+        <label className="ai-select">
+          <span>目标表</span>
+          <select value={ws.targetTable} onChange={(event) => ws.setTargetTable(event.target.value)}>
+            <option value="">从描述推断</option>
+            {ws.tableNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       {settingsOpen && <SettingsCard onClose={() => setSettingsOpen(false)} />}
       <div className="ai-scroll" ref={scroller}>
         {ws.aiTurns.length === 0 && (
           <article className="card">
             <p className="card-kicker">从当前库开始</p>
-            <h3>用一句话描述要看的数据</h3>
+            <h3>
+              {ws.aiIntent === 'create'
+                ? '描述要建的表'
+                : ws.aiIntent === 'alter'
+                  ? '描述要改的字段'
+                  : '用一句话描述要看的数据'}
+            </h3>
             <p className="card-body">
-              助手会先检索相关表、读取字段，再起草 SQL。语句先留在深色卡片里，确认后再写入编辑器。
+              {ws.aiIntent === 'create'
+                ? '助手会参考现有表风格起草 CREATE TABLE，确认后可一键执行。'
+                : ws.aiIntent === 'alter'
+                  ? '助手先给出 ALTER TABLE 预览，确认后再执行；失败会尝试修复。'
+                  : '助手会先检索相关表、读取字段，再起草 SQL。'}
             </p>
             <div className="chips">
-              {ASSISTANT_PROMPTS.map((prompt) => (
+              {prompts.map((prompt) => (
                 <button key={prompt} type="button" className="chip" onClick={() => void ws.sendAi(prompt)}>
                   {prompt}
                 </button>
@@ -68,7 +132,7 @@ export function AiPane() {
               <p className="card-kicker">
                 <IconSpark />
                 {turn.mode === 'model' ? '模型' : '本地预览'}
-                {turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming ? ' · 工具链运行中' : ''}
+                {turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming ? ' · 进行中' : ''}
               </p>
               {turn.steps && turn.steps.length > 0 && (
                 <ul className="ai-steps">
@@ -95,8 +159,10 @@ export function AiPane() {
         <textarea
           value={draft}
           rows={3}
-          placeholder="描述想看的数据，Enter 发送"
-          aria-label="向助手描述查询"
+          placeholder={
+            ws.aiIntent === 'create' ? '描述新表…' : ws.aiIntent === 'alter' ? '描述改表…' : '描述想看的数据，Enter 发送'
+          }
+          aria-label="向助手描述需求"
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -121,7 +187,7 @@ export function AiPane() {
 
 function AssistantBody({ content, streaming }: { content: string; streaming: boolean }) {
   const ws = useWorkspace()
-  if (!content && streaming) return <p className="card-body dim">正在检索表结构…</p>
+  if (!content && streaming) return <p className="card-body dim">正在处理…</p>
   const blocks = parseBlocks(content)
   if (blocks.length === 0) return content ? <p className="card-body">{content}</p> : null
   return (
@@ -135,11 +201,23 @@ function AssistantBody({ content, streaming }: { content: string; streaming: boo
           <div key={index} className="sql-block">
             <div className="sql-block-bar">
               <span>SQL</span>
-              {block.closed && (
-                <button type="button" onClick={() => ws.applySql(block.text)}>
-                  写入编辑器
-                </button>
-              )}
+              <div className="sql-block-actions">
+                {block.closed && (
+                  <button type="button" onClick={() => ws.applySql(block.text)}>
+                    写入编辑器
+                  </button>
+                )}
+                {block.closed && (
+                  <button
+                    type="button"
+                    className="is-primary"
+                    disabled={ws.running}
+                    onClick={() => void ws.executeAiSql(block.text)}
+                  >
+                    {ws.aiIntent === 'alter' ? '确认执行' : '一键执行'}
+                  </button>
+                )}
+              </div>
             </div>
             <pre>
               {block.text}
@@ -147,6 +225,9 @@ function AssistantBody({ content, streaming }: { content: string; streaming: boo
             </pre>
           </div>
         ),
+      )}
+      {extractSql(content) && !streaming && ws.aiIntent !== 'query' && (
+        <p className="card-footnote">DDL 会直接改库结构，执行前请再看一眼。</p>
       )}
     </div>
   )

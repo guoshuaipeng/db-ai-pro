@@ -10,6 +10,7 @@ import { SAMPLE_CONNECTION_ID, SAMPLE_CONNECTION_NAME } from '@shared/session'
 import type { AiEvent, AiSettingsInput, ConnectionInput, SchemaNode, WorkspaceState } from '@shared/types'
 import { canInspect, dialectInfo, isKvDialect } from '@shared/types'
 import { streamAnswer, streamRepair } from './ai'
+import { streamAlterTable, streamCreateTable } from './aiDdl'
 import { explainDbError } from './errors'
 import { ensureParent, seedRetailDatabase } from './sampleDb'
 import { encryptionAvailable } from './secrets'
@@ -218,6 +219,36 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
   })
 
   ipcMain.handle(
+    'sql:updateSqliteCell',
+    async (
+      _event,
+      payload: { connectionId: string; table: string; rowid: number; column: string; value: string | number | null },
+    ) => {
+      const row = getConnection(payload.connectionId)
+      if (!row) return { error: '连接不存在' }
+      if (row.dialect !== 'sqlite') return { error: '仅 SQLite 支持结果格内编辑' }
+      if (!/^[A-Za-z_][\w]*$/.test(payload.table) || !/^[A-Za-z_][\w]*$/.test(payload.column)) {
+        return { error: '表名或列名不合法' }
+      }
+      if (payload.column === '__rowid__' || payload.column.toLowerCase() === 'rowid') {
+        return { error: '不能编辑 rowid' }
+      }
+      try {
+        const valueSql =
+          payload.value === null
+            ? 'NULL'
+            : typeof payload.value === 'number'
+              ? String(payload.value)
+              : `'${String(payload.value).replace(/'/g, "''")}'`
+        const sql = `UPDATE "${payload.table.replace(/"/g, '""')}" SET "${payload.column.replace(/"/g, '""')}" = ${valueSql} WHERE rowid = ${Number(payload.rowid)}`
+        return { results: await executeSession(targetFromStored(row), sql) }
+      } catch (error) {
+        return { error: explainDbError(error) }
+      }
+    },
+  )
+
+  ipcMain.handle(
     'redis:scan',
     async (_event, payload: { connectionId: string; pattern?: string; count?: number }) => {
       const row = getConnection(payload.connectionId)
@@ -271,16 +302,61 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
 
   ipcMain.handle(
     'ai:start',
-    async (_event, payload: { requestId: string; connectionId: string | null; prompt: string }) => {
+    async (
+      _event,
+      payload: {
+        requestId: string
+        connectionId: string | null
+        prompt: string
+        intent?: 'query' | 'create' | 'alter'
+        referenceTable?: string
+        targetTable?: string
+        history?: string
+      },
+    ) => {
       await runAi(payload, async (send, signal) => {
         const row = payload.connectionId ? getConnection(payload.connectionId) : undefined
         const tables = await loadTables(payload.connectionId)
         const settings = settingsSecrets()
+        const dialect = row?.dialect ?? 'sqlite'
+        const intent = payload.intent ?? 'query'
+        if (intent === 'create') {
+          await streamCreateTable({
+            requestId: payload.requestId,
+            prompt: payload.prompt,
+            tables,
+            dialect,
+            referenceTable: payload.referenceTable,
+            history: payload.history,
+            baseUrl: settings.baseUrl,
+            model: settings.model,
+            apiKey: settings.apiKey,
+            signal,
+            send,
+          })
+          return
+        }
+        if (intent === 'alter') {
+          await streamAlterTable({
+            requestId: payload.requestId,
+            prompt: payload.prompt,
+            tables,
+            dialect,
+            targetTable: payload.targetTable,
+            history: payload.history,
+            baseUrl: settings.baseUrl,
+            model: settings.model,
+            apiKey: settings.apiKey,
+            signal,
+            send,
+          })
+          return
+        }
         await streamAnswer({
           requestId: payload.requestId,
           prompt: payload.prompt,
           tables,
-          dialect: row?.dialect ?? 'sqlite',
+          dialect,
           baseUrl: settings.baseUrl,
           model: settings.model,
           apiKey: settings.apiKey,

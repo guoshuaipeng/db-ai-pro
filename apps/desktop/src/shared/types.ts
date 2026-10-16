@@ -107,6 +107,8 @@ export type AiSettingsPublic = {
   encryption: 'os' | 'unavailable'
 }
 
+export type AiIntent = 'query' | 'create' | 'alter'
+
 export type AiSettingsInput = {
   baseUrl: string
   model: string

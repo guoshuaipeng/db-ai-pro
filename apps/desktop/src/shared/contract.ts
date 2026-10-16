@@ -1,5 +1,6 @@
 import type {
   AiEvent,
+  AiIntent,
   AiSettingsInput,
   AiSettingsPublic,
   AppMeta,
@@ -25,6 +26,13 @@ export type DesktopApi = {
   }
   sql: {
     execute: (payload: { connectionId: string; sql: string }) => Promise<StatementResult[]>
+    updateSqliteCell: (payload: {
+      connectionId: string
+      table: string
+      rowid: number
+      column: string
+      value: string | number | null
+    }) => Promise<StatementResult[]>
   }
   redis: {
     scan: (payload: { connectionId: string; pattern?: string; count?: number }) => Promise<RedisKeyInfo[]>
@@ -33,7 +41,15 @@ export type DesktopApi = {
   ai: {
     getSettings: () => Promise<AiSettingsPublic>
     saveSettings: (input: AiSettingsInput) => Promise<AiSettingsPublic>
-    start: (payload: { requestId: string; connectionId: string | null; prompt: string }) => Promise<void>
+    start: (payload: {
+      requestId: string
+      connectionId: string | null
+      prompt: string
+      intent?: AiIntent
+      referenceTable?: string
+      targetTable?: string
+      history?: string
+    }) => Promise<void>
     repair: (payload: {
       requestId: string
       connectionId: string | null

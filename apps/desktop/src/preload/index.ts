@@ -31,6 +31,11 @@ const api: DesktopApi = {
       if (result?.error) throw new Error(result.error)
       return result.results
     },
+    updateSqliteCell: async (payload) => {
+      const result = await ipcRenderer.invoke('sql:updateSqliteCell', payload)
+      if (result?.error) throw new Error(result.error)
+      return result.results
+    },
   },
   redis: {
     scan: async (payload) => {

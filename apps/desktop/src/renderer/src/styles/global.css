@@ -875,3 +875,80 @@ button:disabled { cursor: default; opacity: 0.45; }
   .redis-grid { grid-template-columns: 1fr; }
   .redis-head { flex-direction: column; align-items: stretch; }
 }
+
+
+.intent-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 0 14px 8px;
+}
+.intent {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  color: #b7c0d0;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.intent.is-active {
+  color: #f4f7ff;
+  background: rgba(110, 168, 255, 0.16);
+  border-color: rgba(110, 168, 255, 0.4);
+}
+.ai-select {
+  display: grid;
+  gap: 4px;
+  padding: 0 14px 10px;
+  font-size: 12px;
+  color: #9aa3b5;
+}
+.ai-select select {
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(0,0,0,0.25);
+  color: #e8edf7;
+  padding: 0 10px;
+}
+.sql-block-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.sql-block-bar button.is-primary {
+  color: #dceaff;
+}
+.card-footnote {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #8b93a7;
+}
+.result-trailing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.result-tools {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+.tiny-btn {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.cell-editor {
+  width: 100%;
+  min-width: 72px;
+  border: 1px solid rgba(110, 168, 255, 0.5);
+  background: rgba(0,0,0,0.35);
+  color: #f4f7ff;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font: inherit;
+}

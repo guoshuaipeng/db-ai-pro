@@ -10,10 +10,11 @@ import {
 } from 'react'
 import { getApi } from '../bridge'
 import { connectionErrorNode } from '@shared/schema'
-import { changesSchema, identStyle, selectAll, statementTitle } from '@shared/sql'
+import { changesSchema, identStyle, selectAll, selectAllWithRowid, statementTitle } from '@shared/sql'
 import { INITIAL_TABS } from '@shared/session'
 import { filterNodes } from '@shared/tree'
 import { isKvDialect } from '@shared/types'
+import type { AiIntent } from '@shared/types'
 import type {
   AiSettingsPublic,
   AiTurnState,
@@ -71,7 +72,15 @@ type WorkspaceValue = {
   setCursor: (cursor: { line: number; column: number }) => void
   aiTurns: AiTurnState[]
   aiStreaming: boolean
+  aiIntent: AiIntent
+  setAiIntent: (intent: AiIntent) => void
+  referenceTable: string
+  setReferenceTable: (table: string) => void
+  targetTable: string
+  setTargetTable: (table: string) => void
+  tableNames: string[]
   sendAi: (text?: string) => Promise<void>
+  executeAiSql: (sql: string) => Promise<void>
   repairAi: (sql: string, error: string) => Promise<void>
   cancelAi: () => void
   applySql: (sql: string) => void
@@ -165,6 +174,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [cursor, setCursor] = useState({ line: 1, column: 1 })
   const [aiTurns, setAiTurns] = useState<AiTurnState[]>([])
   const [aiStreaming, setAiStreaming] = useState(false)
+  const [aiIntent, setAiIntent] = useState<AiIntent>('query')
+  const [referenceTable, setReferenceTable] = useState('')
+  const [targetTable, setTargetTable] = useState('')
   const [settings, setSettings] = useState<AiSettingsPublic | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [dialog, setDialog] = useState<DialogState>(null)
@@ -349,8 +361,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
     const dialect = node.dialect ?? connections.find((item) => item.id === node.connectionId)?.dialect ?? 'sqlite'
     const id = crypto.randomUUID()
-    setEditorTabs((tabs) => [...tabs, { id, title, sql: selectAll(node.tableName!, identStyle(dialect)) }])
+    const sql = dialect === 'sqlite' ? selectAllWithRowid(node.tableName!) : selectAll(node.tableName!, identStyle(dialect))
+    setEditorTabs((tabs) => [...tabs, { id, title, sql }])
     setActiveEditorId(id)
+    if (dialect !== 'redis') setTargetTable(node.tableName!)
   }
 
   const updateSql = (sql: string) => {
@@ -415,6 +429,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const tableNames = useMemo(() => {
+    const names: string[] = []
+    const walk = (nodes: SchemaNode[]) => {
+      for (const node of nodes) {
+        if (node.kind === 'table' && node.tableName) names.push(node.tableName)
+        if (node.children) walk(node.children)
+      }
+    }
+    walk(schema)
+    return names
+  }, [schema])
+
   const sendAi = async (text?: string) => {
     const prompt = (text ?? '').trim()
     if (!prompt || aiStreaming) return
@@ -422,16 +448,62 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     requestRef.current = requestId
     setAiOpen(true)
     setAiStreaming(true)
+    const history = aiTurns
+      .slice(-6)
+      .map((turn) => `${turn.role === 'user' ? '用户' : '助手'}: ${turn.content.slice(0, 240)}`)
+      .join('\n')
     setAiTurns((turns) => [
       ...turns,
       { id: `${requestId}:user`, role: 'user', content: prompt },
       { id: requestId, role: 'assistant', content: '', mode: settings?.hasKey ? 'model' : 'preview', steps: [] },
     ])
     try {
-      await api.ai.start({ requestId, connectionId: activeConnectionId, prompt })
+      await api.ai.start({
+        requestId,
+        connectionId: activeConnectionId,
+        prompt,
+        intent: aiIntent,
+        referenceTable: referenceTable || undefined,
+        targetTable: targetTable || undefined,
+        history,
+      })
     } catch (error) {
       setAiStreaming(false)
       pushToast('error', error instanceof Error ? error.message : '助手没有完成这次起草')
+    }
+  }
+
+  const executeAiSql = async (sql: string) => {
+    if (!activeConnection) {
+      pushToast('info', '先选择一个连接')
+      return
+    }
+    if (isKvDialect(activeConnection.dialect)) {
+      pushToast('info', 'Redis 不支持执行 SQL')
+      return
+    }
+    applySql(sql)
+    setRunning(true)
+    try {
+      const statements = await api.sql.execute({ connectionId: activeConnection.id, sql })
+      const next = resultsFrom(statements)
+      if (activeEditor) setResultMap((current) => ({ ...current, [activeEditor.id]: next }))
+      const failed = statements.find((statement) => !statement.ok)
+      if (failed) {
+        pushToast('error', failed.error ?? '执行失败')
+        void repairAi(failed.statement || sql, failed.error ?? '执行失败')
+      } else {
+        pushToast('success', '已执行')
+        if (statements.some((statement) => statement.ok && changesSchema(statement.statement))) {
+          const rows = await api.connections.list()
+          setConnections(rows)
+          await refreshSchema(rows, activeConnection.id)
+        }
+      }
+    } catch (error) {
+      pushToast('error', error instanceof Error ? error.message : '执行失败')
+    } finally {
+      setRunning(false)
     }
   }
 
@@ -533,7 +605,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setCursor,
     aiTurns,
     aiStreaming,
+    aiIntent,
+    setAiIntent,
+    referenceTable,
+    setReferenceTable,
+    targetTable,
+    setTargetTable,
+    tableNames,
     sendAi,
+    executeAiSql,
     repairAi,
     cancelAi,
     applySql,

@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — SQL + Redis browser + AI tool loop",
+  "description": "DataAI TypeScript desktop — AI create/alter table + results polish",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

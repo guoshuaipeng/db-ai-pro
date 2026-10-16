@@ -81,6 +81,15 @@ export function selectAll(table: string, style: IdentStyle = 'ansi'): string {
   return `SELECT *\nFROM ${quoteIdent(table, style)}\nLIMIT 200;`
 }
 
+export function selectAllWithRowid(table: string): string {
+  return `SELECT rowid AS __rowid__, *\nFROM ${quoteIdent(table, 'ansi')}\nLIMIT 200;`
+}
+
+export function inferSqliteTable(sql: string): string | null {
+  const match = sql.match(/\bfrom\s+["'`]?([a-zA-Z_][\w]*)["'`]?/i)
+  return match?.[1] ?? null
+}
+
 export function changesSchema(sql: string): boolean {
   const stripped = sql.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')
   return /^\s*(create|drop|alter|rename|truncate)\b/i.test(stripped)
