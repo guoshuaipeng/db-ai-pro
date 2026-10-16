@@ -7,6 +7,8 @@ export type SampleFillPlan = {
   dialect: Dialect
   count: number
   columns: string[]
+  /** Auto-increment / identity PKs omitted from INSERT. */
+  skippedColumns: string[]
   rows: Record<string, unknown>[]
   sql: string
 }
@@ -119,6 +121,9 @@ export function generateSampleFill(input: {
   const rand = mulberry32(input.seed ?? 14)
   const style = identStyle(input.dialect)
   const quote = (name: string) => quoteIdent(name, style)
+  const skippedColumns = input.columns
+    .filter((column) => omitForDialect(column, input.dialect))
+    .map((column) => column.name)
   const usable = input.columns.filter((column) => !omitForDialect(column, input.dialect))
   const columns = (usable.length ? usable : input.columns).map((column) => column.name)
 
@@ -143,6 +148,7 @@ export function generateSampleFill(input: {
     dialect: input.dialect,
     count,
     columns,
+    skippedColumns,
     rows,
     sql: statements.join('\n'),
   }

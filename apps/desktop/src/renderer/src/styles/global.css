@@ -3068,6 +3068,43 @@ body.is-col-resizing .grid-col-resizer {
   border: 1px solid rgba(148, 163, 184, 0.14);
 }
 .sample-sql { max-height: 220px; }
+
+.sample-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 8px;
+}
+.sample-preset {
+  appearance: none;
+  border: 1px solid var(--hairline, #2a3142);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink-secondary);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.sample-preset:hover {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent, #9eb4ff) 40%, transparent);
+}
+.sample-preset.is-active {
+  color: var(--ink);
+  background: var(--accent-soft, rgba(158, 180, 255, 0.14));
+  border-color: color-mix(in srgb, var(--accent, #9eb4ff) 45%, transparent);
+}
+.sample-preview-note {
+  margin: 0 0 6px;
+  font-size: 11.5px;
+  color: var(--ink-tertiary);
+}
+.sample-skipped {
+  color: var(--ink-tertiary);
+}
+
 .sample-actions { padding: 12px 18px 16px; border-top: 1px solid rgba(148, 163, 184, 0.12); }
 
 .stats-panel {

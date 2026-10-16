@@ -14,6 +14,7 @@ describe('generateSampleFill', () => {
     const plan = generateSampleFill({ tableName: 'orders', dialect: 'sqlite', columns, count: 3, seed: 1 })
     expect(plan.count).toBe(3)
     expect(plan.columns).not.toContain('id')
+    expect(plan.skippedColumns).toContain('id')
     expect(plan.sql).toMatch(/^INSERT INTO "orders"/m)
     expect(plan.sql.split('\n')).toHaveLength(3)
     expect(plan.rows[0]?.email === null || String(plan.rows[0]?.email).includes('@')).toBe(true)
