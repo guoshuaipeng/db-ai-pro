@@ -2,14 +2,17 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 type TabItem = {
   id: string
+  /** Display label (may include dirty • prefix). */
   label: string
+  /** Raw title used for inline rename (no dirty prefix). */
+  editTitle?: string
   /** Optional muted badge, e.g. disconnected connection */
   badge?: string
   tone?: 'warn' | 'muted'
   pinned?: boolean
 }
 
-export type TabContextAction = 'pin' | 'unpin' | 'close' | 'close-others' | 'close-right'
+export type TabContextAction = 'pin' | 'unpin' | 'rename' | 'close' | 'close-others' | 'close-right'
 
 type ScrollTabsProps = {
   label: string
@@ -18,6 +21,7 @@ type ScrollTabsProps = {
   onSelect: (id: string) => void
   onClose?: (id: string) => void
   onContextAction?: (id: string, action: TabContextAction) => void
+  onRename?: (id: string, title: string) => void
   trailing?: ReactNode
 }
 
@@ -30,11 +34,16 @@ export function ScrollTabs({
   onSelect,
   onClose,
   onContextAction,
+  onRename,
   trailing,
 }: ScrollTabsProps) {
   const scroller = useRef<HTMLDivElement>(null)
+  const renameInputRef = useRef<HTMLInputElement>(null)
   const [overflow, setOverflow] = useState({ left: false, right: false })
   const [menu, setMenu] = useState<MenuState>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+  const skipBlurCommit = useRef(false)
 
   const measure = () => {
     const el = scroller.current
@@ -88,6 +97,14 @@ export function ScrollTabs({
     }
   }, [menu])
 
+  useEffect(() => {
+    if (!editingId) return
+    const input = renameInputRef.current
+    if (!input) return
+    input.focus()
+    input.select()
+  }, [editingId])
+
   const move = (direction: -1 | 1) => {
     const el = scroller.current
     if (!el) return
@@ -104,8 +121,39 @@ export function ScrollTabs({
     })
   }
 
+  const beginRename = (tab: TabItem) => {
+    if (!onRename) return
+    setMenu(null)
+    onSelect(tab.id)
+    setDraft(tab.editTitle ?? tab.label)
+    setEditingId(tab.id)
+  }
+
+  const cancelRename = () => {
+    skipBlurCommit.current = true
+    setEditingId(null)
+    setDraft('')
+  }
+
+  const commitRename = () => {
+    if (!editingId || !onRename) {
+      setEditingId(null)
+      return
+    }
+    const id = editingId
+    const value = draft
+    setEditingId(null)
+    setDraft('')
+    onRename(id, value)
+  }
+
   const runAction = (id: string, action: TabContextAction) => {
     setMenu(null)
+    if (action === 'rename') {
+      const tab = tabs.find((row) => row.id === id)
+      if (tab) beginRename(tab)
+      return
+    }
     onContextAction?.(id, action)
   }
 
@@ -129,10 +177,12 @@ export function ScrollTabs({
       >
         {tabs.map((tab) => {
           const selected = tab.id === activeId
+          const renaming = editingId === tab.id
           const tabClass = [
             'tab',
             selected ? 'is-active' : '',
             tab.pinned ? 'is-pinned' : '',
+            renaming ? 'is-renaming' : '',
           ]
             .filter(Boolean)
             .join(' ')
@@ -142,42 +192,87 @@ export function ScrollTabs({
               className={tabClass}
               role="presentation"
               onContextMenu={(event) => {
-                if (!onContextAction) return
+                if (!onContextAction && !onRename) return
                 event.preventDefault()
+                if (renaming) return
                 onSelect(tab.id)
                 setMenu({ id: tab.id, x: event.clientX, y: event.clientY })
               }}
             >
-              <button
-                type="button"
-                role="tab"
-                data-tab={tab.id}
-                className="tab-main"
-                aria-selected={selected}
-                title={tab.pinned ? `${tab.label}（已固定）` : tab.label}
-                onClick={() => onSelect(tab.id)}
-                onKeyDown={(event) => {
-                  if (event.key === 'ArrowRight') {
+              {renaming ? (
+                <div className="tab-main is-editing" role="tab" aria-selected={selected} data-tab={tab.id}>
+                  {tab.pinned && (
+                    <span className="tab-pin" aria-hidden="true">
+                      <PinIcon />
+                    </span>
+                  )}
+                  <input
+                    ref={renameInputRef}
+                    className="tab-rename-input"
+                    value={draft}
+                    aria-label="重命名标签"
+                    maxLength={64}
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        commitRename()
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault()
+                        cancelRename()
+                      }
+                      event.stopPropagation()
+                    }}
+                    onBlur={() => {
+                      if (skipBlurCommit.current) {
+                        skipBlurCommit.current = false
+                        return
+                      }
+                      commitRename()
+                    }}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  role="tab"
+                  data-tab={tab.id}
+                  className="tab-main"
+                  aria-selected={selected}
+                  title={tab.pinned ? `${tab.label}（已固定）· 双击重命名` : `${tab.label} · 双击重命名`}
+                  onClick={() => onSelect(tab.id)}
+                  onDoubleClick={(event) => {
                     event.preventDefault()
-                    focusSibling(tab.id, 1)
-                  }
-                  if (event.key === 'ArrowLeft') {
-                    event.preventDefault()
-                    focusSibling(tab.id, -1)
-                  }
-                }}
-              >
-                {tab.pinned && (
-                  <span className="tab-pin" aria-hidden="true">
-                    <PinIcon />
-                  </span>
-                )}
-                <span className="tab-label">{tab.label}</span>
-                {tab.badge && (
-                  <span className={tab.tone === 'warn' ? 'tab-badge is-warn' : 'tab-badge'}>{tab.badge}</span>
-                )}
-              </button>
-              {onClose && (
+                    beginRename(tab)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'ArrowRight') {
+                      event.preventDefault()
+                      focusSibling(tab.id, 1)
+                    }
+                    if (event.key === 'ArrowLeft') {
+                      event.preventDefault()
+                      focusSibling(tab.id, -1)
+                    }
+                    if (event.key === 'F2' && onRename) {
+                      event.preventDefault()
+                      beginRename(tab)
+                    }
+                  }}
+                >
+                  {tab.pinned && (
+                    <span className="tab-pin" aria-hidden="true">
+                      <PinIcon />
+                    </span>
+                  )}
+                  <span className="tab-label">{tab.label}</span>
+                  {tab.badge && (
+                    <span className={tab.tone === 'warn' ? 'tab-badge is-warn' : 'tab-badge'}>{tab.badge}</span>
+                  )}
+                </button>
+              )}
+              {onClose && !renaming && (
                 <button
                   type="button"
                   className="tab-close"
@@ -197,31 +292,42 @@ export function ScrollTabs({
         </button>
       )}
       {trailing}
-      {menu && menuTab && onContextAction && (
+      {menu && menuTab && (onContextAction || onRename) && (
         <div
           className="tab-context-menu"
           role="menu"
           style={{ left: menu.x, top: menu.y }}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => runAction(menuTab.id, menuTab.pinned ? 'unpin' : 'pin')}
-          >
-            {menuTab.pinned ? '取消固定' : '固定'}
-          </button>
+          {onRename && (
+            <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'rename')}>
+              重命名
+            </button>
+          )}
+          {onContextAction && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => runAction(menuTab.id, menuTab.pinned ? 'unpin' : 'pin')}
+            >
+              {menuTab.pinned ? '取消固定' : '固定'}
+            </button>
+          )}
           {onClose && (
             <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'close')}>
               关闭
             </button>
           )}
-          <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'close-others')}>
-            关闭其他
-          </button>
-          <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'close-right')}>
-            关闭右侧
-          </button>
+          {onContextAction && (
+            <>
+              <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'close-others')}>
+                关闭其他
+              </button>
+              <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'close-right')}>
+                关闭右侧
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

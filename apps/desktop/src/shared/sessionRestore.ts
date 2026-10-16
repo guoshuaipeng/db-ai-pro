@@ -1,6 +1,7 @@
 import type { EditorTabState } from './types'
 import { normalizeBrowseState } from './tablePaging'
 import { sortPinnedFirst } from './tabPin'
+import { sanitizeTabTitle } from './tabTitle'
 
 /** Max query tabs persisted / restored. */
 export const SESSION_TAB_CAP = 20
@@ -23,7 +24,7 @@ export function normalizeSessionTab(raw: unknown): EditorTabState | null {
   const pinned = row.pinned === true
   return {
     id: row.id.trim(),
-    title: row.title.trim() || '查询',
+    title: sanitizeTabTitle(row.title),
     sql: row.sql,
     connectionId,
     ...(browse ? { browse } : {}),

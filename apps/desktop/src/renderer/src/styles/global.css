@@ -560,6 +560,32 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
 .tab-context-menu button:hover {
   background: rgba(148, 163, 184, 0.12);
 }
+
+.tab.is-renaming {
+  min-width: 96px;
+}
+.tab-main.is-editing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  min-height: 28px;
+  flex: 1 1 auto;
+}
+.tab-rename-input {
+  width: 110px;
+  max-width: 160px;
+  margin: 0;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(129, 140, 248, 0.55);
+  background: #0b1220;
+  color: #f8fafc;
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
 .tab-close {
   width: 22px;
   height: 22px;

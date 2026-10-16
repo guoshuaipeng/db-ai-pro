@@ -30,6 +30,7 @@ import {
   sortPinnedFirst,
   togglePinnedFlag,
 } from '@shared/tabPin'
+import { sanitizeTabTitle } from '@shared/tabTitle'
 import { countTreeNodes, extrasFromConnections, filterNodes } from '@shared/tree'
 import { dialectInfo, isKvDialect } from '@shared/types'
 import { buildConnHealth, type ConnHealth } from '@shared/connHealth'
@@ -186,6 +187,7 @@ type WorkspaceValue = {
   togglePinTab: (id: string) => void
   closeOtherTabs: (id: string) => void
   closeTabsToRight: (id: string) => void
+  renameTab: (id: string, title: string) => void
   results: ResultState | null
   setActiveResult: (id: string) => void
   running: boolean
@@ -1158,6 +1160,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     closeTabsBatch(closeToRightTargets(editorTabs, id), '关闭右侧标签？')
   }
 
+  const renameTab = (id: string, title: string) => {
+    setEditorTabs((tabs) =>
+      tabs.map((tab) => {
+        if (tab.id !== id) return tab
+        return { ...tab, title: sanitizeTabTitle(title, tab.title) }
+      }),
+    )
+  }
+
+
   const confirmIfDestructive = async (sql: string): Promise<boolean> => {
     if (skipDestructiveRef.current) return true
     const analysis = analyzeDestructiveSql(sql)
@@ -2032,6 +2044,7 @@ ${sql.trim()}
     togglePinTab,
     closeOtherTabs,
     closeTabsToRight,
+    renameTab,
     results: activeEditor ? (resultMap[activeEditor.id] ?? null) : null,
     setActiveResult: (id) => {
       if (!activeEditor) return

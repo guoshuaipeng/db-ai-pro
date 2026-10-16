@@ -47,6 +47,11 @@ describe('sessionRestore', () => {
     expect(pickActiveEditorId(tabs, 'missing')).toBe('a')
   })
 
+  it('sanitizes empty title on restore', () => {
+    const tabs = normalizeSessionTabs([{ id: 'x', title: '   ', sql: '1' }])
+    expect(tabs[0].title).toBe('查询')
+  })
+
   it('persists pinned and sorts left; strips baselineSql', () => {
     const tabs = normalizeSessionTabs([
       { id: 'a', title: 'A', sql: '1', baselineSql: '1' },

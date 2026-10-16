@@ -115,6 +115,7 @@ export function EditorPane() {
         tabs={ws.editorTabs.map((tab) => ({
           id: tab.id,
           label: tabTitleWithDirty(tab.title, isTabDirty(tab)),
+          editTitle: tab.title,
           badge: ws.tabDisconnected(tab) ? '断开' : undefined,
           tone: ws.tabDisconnected(tab) ? ('warn' as const) : undefined,
           pinned: tab.pinned === true,
@@ -122,6 +123,7 @@ export function EditorPane() {
         activeId={ws.activeEditor?.id ?? ''}
         onSelect={ws.setActiveEditor}
         onClose={ws.closeTab}
+        onRename={ws.renameTab}
         onContextAction={(id, action: TabContextAction) => {
           if (action === 'pin' || action === 'unpin') ws.togglePinTab(id)
           else if (action === 'close') ws.closeTab(id)
