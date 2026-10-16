@@ -5961,3 +5961,20 @@ body.is-col-resizing .grid-col-resizer {
   background: color-mix(in srgb, var(--accent, #9eb4ff) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent, #9eb4ff) 28%, transparent);
 }
+
+.connection-test-result {
+  margin: 8px 0 4px;
+  border-radius: 10px;
+  padding: 4px 2px;
+}
+.connection-test-result.is-ok {
+  background: color-mix(in srgb, #7ddea2 12%, transparent);
+  border: 1px solid color-mix(in srgb, #7ddea2 30%, transparent);
+}
+.connection-test-result.is-bad {
+  background: color-mix(in srgb, #f87171 10%, transparent);
+  border: 1px solid color-mix(in srgb, #f87171 28%, transparent);
+}
+.connection-test-result .empty-state {
+  margin: 0;
+}

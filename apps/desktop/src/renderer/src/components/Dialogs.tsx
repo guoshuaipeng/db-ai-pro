@@ -65,6 +65,18 @@ import {
   readOnlyBlockTitle,
 } from '@shared/readOnlySqlUi'
 import { duplicateConnectionDialogHint } from '@shared/duplicateConnectionUi'
+import {
+  connectionTestButtonLabel,
+  connectionTestButtonTitle,
+  connectionTestFailBody,
+  connectionTestFailTitle,
+  connectionTestFailToast,
+  connectionTestInvalidToast,
+  connectionTestProbingStatus,
+  connectionTestSuccessBody,
+  connectionTestSuccessTitle,
+  connectionTestSuccessToast,
+} from '@shared/connectionTestUi'
 import { EmptyState } from './EmptyState'
 
 export function Dialogs() {
@@ -301,6 +313,7 @@ function ConnectionDialog() {
     if (invalid) {
       setError(invalid)
       setProbe('')
+      ws.pushToast('info', connectionTestInvalidToast())
       return
     }
     setProbing(true)
@@ -308,10 +321,18 @@ function ConnectionDialog() {
     setProbe('')
     try {
       const result = await ws.testConnection(buildInput())
-      if (result.ok) setProbe('可以连接。')
-      else setError(result.error ?? '连接失败')
+      if (result.ok) {
+        setProbe('ok')
+        ws.pushToast('success', connectionTestSuccessToast(info.label))
+      } else {
+        const message = result.error ?? '连接失败'
+        setError(message)
+        ws.pushToast('error', connectionTestFailToast(message))
+      }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '连接失败')
+      const message = reason instanceof Error ? reason.message : '连接失败'
+      setError(message)
+      ws.pushToast('error', connectionTestFailToast(message))
     } finally {
       setProbing(false)
     }
@@ -445,8 +466,29 @@ function ConnectionDialog() {
           {needsServerDatabase(dialect) && ' 服务器暂时连不上也可以先保存，失败原因会留在连接下面。'}
           {!info.executable && ' 此类型只保存连接，还不能查询。'}
         </p>
-        {probe && <p className="field-ok">{probe}</p>}
-        {error && <p className="field-error">{error}</p>}
+        {probing ? (
+          <p className="dialog-meta" role="status" aria-live="polite">
+            {connectionTestProbingStatus()}
+          </p>
+        ) : null}
+        {probe === 'ok' ? (
+          <div className="connection-test-result is-ok">
+            <EmptyState
+              compact
+              title={connectionTestSuccessTitle()}
+              body={connectionTestSuccessBody(info.label)}
+            />
+          </div>
+        ) : null}
+        {error ? (
+          <div className="connection-test-result is-bad">
+            <EmptyState
+              compact
+              title={connectionTestFailTitle()}
+              body={connectionTestFailBody(error)}
+            />
+          </div>
+        ) : null}
                 <label className="field">
           <span>分组</span>
           <select value={groupId} onChange={(e) => setGroupId(e.target.value)} aria-label="连接分组">
@@ -501,8 +543,15 @@ function ConnectionDialog() {
               改用示例库
             </button>
           )}
-          <button type="button" className="btn btn-ghost" disabled={probing} onClick={() => void test()}>
-            {probing ? '测试中' : '测试'}
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={probing}
+            title={connectionTestButtonTitle()}
+            aria-busy={probing}
+            onClick={() => void test()}
+          >
+            {connectionTestButtonLabel(probing)}
           </button>
           <button type="button" className="btn btn-primary" onClick={() => void submit()}>
             保存
