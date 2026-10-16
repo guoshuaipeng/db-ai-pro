@@ -92,3 +92,34 @@ export function collapseSchemaTreeToast(clearedSearch: boolean): string {
   return clearedSearch ? '已折叠对象树并清除搜索' : '已折叠对象树'
 }
 
+/**
+ * Expand one level under every currently expanded node (search treated as fully expanded).
+ * Repeated calls progressively reveal databases → tables → columns.
+ */
+export function expandSchemaTreeOneLevel(
+  schema: SchemaNode[],
+  current: Record<string, boolean>,
+  searching: boolean,
+): { next: Record<string, boolean>; expandedChildCount: number } {
+  const next = { ...current }
+  let expandedChildCount = 0
+  const walk = (node: SchemaNode) => {
+    if (isTreeNodeExpanded(node, current, searching) && node.children?.length) {
+      for (const child of node.children) {
+        if (next[child.id] !== true) {
+          next[child.id] = true
+          expandedChildCount += 1
+        }
+      }
+    }
+    node.children?.forEach(walk)
+  }
+  schema.forEach(walk)
+  return { next, expandedChildCount }
+}
+
+export function expandSchemaTreeOneLevelToast(expandedChildCount: number): string {
+  if (expandedChildCount <= 0) return '没有更多可展开的节点'
+  return `已展开下一级（${expandedChildCount.toLocaleString('zh-CN')} 个节点）`
+}
+

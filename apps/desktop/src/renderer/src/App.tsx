@@ -284,6 +284,9 @@ export function App() {
           if (ws.activeConnection) void ws.copyConnectionEndpoint(ws.activeConnection.id)
           else ws.pushToast('info', '先选择一个连接')
           break
+        case 'view.expandObjectTreeOneLevel':
+          ws.expandObjectTreeOneLevel()
+          break
         case 'view.collapseObjectTree':
           ws.collapseObjectTree()
           break

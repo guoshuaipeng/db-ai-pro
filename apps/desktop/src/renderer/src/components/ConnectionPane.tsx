@@ -76,6 +76,15 @@ export function ConnectionPane() {
           <button
             type="button"
             className="tiny-btn btn btn-ghost"
+            aria-label="展开下一级"
+            title="展开当前已打开节点的下一级（可多次点击）"
+            onClick={() => ws.expandObjectTreeOneLevel()}
+          >
+            展开
+          </button>
+          <button
+            type="button"
+            className="tiny-btn btn btn-ghost"
             aria-label="折叠对象树"
             title="折叠全部（保留连接根展开；有搜索时一并清除）"
             onClick={() => ws.collapseObjectTree()}

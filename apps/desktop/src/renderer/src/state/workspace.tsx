@@ -14,6 +14,8 @@ import { connectionErrorNode } from '@shared/schema'
 import {
   collapseSchemaTreeExpanded,
   collapseSchemaTreeToast,
+  expandSchemaTreeOneLevel,
+  expandSchemaTreeOneLevelToast,
   normalizeExpanded,
   replaceConnectionNode,
   seedExpanded,
@@ -205,6 +207,8 @@ type WorkspaceValue = {
   toggleExpanded: (id: string) => void
   /** Collapse databases/tables; keep connection roots open. Clears tree search if any. */
   collapseObjectTree: () => void
+  /** Expand one level under currently open nodes. */
+  expandObjectTreeOneLevel: () => void
   selectedId: string | null
   activeConnection: ConnectionPublic | null
   selectNode: (node: SchemaNode) => void
@@ -1106,6 +1110,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (clearedSearch) setSearch('')
     setExpanded(collapseSchemaTreeExpanded(schema))
     pushToast('success', collapseSchemaTreeToast(clearedSearch))
+  }
+
+  const expandObjectTreeOneLevel = () => {
+    if (!sidebarOpen) setSidebarOpen(true)
+    const searching = Boolean(search.trim())
+    const { next, expandedChildCount } = expandSchemaTreeOneLevel(schema, expanded, searching)
+    setExpanded(next)
+    pushToast(
+      expandedChildCount > 0 ? 'success' : 'info',
+      expandSchemaTreeOneLevelToast(expandedChildCount),
+    )
   }
 
   const revealConnectionInTree = (connectionId?: string | null) => {
@@ -2395,6 +2410,7 @@ ${sql.trim()}
     expanded,
     toggleExpanded: (id) => setExpanded((current) => ({ ...current, [id]: !current[id] })),
     collapseObjectTree,
+    expandObjectTreeOneLevel,
     selectedId,
     activeConnection,
     selectNode,

@@ -7,6 +7,8 @@ import {
   seedExpanded,
   collapseSchemaTreeExpanded,
   collapseSchemaTreeToast,
+  expandSchemaTreeOneLevel,
+  expandSchemaTreeOneLevelToast,
 } from './schemaTreeRefresh'
 import type { SchemaNode } from './types'
 
@@ -100,6 +102,38 @@ describe('collapseSchemaTreeToast', () => {
   it('mentions search when cleared', () => {
     expect(collapseSchemaTreeToast(false)).toContain('折叠')
     expect(collapseSchemaTreeToast(true)).toContain('搜索')
+  })
+})
+
+describe('expandSchemaTreeOneLevel', () => {
+  it('expands children of open connections', () => {
+    const tree = [
+      sample('c1', 'connection', [
+        sample('c1:db', 'database', [sample('c1:db:t', 'table')]),
+      ]),
+    ]
+    const { next, expandedChildCount } = expandSchemaTreeOneLevel(tree, { c1: true }, false)
+    expect(next['c1:db']).toBe(true)
+    expect(expandedChildCount).toBeGreaterThan(0)
+    expect(next['c1:db:t']).not.toBe(true)
+  })
+
+  it('second pass expands tables under databases', () => {
+    const tree = [
+      sample('c1', 'connection', [
+        sample('c1:db', 'database', [sample('c1:db:t', 'table')]),
+      ]),
+    ]
+    const first = expandSchemaTreeOneLevel(tree, { c1: true }, false).next
+    const second = expandSchemaTreeOneLevel(tree, first, false)
+    expect(second.next['c1:db:t']).toBe(true)
+  })
+})
+
+describe('expandSchemaTreeOneLevelToast', () => {
+  it('handles empty and counted', () => {
+    expect(expandSchemaTreeOneLevelToast(0)).toContain('没有')
+    expect(expandSchemaTreeOneLevelToast(2)).toContain('2')
   })
 })
 

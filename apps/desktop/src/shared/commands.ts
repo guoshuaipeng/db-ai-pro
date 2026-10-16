@@ -323,6 +323,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'connection',
   },
   {
+    id: 'view.expandObjectTreeOneLevel',
+    title: '展开对象树下一级',
+    subtitle: '在已展开节点下再打开一层',
+    keywords: 'expand tree level 展开 对象树 下一级',
+    shortcut: '连接栏「展开」',
+    category: 'view',
+  },
+  {
     id: 'view.collapseObjectTree',
     title: '折叠对象树',
     subtitle: '收起库 / 表节点，保留连接根展开',
@@ -545,6 +553,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '连接栏', keys: 'Ctrl+B' },
   { action: '助手面板', keys: 'Ctrl+Shift+A' },
   { action: '对象树搜索', keys: 'Ctrl+Shift+F' },
+  { action: '展开对象树下一级', keys: '连接栏「展开」· Ctrl+K' },
   { action: '折叠对象树', keys: '连接栏「折叠」· Ctrl+K' },
   { action: '聚焦编辑器', keys: 'Ctrl+Shift+1' },
   { action: '快捷键说明', keys: 'F1' },

@@ -84,6 +84,10 @@ describe('filterCommands', () => {
     expect(filterCommands('折叠').some((item) => item.id === 'view.collapseObjectTree')).toBe(true)
   })
 
+  it('finds expand object tree one level command', () => {
+    expect(filterCommands('展开').some((item) => item.id === 'view.expandObjectTreeOneLevel')).toBe(true)
+  })
+
   it('finds copy result headers command', () => {
     expect(filterCommands('列名').some((item) => item.id === 'result.copyHeaders')).toBe(true)
   })
