@@ -322,6 +322,47 @@ button.crumb-btn .crumb-text {
   padding: 0;
 }
 .search-clear:hover { color: var(--ink); background: rgba(255,255,255,0.06); }
+
+.tree-search-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 10px 8px;
+}
+.tree-search-kinds {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.tree-search-kind {
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--muted, #8b95a8);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.tree-search-kind:hover {
+  color: var(--ink);
+  background: rgba(255,255,255,0.04);
+}
+.tree-search-kind.is-active {
+  color: var(--ink);
+  border-color: var(--accent, #5b8def);
+  background: rgba(91, 141, 239, 0.12);
+}
+.search-stats-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.search-stats-row .search-stats {
+  margin: 0;
+  padding: 0;
+}
+
 .search-stats {
   margin: -4px 14px 8px;
   font-size: 11px;

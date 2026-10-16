@@ -18,6 +18,15 @@ import { IconColumn, IconDatabase, IconMore, IconPlus, IconRefresh, IconSearch, 
 import { EmptyState } from './EmptyState'
 import { useWorkspace } from '../state/workspace'
 import { recentQueryTitle } from '@shared/recentItems'
+import {
+  collectMatchedTables,
+  countTreeNodes,
+  formatMatchedTablesClipboard,
+  narrowTreeByKind,
+  treeMatchedTablesCopiedToast,
+  treeSearchKindEmptyBody,
+  type TreeSearchKind,
+} from '@shared/tree'
 
 export function ConnectionPane() {
   const ws = useWorkspace()
@@ -27,11 +36,26 @@ export function ConnectionPane() {
   const [renameDraft, setRenameDraft] = useState('')
   const root = useRef<HTMLElement>(null)
 
-  const buckets = useMemo(
-    () => bucketSchemaByGroup(ws.filteredSchema, ws.connections, ws.connectionGroups),
-    [ws.filteredSchema, ws.connections, ws.connectionGroups],
-  )
   const searchRef = useRef<HTMLInputElement>(null)
+  const [searchKind, setSearchKind] = useState<TreeSearchKind>('all')
+
+  const displaySchema = useMemo(() => {
+    if (!ws.search.trim()) return ws.filteredSchema
+    return narrowTreeByKind(ws.filteredSchema, searchKind)
+  }, [ws.filteredSchema, ws.search, searchKind])
+
+  const displayStats = useMemo(() => countTreeNodes(displaySchema), [displaySchema])
+
+  const matchedTables = useMemo(() => collectMatchedTables(displaySchema), [displaySchema])
+
+  const buckets = useMemo(
+    () => bucketSchemaByGroup(displaySchema, ws.connections, ws.connectionGroups),
+    [displaySchema, ws.connections, ws.connectionGroups],
+  )
+
+  useEffect(() => {
+    if (!ws.search.trim()) setSearchKind('all')
+  }, [ws.search])
 
   useEffect(() => {
     const close = (event: MouseEvent) => {
@@ -112,20 +136,73 @@ export function ConnectionPane() {
           ref={searchRef}
           value={ws.search}
           onChange={(event) => ws.setSearch(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && ws.search.trim()) {
+              event.preventDefault()
+              event.stopPropagation()
+              ws.setSearch('')
+              setSearchKind('all')
+            }
+          }}
           placeholder="搜索主机 / 库 / 表 / 列"
           aria-label="搜索主机、数据库、表或列"
         />
         {ws.search.trim() && (
-          <button type="button" className="search-clear" aria-label="清除搜索" onClick={() => ws.setSearch('')}>
+          <button type="button" className="search-clear" aria-label="清除搜索" onClick={() => { ws.setSearch(''); setSearchKind('all') }}>
             ×
           </button>
         )}
       </label>
-      {ws.search.trim() && ws.filteredSchema.length > 0 && (
-        <p className="search-stats">
-          {ws.searchStats.connections} 连接 · {ws.searchStats.tables} 表 · {ws.searchStats.columns} 列
-        </p>
-      )}
+      {ws.search.trim() ? (
+        <div className="tree-search-toolbar">
+          <div className="tree-search-kinds" role="tablist" aria-label="搜索结果类型">
+            {(
+              [
+                { id: 'all' as const, label: '全部' },
+                { id: 'table' as const, label: '表' },
+                { id: 'column' as const, label: '列' },
+              ] as const
+            ).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={searchKind === item.id}
+                className={searchKind === item.id ? 'tree-search-kind is-active' : 'tree-search-kind'}
+                onClick={() => setSearchKind(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          {displaySchema.length > 0 ? (
+            <div className="search-stats-row">
+              <p className="search-stats">
+                {displayStats.connections} 连接 · {displayStats.tables} 表 · {displayStats.columns} 列
+              </p>
+              <button
+                type="button"
+                className="btn btn-ghost tiny-btn"
+                disabled={matchedTables.length === 0}
+                title="复制当前结果中的表名列表"
+                onClick={() => {
+                  const text = formatMatchedTablesClipboard(matchedTables)
+                  if (!text) {
+                    ws.pushToast('info', treeMatchedTablesCopiedToast(0))
+                    return
+                  }
+                  void navigator.clipboard.writeText(text).then(
+                    () => ws.pushToast('success', treeMatchedTablesCopiedToast(matchedTables.length)),
+                    () => ws.pushToast('error', '复制失败'),
+                  )
+                }}
+              >
+                复制表名
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {(ws.recentTables.length > 0 || ws.recentQueries.length > 0) && !ws.search.trim() && (
         <div className="recent-side" aria-label="最近">
@@ -214,15 +291,29 @@ export function ConnectionPane() {
             </>
           }
         />
-      ) : ws.filteredSchema.length === 0 ? (
+      ) : displaySchema.length === 0 ? (
         <EmptyState
           compact
-          title="没有匹配的对象"
-          body="试试更短的关键字，或清除搜索后从连接树继续浏览。"
+          title={ws.filteredSchema.length > 0 ? '当前类型下没有匹配' : '没有匹配的对象'}
+          body={treeSearchKindEmptyBody(ws.filteredSchema.length > 0 ? searchKind : 'all')}
           actions={
-            <button type="button" className="btn btn-ghost" onClick={() => ws.setSearch('')}>
-              清除搜索
-            </button>
+            <>
+              {ws.filteredSchema.length > 0 && searchKind !== 'all' ? (
+                <button type="button" className="btn btn-ghost" onClick={() => setSearchKind('all')}>
+                  查看全部类型
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  ws.setSearch('')
+                  setSearchKind('all')
+                }}
+              >
+                清除搜索
+              </button>
+            </>
           }
         />
       ) : (

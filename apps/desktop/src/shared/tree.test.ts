@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { countTreeNodes, filterNodes } from './tree'
+import {
+  collectMatchedTables,
+  countTreeNodes,
+  filterNodes,
+  formatMatchedTablesClipboard,
+  narrowTreeByKind,
+  treeMatchedTablesCopiedToast,
+  treeSearchKindEmptyBody,
+} from './tree'
 import type { SchemaNode } from './types'
 
 const nodes: SchemaNode[] = [
@@ -58,5 +66,36 @@ describe('filterNodes', () => {
   it('matches column types', () => {
     const filtered = filterNodes(nodes, 'varchar')
     expect(countTreeNodes(filtered).columns).toBe(1)
+  })
+})
+
+
+describe('narrowTreeByKind', () => {
+  it('table kind drops columns but keeps tables', () => {
+    const filtered = filterNodes(nodes, 'status')
+    const tablesOnly = narrowTreeByKind(filtered, 'table')
+    expect(countTreeNodes(tablesOnly).columns).toBe(0)
+    expect(countTreeNodes(tablesOnly).tables).toBe(1)
+  })
+
+  it('column kind keeps only branches with columns', () => {
+    const filtered = filterNodes(nodes, '订单')
+    // table match keeps full subtree including columns
+    expect(countTreeNodes(filtered).columns).toBe(1)
+    const cols = narrowTreeByKind(filtered, 'column')
+    expect(countTreeNodes(cols).columns).toBe(1)
+    expect(countTreeNodes(cols).tables).toBe(1)
+  })
+})
+
+describe('collectMatchedTables', () => {
+  it('flattens labels for clipboard', () => {
+    const filtered = filterNodes(nodes, 'orders')
+    const tables = collectMatchedTables(filtered)
+    expect(tables).toHaveLength(1)
+    expect(tables[0].label).toBe('华东库 / orders')
+    expect(formatMatchedTablesClipboard(tables)).toBe('华东库 / orders')
+    expect(treeMatchedTablesCopiedToast(1)).toContain('1')
+    expect(treeSearchKindEmptyBody('table')).toContain('没有表')
   })
 })

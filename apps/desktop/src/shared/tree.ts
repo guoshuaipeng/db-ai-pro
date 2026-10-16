@@ -80,3 +80,89 @@ export function countTreeNodes(nodes: SchemaNode[]): { connections: number; tabl
   walk(nodes)
   return { connections, tables, columns }
 }
+
+
+export type TreeSearchKind = 'all' | 'table' | 'column'
+
+/** After text filter: keep only tables (drop columns) or only branches that still have columns. */
+export function narrowTreeByKind(nodes: SchemaNode[], kind: TreeSearchKind): SchemaNode[] {
+  if (kind === 'all') return nodes
+
+  if (kind === 'table') {
+    const visit = (node: SchemaNode): SchemaNode | null => {
+      if (node.kind === 'column') return null
+      if (node.kind === 'table') {
+        return { ...node, children: undefined }
+      }
+      const children = (node.children ?? [])
+        .map(visit)
+        .filter((child): child is SchemaNode => child !== null)
+      if (children.length === 0) return null
+      return { ...node, children }
+    }
+    return nodes.map(visit).filter((node): node is SchemaNode => node !== null)
+  }
+
+  const visit = (node: SchemaNode): SchemaNode | null => {
+    if (node.kind === 'column') return node
+    const children = (node.children ?? [])
+      .map(visit)
+      .filter((child): child is SchemaNode => child !== null)
+    if (children.length === 0) return null
+    return { ...node, children }
+  }
+  return nodes.map(visit).filter((node): node is SchemaNode => node !== null)
+}
+
+export type MatchedTreeTable = {
+  connectionId: string
+  tableName: string
+  /** "连接名 / table" for clipboard & UI */
+  label: string
+}
+
+/** Flatten tables under a (usually filtered) schema tree. */
+export function collectMatchedTables(nodes: SchemaNode[]): MatchedTreeTable[] {
+  const out: MatchedTreeTable[] = []
+  const walk = (list: SchemaNode[], connId: string, connLabel: string) => {
+    for (const node of list) {
+      if (node.kind === 'connection') {
+        const id = node.connectionId ?? node.id
+        const label = node.displayName || node.name || id
+        walk(node.children ?? [], id, label)
+        continue
+      }
+      if (node.kind === 'table') {
+        const tableName = node.tableName || node.name
+        const id = node.connectionId || connId
+        if (tableName) {
+          out.push({
+            connectionId: id,
+            tableName,
+            label: `${connLabel} / ${tableName}`,
+          })
+        }
+        continue
+      }
+      walk(node.children ?? [], connId, connLabel)
+    }
+  }
+  walk(nodes, '', '')
+  return out
+}
+
+export function formatMatchedTablesClipboard(tables: readonly MatchedTreeTable[]): string {
+  return tables.map((row) => row.label).join('\n')
+}
+
+export function treeMatchedTablesCopiedToast(count: number): string {
+  const n = Math.max(0, count)
+  if (n === 0) return '没有可复制的表名'
+  return `已复制 ${n} 张表名到剪贴板`
+}
+
+export function treeSearchKindEmptyBody(kind: TreeSearchKind): string {
+  if (kind === 'table') return '当前关键字下没有表。可切换到「全部」或「列」，或清除搜索。'
+  if (kind === 'column') return '当前关键字下没有列。可切换到「全部」或「表」，或清除搜索。'
+  return '试试更短的关键字，或清除搜索后从连接树继续浏览。'
+}
