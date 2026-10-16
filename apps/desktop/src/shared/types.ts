@@ -131,6 +131,8 @@ export type EditorTabState = {
   id: string
   title: string
   sql: string
+  /** Bound connection for this tab; null = use workspace active. No secrets. */
+  connectionId?: string | null
 }
 
 export type AiTurnState = {

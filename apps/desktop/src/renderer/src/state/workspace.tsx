@@ -20,6 +20,12 @@ import { trimAiTurns } from '@shared/aiMemory'
 import { settleCancelledTurn } from '@shared/aiStream'
 import type { RecentQueryItem, RecentTableItem } from '@shared/recentItems'
 import { EMPTY_RECENT } from '@shared/recentItems'
+import {
+  isTabDisconnected,
+  normalizeSessionTabs,
+  pickActiveEditorId,
+  SESSION_TAB_CAP,
+} from '@shared/sessionRestore'
 import { formatExplainText } from '@shared/explain'
 import { analyzeDestructiveSql } from '@shared/destructiveSql'
 import type { TableStructure } from '@shared/tableStructure'
@@ -117,6 +123,7 @@ type WorkspaceValue = {
   editorTabs: EditorTabState[]
   activeEditor: EditorTabState | null
   setActiveEditor: (id: string) => void
+  tabDisconnected: (tab: EditorTabState) => boolean
   updateSql: (sql: string) => void
   newTab: () => void
   closeTab: (id: string) => void
@@ -226,6 +233,7 @@ function seedTabs(): EditorTabState[] {
     id: `query-${index + 1}`,
     title: tab.title,
     sql: tab.sql,
+    connectionId: null,
   }))
 }
 
@@ -361,30 +369,52 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     void (async () => {
       try {
-        const [info, rows, workspace, aiSettings, recent] = await Promise.all([
+        const [info, rows, workspace, aiSettings, recent, prefs] = await Promise.all([
           api.meta(),
           api.connections.list(),
           api.workspace.load(),
           api.ai.getSettings(),
           api.recent.list().catch(() => EMPTY_RECENT),
+          api.prefs.get(),
         ])
         if (cancelled) return
         setMeta(info)
         setConnections(rows)
         setSettings(aiSettings)
         applyRecentState(recent)
+        const connectionIds = new Set(rows.map((row) => row.id))
+        let restoreConnectionId = workspace?.activeConnectionId ?? rows[0]?.id ?? null
         if (workspace) {
-          setEditorTabs(workspace.editorTabs.length ? workspace.editorTabs : seedTabs())
-          setActiveEditorId(workspace.activeEditorId || workspace.editorTabs[0]?.id || 'query-1')
           setAiTurns(trimAiTurns(workspace.aiTurns ?? []))
           setSidebarWidth(workspace.sidebarWidth || 252)
           setAiWidth(workspace.aiWidth || 360)
           setEditorRatio(workspace.editorRatio || 1.35)
           setSidebarOpen(workspace.sidebarOpen)
           setAiOpen(workspace.aiOpen)
-          setActiveConnectionId(workspace.activeConnectionId)
+          if (prefs.restoreTabsOnLaunch !== false && workspace.editorTabs.length > 0) {
+            const tabs = normalizeSessionTabs(workspace.editorTabs, SESSION_TAB_CAP)
+            setEditorTabs(tabs.length ? tabs : seedTabs())
+            setActiveEditorId(pickActiveEditorId(tabs.length ? tabs : seedTabs(), workspace.activeEditorId))
+            const activeTab = tabs.find((tab) => tab.id === pickActiveEditorId(tabs, workspace.activeEditorId))
+            if (activeTab?.connectionId && connectionIds.has(activeTab.connectionId)) {
+              restoreConnectionId = activeTab.connectionId
+            } else if (workspace.activeConnectionId && connectionIds.has(workspace.activeConnectionId)) {
+              restoreConnectionId = workspace.activeConnectionId
+            } else {
+              restoreConnectionId = rows[0]?.id ?? null
+            }
+          } else {
+            setEditorTabs(seedTabs())
+            setActiveEditorId('query-1')
+            if (workspace.activeConnectionId && connectionIds.has(workspace.activeConnectionId)) {
+              restoreConnectionId = workspace.activeConnectionId
+            } else {
+              restoreConnectionId = rows[0]?.id ?? null
+            }
+          }
+          setActiveConnectionId(restoreConnectionId)
         }
-        await refreshSchema(rows, workspace?.activeConnectionId ?? rows[0]?.id ?? null)
+        await refreshSchema(rows, restoreConnectionId)
         loaded.current = true
         setReady(true)
       } catch (error) {
@@ -403,7 +433,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const state: WorkspaceState = {
       version: 1,
       activeConnectionId,
-      editorTabs,
+      editorTabs: normalizeSessionTabs(editorTabs, SESSION_TAB_CAP),
       activeEditorId,
       aiTurns: trimAiTurns(aiTurns),
       sidebarWidth,
@@ -574,7 +604,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
     const id = crypto.randomUUID()
     const sql = dialect === 'sqlite' ? selectAllWithRowid(tableName) : selectAll(tableName, identStyle(dialect))
-    setEditorTabs((tabs) => [...tabs, { id, title, sql }])
+    setEditorTabs((tabs) => [...tabs, { id, title, sql, connectionId }])
     setActiveEditorId(id)
     setTargetTable(tableName)
   }
@@ -627,7 +657,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const openSqlTab = (title: string, sql: string) => {
     const id = crypto.randomUUID()
-    setEditorTabs((tabs) => [...tabs, { id, title, sql }])
+    setEditorTabs((tabs) => [
+      ...tabs,
+      { id, title, sql, connectionId: activeConnectionId },
+    ])
     setActiveEditorId(id)
   }
 
@@ -686,7 +719,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const dialect = node.dialect ?? connections.find((item) => item.id === node.connectionId)?.dialect ?? 'sqlite'
     const id = crypto.randomUUID()
     const sql = dialect === 'sqlite' ? selectAllWithRowid(node.tableName!) : selectAll(node.tableName!, identStyle(dialect))
-    setEditorTabs((tabs) => [...tabs, { id, title, sql }])
+    setEditorTabs((tabs) => [
+      ...tabs,
+      { id, title, sql, connectionId: node.connectionId },
+    ])
     setActiveEditorId(id)
     if (dialect !== 'redis') setTargetTable(node.tableName!)
   }
@@ -699,7 +735,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const newTab = () => {
     const id = crypto.randomUUID()
     const count = editorTabs.length + 1
-    setEditorTabs((tabs) => [...tabs, { id, title: `查询 ${count}`, sql: '' }])
+    setEditorTabs((tabs) => [
+      ...tabs,
+      { id, title: `查询 ${count}`, sql: '', connectionId: activeConnectionId },
+    ])
     setActiveEditorId(id)
   }
 
@@ -776,6 +815,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       } else {
         pushToast('success', '执行完成')
         void recordQueryRecent(sql, activeConnection.id)
+        if (activeEditor) {
+          setEditorTabs((tabs) =>
+            tabs.map((tab) =>
+              tab.id === activeEditor.id ? { ...tab, connectionId: activeConnection.id } : tab,
+            ),
+          )
+        }
       }
       if (statements.some((statement) => statement.ok && changesSchema(statement.statement))) {
         const rows = await api.connections.list()
@@ -1208,7 +1254,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const insertFavoriteSql = (sql: string) => {
     if (!activeEditor) {
       const id = crypto.randomUUID()
-      setEditorTabs((tabs) => [...tabs, { id, title: `查询 ${tabs.length + 1}`, sql }])
+      setEditorTabs((tabs) => [
+        ...tabs,
+        { id, title: `查询 ${tabs.length + 1}`, sql, connectionId: activeConnectionId },
+      ])
       setActiveEditorId(id)
     } else {
       const next = activeEditor.sql.trim() ? `${activeEditor.sql.trim()}
@@ -1234,7 +1283,10 @@ ${sql.trim()}
 
   const openHistorySql = (sql: string) => {
     const id = crypto.randomUUID()
-    setEditorTabs((tabs) => [...tabs, { id, title: `历史 ${tabs.length + 1}`, sql }])
+    setEditorTabs((tabs) => [
+      ...tabs,
+      { id, title: `历史 ${tabs.length + 1}`, sql, connectionId: activeConnectionId },
+    ])
     setActiveEditorId(id)
     pushToast('success', '已打开历史语句')
   }
@@ -1249,7 +1301,10 @@ ${sql.trim()}
       return
     }
     const id = crypto.randomUUID()
-    setEditorTabs((tabs) => [...tabs, { id, title: `历史 ${tabs.length + 1}`, sql }])
+    setEditorTabs((tabs) => [
+      ...tabs,
+      { id, title: `历史 ${tabs.length + 1}`, sql, connectionId: activeConnectionId },
+    ])
     setActiveEditorId(id)
     if (!(await confirmIfDestructive(sql))) {
       pushToast('info', '已取消执行')
@@ -1357,7 +1412,14 @@ ${sql.trim()}
     selectNode,
     editorTabs,
     activeEditor,
-    setActiveEditor: setActiveEditorId,
+    setActiveEditor: (id: string) => {
+      setActiveEditorId(id)
+      const tab = editorTabs.find((row) => row.id === id)
+      if (tab?.connectionId && connections.some((row) => row.id === tab.connectionId)) {
+        setActiveConnectionId(tab.connectionId)
+      }
+    },
+    tabDisconnected: (tab) => isTabDisconnected(tab, connections.map((row) => row.id)),
     updateSql,
     newTab,
     closeTab,

@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "1.9.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — recent tables / queries",
+  "description": "DataAI TypeScript desktop — session restore tabs",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

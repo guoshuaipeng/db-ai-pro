@@ -3,6 +3,9 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 type TabItem = {
   id: string
   label: string
+  /** Optional muted badge, e.g. disconnected connection */
+  badge?: string
+  tone?: 'warn' | 'muted'
 }
 
 type ScrollTabsProps = {
@@ -110,6 +113,9 @@ export function ScrollTabs({ label, tabs, activeId, onSelect, onClose, trailing 
                 }}
               >
                 <span className="tab-label">{tab.label}</span>
+                {tab.badge && (
+                  <span className={tab.tone === 'warn' ? 'tab-badge is-warn' : 'tab-badge'}>{tab.badge}</span>
+                )}
               </button>
               {onClose && (
                 <button

@@ -2565,3 +2565,23 @@ button:disabled { cursor: default; opacity: 0.45; }
   color: var(--accent, #9ec1ff);
 }
 
+.tab-badge {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--ink-tertiary);
+  background: color-mix(in srgb, var(--ink-tertiary) 16%, transparent);
+}
+.tab-badge.is-warn {
+  color: var(--warn, #e6c35c);
+  background: color-mix(in srgb, var(--warn, #d4a017) 20%, transparent);
+}
+.tab-main {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+

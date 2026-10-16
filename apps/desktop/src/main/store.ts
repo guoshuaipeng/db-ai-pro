@@ -16,6 +16,7 @@ import type {
 import { QUERY_HISTORY_LIMIT, pushQueryHistory } from '@shared/queryHistory'
 import { upsertFavorite, upsertFolder } from '@shared/favorites'
 import { DEFAULT_PREFS, normalizePrefs, type AppPrefs } from '@shared/prefs'
+import { normalizeSessionTabs, pickActiveEditorId, SESSION_TAB_CAP } from '@shared/sessionRestore'
 import {
   EMPTY_RECENT,
   normalizeRecentItems,
@@ -259,14 +260,26 @@ export function loadWorkspace(): WorkspaceState | null {
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as WorkspaceState
     if (parsed.version !== 1 || !Array.isArray(parsed.editorTabs)) return null
-    return parsed
+    const editorTabs = normalizeSessionTabs(parsed.editorTabs, SESSION_TAB_CAP)
+    if (editorTabs.length === 0) return { ...parsed, editorTabs: [], activeEditorId: parsed.activeEditorId }
+    return {
+      ...parsed,
+      editorTabs,
+      activeEditorId: pickActiveEditorId(editorTabs, parsed.activeEditorId),
+    }
   } catch {
     return null
   }
 }
 
 export function saveWorkspace(state: WorkspaceState): void {
-  writeJson('workspace.json', state)
+  const editorTabs = normalizeSessionTabs(state.editorTabs, SESSION_TAB_CAP)
+  writeJson('workspace.json', {
+    ...state,
+    version: 1,
+    editorTabs,
+    activeEditorId: pickActiveEditorId(editorTabs, state.activeEditorId),
+  })
 }
 
 function readHistoryFile(): HistoryFile {

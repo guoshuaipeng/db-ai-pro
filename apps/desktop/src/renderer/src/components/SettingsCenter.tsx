@@ -84,7 +84,7 @@ export function SettingsCenter({ open, tab, onTab, onClose, prefs, onPrefs }: Se
             {tab === 'model' && <ModelPanel onClose={onClose} />}
             {tab === 'appearance' && <AppearancePanel prefs={prefs} onPrefs={onPrefs} />}
             {tab === 'query' && <QueryPanel prefs={prefs} onPrefs={onPrefs} />}
-            {tab === 'about' && <AboutPanel version={ws.meta?.version ?? '1.9.0'} encryption={ws.meta?.encryption} />}
+            {tab === 'about' && <AboutPanel version={ws.meta?.version ?? '2.0.0'} encryption={ws.meta?.encryption} />}
           </div>
         </section>
       </div>
@@ -231,6 +231,16 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
     }
   }
 
+  const setRestoreTabs = async (restoreTabsOnLaunch: boolean) => {
+    setBusy(true)
+    try {
+      const next = await api.prefs.save({ restoreTabsOnLaunch })
+      onPrefs(next)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="settings-card">
       <p className="settings-lead">界面保持深色一体壳。可调节信息密度与对比度，适配 1366×768 与更宽屏。</p>
@@ -269,6 +279,22 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
           onClick={() => void setHighContrast(!prefs.highContrast)}
         >
           {prefs.highContrast ? '已开启' : '已关闭'}
+        </button>
+      </div>
+      <div className="contrast-block">
+        <div className="contrast-copy">
+          <strong>启动时恢复标签</strong>
+          <span>记住打开的查询标签（标题、SQL、连接 id，最多 20 个）。连接已删除时显示「断开」，不弹错误。</span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={prefs.restoreTabsOnLaunch}
+          className={prefs.restoreTabsOnLaunch ? 'contrast-switch is-on' : 'contrast-switch'}
+          disabled={busy}
+          onClick={() => void setRestoreTabs(!prefs.restoreTabsOnLaunch)}
+        >
+          {prefs.restoreTabsOnLaunch ? '已开启' : '已关闭'}
         </button>
       </div>
     </div>

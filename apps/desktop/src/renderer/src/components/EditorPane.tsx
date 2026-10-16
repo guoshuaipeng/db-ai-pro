@@ -36,7 +36,12 @@ export function EditorPane() {
     <section className="editor-pane" aria-label="SQL 编辑器">
       <ScrollTabs
         label="查询标签"
-        tabs={ws.editorTabs.map((tab) => ({ id: tab.id, label: tab.title }))}
+        tabs={ws.editorTabs.map((tab) => ({
+          id: tab.id,
+          label: tab.title,
+          badge: ws.tabDisconnected(tab) ? '断开' : undefined,
+          tone: ws.tabDisconnected(tab) ? ('warn' as const) : undefined,
+        }))}
         activeId={ws.activeEditor?.id ?? ''}
         onSelect={ws.setActiveEditor}
         onClose={ws.closeTab}

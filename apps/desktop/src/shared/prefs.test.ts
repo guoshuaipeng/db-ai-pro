@@ -18,4 +18,10 @@ describe('normalizePrefs', () => {
     expect(clampQueryTimeoutSec(9999)).toBe(600)
     expect(clampQueryTimeoutSec(-3)).toBe(0)
   })
+
+  it('defaults restoreTabsOnLaunch on', () => {
+    expect(normalizePrefs(null).restoreTabsOnLaunch).toBe(true)
+    expect(normalizePrefs({ restoreTabsOnLaunch: false }).restoreTabsOnLaunch).toBe(false)
+    expect(normalizePrefs({ restoreTabsOnLaunch: true }).restoreTabsOnLaunch).toBe(true)
+  })
 })
