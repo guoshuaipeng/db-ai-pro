@@ -80,6 +80,15 @@ import {
   soloVisibleColumn,
   visibleResultColumns,
 } from '@shared/resultColumnVisibility'
+import {
+  canMoveColumnAmongVisible,
+  canMoveColumnInOrder,
+  moveColumnAmongVisible,
+  moveColumnInOrder,
+  normalizeColumnOrder,
+  orderVisibleColumns,
+  resetColumnOrder,
+} from '@shared/resultColumnOrder'
 
 const ROW_HEIGHT = 32
 
@@ -585,15 +594,19 @@ export function ResultGrid({
   const [filterDraft, setFilterDraft] = useState<ColumnFilter>({ mode: 'contains', value: '' })
   const filterMenuRef = useRef<HTMLDivElement>(null)
   const [hiddenColumns, setHiddenColumns] = useState<string[]>([])
+  const [columnOrder, setColumnOrder] = useState<string[]>([])
   const [visibilityOpen, setVisibilityOpen] = useState(false)
   const visibilityRef = useRef<HTMLDivElement>(null)
   const [cellPreview, setCellPreview] = useState<{ column: string; rowIndex: number; value: unknown } | null>(null)
 
-  const allBaseColumns = useMemo(() => baseResultColumns(columns), [columns])
-  const visibleColumns = useMemo(
-    () => visibleResultColumns(columns, hiddenColumns),
-    [columns, hiddenColumns],
+  const orderedColumns = useMemo(
+    () => normalizeColumnOrder(columns, columnOrder),
+    [columns, columnOrder],
   )
+  const visibleColumns = useMemo(() => {
+    const shown = visibleResultColumns(columns, hiddenColumns)
+    return orderVisibleColumns(orderedColumns, shown)
+  }, [columns, hiddenColumns, orderedColumns])
   const hiddenCount = useMemo(
     () => countHiddenColumns(columns, hiddenColumns),
     [columns, hiddenColumns],
@@ -688,6 +701,7 @@ export function ResultGrid({
     setColumnFilters({})
     setFilterMenuColumn(null)
     setHiddenColumns([])
+    setColumnOrder(resetColumnOrder())
     setVisibilityOpen(false)
     setCellPreview(null)
     setNote(rows.length > 500 ? `已虚拟滚动渲染 ${rows.length.toLocaleString('zh-CN')} 行` : '')
@@ -1049,6 +1063,30 @@ export function ResultGrid({
     setNote(next.length === 0 ? '已反选列（全部可见）' : `已反选列（隐藏 ${next.length}）`)
   }
 
+  const shiftColumnInPanel = (column: string, delta: -1 | 1) => {
+    const base = normalizeColumnOrder(columns, columnOrder)
+    if (!canMoveColumnInOrder(base, column, delta)) return
+    setColumnOrder(moveColumnInOrder(base, column, delta))
+    setNote(delta < 0 ? `列「${column}」已上移` : `列「${column}」已下移`)
+  }
+
+  const shiftColumnInGrid = (column: string, delta: -1 | 1) => {
+    const base = normalizeColumnOrder(columns, columnOrder)
+    const shown = visibleResultColumns(columns, hiddenColumns)
+    if (!canMoveColumnAmongVisible(base, shown, column, delta)) {
+      setContextMenu(null)
+      return
+    }
+    setColumnOrder(moveColumnAmongVisible(base, shown, column, delta))
+    setNote(delta < 0 ? `列「${column}」已左移` : `列「${column}」已右移`)
+    setContextMenu(null)
+  }
+
+  const restoreColumnOrder = () => {
+    setColumnOrder(resetColumnOrder())
+    setNote('已恢复默认列顺序')
+  }
+
   const commitEdit = async () => {
     if (!editing || !ws.activeConnection) return
     const column = displayColumns[editing.col]
@@ -1165,13 +1203,13 @@ export function ResultGrid({
           onMouseDown={(event) => event.stopPropagation()}
         >
           <div className="result-col-visibility-title">显示列</div>
-          <p className="result-col-visibility-hint">至少保留一列；可用「反选」或右键「仅显示此列」。隐藏列不出现在表格与默认导出中。</p>
+          <p className="result-col-visibility-hint">至少保留一列；↑↓ 调整顺序；可用「反选」或右键「仅显示此列」/「左移」「右移」。隐藏列不出现在表格与默认导出中。</p>
           <ul className="result-col-visibility-list">
-            {allBaseColumns.map((column) => {
+            {orderedColumns.map((column, index) => {
               const shown = visibleColumns.includes(column)
               const disableHide = shown && !canHideColumn(columns, hiddenColumns, column)
               return (
-                <li key={column}>
+                <li key={column} className="result-col-visibility-row">
                   <label className={shown ? 'result-col-visibility-item is-on' : 'result-col-visibility-item'}>
                     <input
                       type="checkbox"
@@ -1181,6 +1219,28 @@ export function ResultGrid({
                     />
                     <span>{column}</span>
                   </label>
+                  <div className="result-col-visibility-move">
+                    <button
+                      type="button"
+                      className="btn btn-ghost tiny-btn"
+                      disabled={index === 0}
+                      title="上移"
+                      aria-label={`上移列 ${column}`}
+                      onClick={() => shiftColumnInPanel(column, -1)}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost tiny-btn"
+                      disabled={index >= orderedColumns.length - 1}
+                      title="下移"
+                      aria-label={`下移列 ${column}`}
+                      onClick={() => shiftColumnInPanel(column, 1)}
+                    >
+                      ↓
+                    </button>
+                  </div>
                 </li>
               )
             })}
@@ -1194,6 +1254,15 @@ export function ResultGrid({
               onClick={invertColumns}
             >
               反选
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost tiny-btn"
+              disabled={columnOrder.length === 0}
+              title="恢复结果集默认列顺序"
+              onClick={restoreColumnOrder}
+            >
+              恢复顺序
             </button>
             <button
               type="button"
@@ -1603,6 +1672,36 @@ export function ResultGrid({
             onClick={() => soloThisColumn(contextMenu.column)}
           >
             仅显示此列
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={
+              !canMoveColumnAmongVisible(
+                orderedColumns,
+                visibleResultColumns(columns, hiddenColumns),
+                contextMenu.column,
+                -1,
+              )
+            }
+            onClick={() => shiftColumnInGrid(contextMenu.column, -1)}
+          >
+            左移此列
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={
+              !canMoveColumnAmongVisible(
+                orderedColumns,
+                visibleResultColumns(columns, hiddenColumns),
+                contextMenu.column,
+                1,
+              )
+            }
+            onClick={() => shiftColumnInGrid(contextMenu.column, 1)}
+          >
+            右移此列
           </button>
           <button
             type="button"

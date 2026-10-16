@@ -3903,6 +3903,24 @@ body.is-col-resizing .grid-col-resizer {
   border-radius: 8px;
   background: #0f131a;
 }
+.result-col-visibility-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.result-col-visibility-row .result-col-visibility-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.result-col-visibility-move {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+.result-col-visibility-move .tiny-btn {
+  min-width: 26px;
+  padding: 0 4px;
+}
 .result-col-visibility-item {
   display: flex;
   align-items: center;
