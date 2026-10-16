@@ -59,6 +59,10 @@ export type ConnectionInput = {
   createFile?: boolean
   /** Per-connection safe mode: block writes / DDL. */
   readOnly?: boolean
+  /** Optional folder/group id. */
+  groupId?: string | null
+  /** Preset color tag id (blue/teal/…). */
+  colorTag?: string | null
 }
 
 export type ConnectionPublic = {
@@ -73,6 +77,16 @@ export type ConnectionPublic = {
   hasPassword: boolean
   /** Per-connection safe mode. */
   readOnly?: boolean
+  groupId?: string | null
+  colorTag?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type ConnectionGroup = {
+  id: string
+  name: string
+  sort: number
   createdAt: string
   updatedAt: string
 }

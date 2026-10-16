@@ -22,6 +22,7 @@ const memory = {
   connections: [] as ConnectionPublic[],
   history: {} as Record<string, QueryHistoryEntry[]>,
   favorites: [] as SqlFavorite[],
+  connectionGroups: [] as import('@shared/types').ConnectionGroup[],
   recent: { version: 1 as const, tables: [] as RecentTableItem[], queries: [] as RecentQueryItem[] },
   favoriteFolders: [] as import('@shared/types').FavoriteFolder[],
   workspace: null as WorkspaceState | null,
@@ -250,6 +251,29 @@ export function createPreviewApi(): DesktopApi {
     },
     connections: {
       list: async () => memory.connections,
+      listGroups: async () => memory.connectionGroups,
+      saveGroup: async (input) => {
+        const now = new Date().toISOString()
+        const existing = memory.connectionGroups.find((row) => row.id === input.id)
+        const next = {
+          id: existing?.id ?? crypto.randomUUID(),
+          name: input.name.trim(),
+          sort: input.sort ?? existing?.sort ?? memory.connectionGroups.length,
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+        }
+        memory.connectionGroups = [
+          ...memory.connectionGroups.filter((row) => row.id !== next.id),
+          next,
+        ]
+        return next
+      },
+      removeGroup: async (id) => {
+        memory.connectionGroups = memory.connectionGroups.filter((row) => row.id !== id)
+        memory.connections = memory.connections.map((row) =>
+          row.groupId === id ? { ...row, groupId: null } : row,
+        )
+      },
       save: async (input: ConnectionInput) => {
         const now = new Date().toISOString()
         const existing = memory.connections.find((row) => row.id === input.id)

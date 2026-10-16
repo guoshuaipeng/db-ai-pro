@@ -38,7 +38,7 @@ import { analyzeDestructiveSql } from '@shared/destructiveSql'
 import { analyzeReadOnlySql, isReadOnlyEffective } from '@shared/readOnlySql'
 import { DEFAULT_SLOW_QUERY_MS } from '@shared/slowQuery'
 import type { TableStructure } from '@shared/tableStructure'
-import type { Dialect } from '@shared/types'
+import type { ConnectionGroup, Dialect } from '@shared/types'
 
 export type ImportTarget = {
   connectionId: string
@@ -117,6 +117,10 @@ type WorkspaceValue = {
   ready: boolean
   meta: AppMeta | null
   connections: ConnectionPublic[]
+  connectionGroups: ConnectionGroup[]
+  refreshConnectionGroups: () => Promise<void>
+  saveConnectionGroup: (input: { id?: string; name: string }) => Promise<void>
+  removeConnectionGroup: (id: string) => Promise<void>
   healthById: Record<string, ConnHealth>
   checkConnectionHealth: (id: string, silent?: boolean) => Promise<ConnHealth | null>
   checkAllConnectionHealth: () => Promise<void>
@@ -303,6 +307,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
   const [meta, setMeta] = useState<AppMeta | null>(null)
   const [connections, setConnections] = useState<ConnectionPublic[]>([])
+  const [connectionGroups, setConnectionGroups] = useState<ConnectionGroup[]>([])
   const [healthById, setHealthById] = useState<Record<string, ConnHealth>>({})
   const [schema, setSchema] = useState<SchemaNode[]>([])
   const [search, setSearch] = useState('')
@@ -396,17 +401,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     void (async () => {
       try {
-        const [info, rows, workspace, aiSettings, recent, prefs] = await Promise.all([
+        const [info, rows, workspace, aiSettings, recent, prefs, groups] = await Promise.all([
           api.meta(),
           api.connections.list(),
           api.workspace.load(),
           api.ai.getSettings(),
           api.recent.list().catch(() => EMPTY_RECENT),
           api.prefs.get(),
+          api.connections.listGroups().catch(() => []),
         ])
         if (cancelled) return
         setMeta(info)
         setConnections(rows)
+        setConnectionGroups(groups)
         setSettings(aiSettings)
         applyRecentState(recent)
         setGlobalReadOnlyState(Boolean(prefs.globalReadOnly))
@@ -681,6 +688,28 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const closeSchemaDiff = () => {
     setSchemaDiffOpen(false)
     setSchemaDiffSeed(null)
+  }
+
+  const refreshConnectionGroups = async () => {
+    try {
+      setConnectionGroups(await api.connections.listGroups())
+    } catch {
+      setConnectionGroups([])
+    }
+  }
+
+  const saveConnectionGroup = async (input: { id?: string; name: string }) => {
+    await api.connections.saveGroup(input)
+    await refreshConnectionGroups()
+    pushToast('success', input.id ? '分组已更新' : '分组已创建')
+  }
+
+  const removeConnectionGroup = async (id: string) => {
+    await api.connections.removeGroup(id)
+    const rows = await api.connections.list()
+    setConnections(rows)
+    await refreshConnectionGroups()
+    pushToast('success', '分组已删除')
   }
 
   const refreshConnections = async (preferredId?: string | null) => {
@@ -1497,6 +1526,10 @@ ${sql.trim()}
     ready,
     meta,
     connections,
+    connectionGroups,
+    refreshConnectionGroups,
+    saveConnectionGroup,
+    removeConnectionGroup,
     healthById,
     checkConnectionHealth,
     checkAllConnectionHealth,

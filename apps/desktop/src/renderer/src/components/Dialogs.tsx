@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { DIALECTS, dialectInfo, needsServerDatabase } from '@shared/types'
+import { CONN_COLOR_TAGS } from '@shared/connGroups'
 import type { ConnectionInput, Dialect } from '@shared/types'
 import type { ImportPlanItem } from '@shared/connectionTransfer'
 import { useWorkspace } from '../state/workspace'
@@ -172,6 +173,8 @@ function ConnectionDialog() {
   const [username, setUsername] = useState(existing?.username ?? '')
   const [password, setPassword] = useState('')
   const [readOnly, setReadOnly] = useState(existing?.readOnly === true)
+  const [groupId, setGroupId] = useState(existing?.groupId ?? '')
+  const [colorTag, setColorTag] = useState(existing?.colorTag ?? '')
   const [error, setError] = useState('')
   const [probe, setProbe] = useState('')
   const [probing, setProbing] = useState(false)
@@ -195,6 +198,8 @@ function ConnectionDialog() {
       createFile,
       password: password || undefined,
       readOnly,
+      groupId: groupId || null,
+      colorTag: colorTag || null,
     }
     if (dialect === 'sqlite') input.filePath = filePath
     else {
@@ -335,7 +340,43 @@ function ConnectionDialog() {
         </p>
         {probe && <p className="field-ok">{probe}</p>}
         {error && <p className="field-error">{error}</p>}
-                <label className="checkline">
+                <label className="field">
+          <span>分组</span>
+          <select value={groupId} onChange={(e) => setGroupId(e.target.value)} aria-label="连接分组">
+            <option value="">未分组</option>
+            {ws.connectionGroups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="field">
+          <span>颜色标记</span>
+          <div className="conn-color-picker" role="radiogroup" aria-label="颜色标记">
+            <button
+              type="button"
+              className={!colorTag ? 'conn-color-swatch is-none is-active' : 'conn-color-swatch is-none'}
+              aria-checked={!colorTag}
+              role="radio"
+              title="无"
+              onClick={() => setColorTag('')}
+            />
+            {CONN_COLOR_TAGS.map((tag) => (
+              <button
+                key={tag.id}
+                type="button"
+                className={colorTag === tag.id ? 'conn-color-swatch is-active' : 'conn-color-swatch'}
+                style={{ background: tag.color }}
+                aria-checked={colorTag === tag.id}
+                role="radio"
+                title={tag.label}
+                onClick={() => setColorTag(tag.id)}
+              />
+            ))}
+          </div>
+        </div>
+        <label className="checkline">
           <input type="checkbox" checked={readOnly} onChange={(event) => setReadOnly(event.target.checked)} />
           只读连接（拦截写入 / DDL）
         </label>

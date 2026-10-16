@@ -7,6 +7,10 @@ TypeScript 桌面端（当前主力迭代）见：[`apps/desktop/CHANGELOG.md`](
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**，尚未发布到 GitHub Releases。
 
+## 2.6.0 — M35 连接分组 + 颜色标记
+
+- 连接分组与颜色标签
+
 ## 2.5.0 — M34 复制为 IN / VALUES
 
 - 结果复制 IN / VALUES

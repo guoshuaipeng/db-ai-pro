@@ -9,6 +9,7 @@ import type {
   ConnectionPublic,
   Dialect,
   QueryHistoryEntry,
+  ConnectionGroup,
   SqlFavorite,
   FavoriteFolder,
   WorkspaceState,
@@ -16,6 +17,7 @@ import type {
 import { QUERY_HISTORY_LIMIT, pushQueryHistory } from '@shared/queryHistory'
 import { upsertFavorite, upsertFolder } from '@shared/favorites'
 import { DEFAULT_PREFS, normalizePrefs, type AppPrefs } from '@shared/prefs'
+import { upsertConnGroup } from '@shared/connGroups'
 import { normalizeSessionTabs, pickActiveEditorId, SESSION_TAB_CAP } from '@shared/sessionRestore'
 import { normalizeLayout } from '@shared/layoutBounds'
 import {
@@ -51,6 +53,8 @@ type StoredConnection = {
   /** Legacy plaintext — migrated on load and never written back. */
   password?: string
   readOnly?: boolean
+  groupId?: string | null
+  colorTag?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -127,6 +131,8 @@ function toPublic(row: StoredConnection): ConnectionPublic {
     username: row.username,
     hasPassword: Boolean(row.passwordCipher),
     readOnly: row.readOnly === true,
+    groupId: row.groupId ?? null,
+    colorTag: row.colorTag ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
@@ -175,6 +181,10 @@ export function saveConnection(input: ConnectionInput): { connection: Connection
     passwordCipher,
     readOnly:
       input.readOnly === undefined ? (existing?.readOnly === true) : input.readOnly === true,
+    groupId:
+      input.groupId === undefined ? (existing?.groupId ?? null) : input.groupId,
+    colorTag:
+      input.colorTag === undefined ? (existing?.colorTag ?? null) : input.colorTag,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
@@ -544,4 +554,42 @@ export function recordRecentQuery(input: {
 
 export function clearRecentItems(): RecentItemsState {
   return writeRecentItems({ ...EMPTY_RECENT })
+}
+
+export function listConnectionGroups(): ConnectionGroup[] {
+  return readJson<ConnectionGroup[]>('connection-groups.json', []).sort(
+    (a, b) => a.sort - b.sort || a.name.localeCompare(b.name, 'zh-CN'),
+  )
+}
+
+export function saveConnectionGroup(input: {
+  id?: string
+  name: string
+  sort?: number
+}): { group: ConnectionGroup } | { error: string } {
+  const name = input.name.trim()
+  if (!name) return { error: '请填写分组名称' }
+  const rows = listConnectionGroups()
+  const now = new Date().toISOString()
+  const existing = input.id ? rows.find((row) => row.id === input.id) : undefined
+  const next: ConnectionGroup = {
+    id: existing?.id ?? createId(),
+    name,
+    sort: input.sort ?? existing?.sort ?? rows.length,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  }
+  writeJson('connection-groups.json', upsertConnGroup(rows, next))
+  return { group: next }
+}
+
+export function removeConnectionGroup(id: string): void {
+  writeJson(
+    'connection-groups.json',
+    listConnectionGroups().filter((row) => row.id !== id),
+  )
+  const rows = loadConnectionsRaw().map((row) =>
+    row.groupId === id ? { ...row, groupId: null } : row,
+  )
+  writeJson('connections.json', rows)
 }

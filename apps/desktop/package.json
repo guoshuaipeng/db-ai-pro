@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — copy IN / VALUES",
+  "description": "DataAI TypeScript desktop — connection groups + color tags",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

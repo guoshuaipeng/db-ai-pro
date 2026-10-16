@@ -6,6 +6,7 @@ import type {
   AppMeta,
   ConnectionInput,
   ConnectionPublic,
+  ConnectionGroup,
   QueryHistoryEntry,
   RedisKeyInfo,
   RedisValueView,
@@ -53,6 +54,9 @@ export type DesktopApi = {
   }
   connections: {
     list: () => Promise<ConnectionPublic[]>
+    listGroups: () => Promise<ConnectionGroup[]>
+    saveGroup: (input: { id?: string; name: string; sort?: number }) => Promise<ConnectionGroup>
+    removeGroup: (id: string) => Promise<void>
     save: (input: ConnectionInput) => Promise<ConnectionPublic>
     remove: (id: string) => Promise<void>
     schema: (id: string) => Promise<SchemaNode>

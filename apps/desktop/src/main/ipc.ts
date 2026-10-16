@@ -49,6 +49,9 @@ import {
   recordRecentTable,
   recordRecentQuery,
   clearRecentItems,
+  listConnectionGroups,
+  saveConnectionGroup,
+  removeConnectionGroup,
   savePrefs,
   getConnection,
   hasConnectionStore,
@@ -237,6 +240,14 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
   })
 
   ipcMain.handle('connections:list', () => listConnections())
+  ipcMain.handle('connections:listGroups', () => listConnectionGroups())
+  ipcMain.handle(
+    'connections:saveGroup',
+    (_event, input: { id?: string; name: string; sort?: number }) => saveConnectionGroup(input),
+  )
+  ipcMain.handle('connections:removeGroup', (_event, id: string) => {
+    removeConnectionGroup(id)
+  })
 
   ipcMain.handle('connections:save', (_event, input: ConnectionInput) => {
     if (input.dialect === 'sqlite' && input.filePath) {

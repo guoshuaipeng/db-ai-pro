@@ -27,6 +27,13 @@ const api: DesktopApi = {
   },
   connections: {
     list: () => ipcRenderer.invoke('connections:list'),
+    listGroups: () => ipcRenderer.invoke('connections:listGroups'),
+    saveGroup: async (input) => {
+      const result = await ipcRenderer.invoke('connections:saveGroup', input)
+      if (result?.error) throw new Error(result.error)
+      return result.group ?? result
+    },
+    removeGroup: (id) => ipcRenderer.invoke('connections:removeGroup', id),
     save: async (input: ConnectionInput) => {
       const result = await ipcRenderer.invoke('connections:save', input)
       if (result?.error) throw new Error(result.error)

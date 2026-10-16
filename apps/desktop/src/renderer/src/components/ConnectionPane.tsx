@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { onDataai } from '../appEvents'
 import { dialectInfo } from '@shared/types'
 import { formatLatency } from '@shared/connHealth'
+import { bucketSchemaByGroup, colorForTag } from '@shared/connGroups'
 import type { Dialect, SchemaNode } from '@shared/types'
 import { IconColumn, IconDatabase, IconMore, IconPlus, IconSearch, IconTable } from './icons'
 import { EmptyState } from './EmptyState'
@@ -11,7 +12,15 @@ import { recentQueryTitle } from '@shared/recentItems'
 export function ConnectionPane() {
   const ws = useWorkspace()
   const [menuId, setMenuId] = useState<string | null>(null)
+  const [groupDraft, setGroupDraft] = useState('')
+  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
   const root = useRef<HTMLElement>(null)
+
+  const buckets = useMemo(
+    () => bucketSchemaByGroup(ws.filteredSchema, ws.connections, ws.connectionGroups),
+    [ws.filteredSchema, ws.connections, ws.connectionGroups],
+  )
   const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -107,6 +116,36 @@ export function ConnectionPane() {
           ))}
         </div>
       )}
+      <div className="conn-group-bar">
+        <input
+          className="fav-input"
+          value={groupDraft}
+          onChange={(e) => setGroupDraft(e.target.value)}
+          placeholder="新建连接分组"
+          aria-label="新建连接分组"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              const name = groupDraft.trim()
+              if (!name) return
+              void ws.saveConnectionGroup({ name }).then(() => setGroupDraft(''))
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="btn btn-ghost tiny-btn"
+          disabled={!groupDraft.trim()}
+          onClick={() => {
+            const name = groupDraft.trim()
+            if (!name) return
+            void ws.saveConnectionGroup({ name }).then(() => setGroupDraft(''))
+          }}
+        >
+          新建分组
+        </button>
+      </div>
+
       {ws.connections.length === 0 ? (
         <EmptyState
           kicker="开始使用"
@@ -137,15 +176,99 @@ export function ConnectionPane() {
         />
       ) : (
         <div className="tree" role="tree">
-          {ws.filteredSchema.map((node) => (
-            <TreeNode
-              key={node.id}
-              node={node}
-              depth={0}
-              menuId={menuId}
-              onMenu={setMenuId}
-            />
-          ))}
+          {buckets.map((bucket) => {
+            const groupKey = bucket.group?.id ?? 'ungrouped'
+            const groupExpanded =
+              ws.search.trim() || !bucket.group
+                ? true
+                : ws.expanded[`group:${bucket.group.id}`] !== false
+            return (
+              <div key={groupKey} className="conn-group">
+                {bucket.group && (
+                  <div className="conn-group-head" style={{ paddingLeft: 8 }}>
+                    <button
+                      type="button"
+                      className={groupExpanded ? 'twist is-open' : 'twist'}
+                      aria-label={groupExpanded ? '折叠分组' : '展开分组'}
+                      onClick={() => ws.toggleExpanded(`group:${bucket.group!.id}`)}
+                    >
+                      <Caret />
+                    </button>
+                    {renamingGroupId === bucket.group.id ? (
+                      <input
+                        className="fav-input fav-rename"
+                        value={renameDraft}
+                        autoFocus
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        onBlur={() => {
+                          const name = renameDraft.trim()
+                          if (name) void ws.saveConnectionGroup({ id: bucket.group!.id, name })
+                          setRenamingGroupId(null)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            const name = renameDraft.trim()
+                            if (name) void ws.saveConnectionGroup({ id: bucket.group!.id, name })
+                            setRenamingGroupId(null)
+                          }
+                          if (e.key === 'Escape') setRenamingGroupId(null)
+                        }}
+                      />
+                    ) : (
+                      <strong className="conn-group-title">{bucket.group.name}</strong>
+                    )}
+                    <span className="conn-group-count">{bucket.nodes.length}</span>
+                    {renamingGroupId !== bucket.group.id && (
+                      <div className="conn-group-actions">
+                        <button
+                          type="button"
+                          className="tiny-btn btn"
+                          onClick={() => {
+                            setRenamingGroupId(bucket.group!.id)
+                            setRenameDraft(bucket.group!.name)
+                          }}
+                        >
+                          改名
+                        </button>
+                        <button
+                          type="button"
+                          className="tiny-btn btn"
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `删除分组「${bucket.group!.name}」？连接会移到未分组。`,
+                              )
+                            ) {
+                              void ws.removeConnectionGroup(bucket.group!.id)
+                            }
+                          }}
+                        >
+                          删组
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!bucket.group && ws.connectionGroups.length > 0 && bucket.nodes.length > 0 && (
+                  <div className="conn-group-head is-muted" style={{ paddingLeft: 8 }}>
+                    <strong className="conn-group-title">未分组</strong>
+                    <span className="conn-group-count">{bucket.nodes.length}</span>
+                  </div>
+                )}
+                {groupExpanded &&
+                  bucket.nodes.map((node) => (
+                    <TreeNode
+                      key={node.id}
+                      node={node}
+                      depth={bucket.group || (ws.connectionGroups.length > 0 && !bucket.group) ? 1 : 0}
+                      menuId={menuId}
+                      onMenu={setMenuId}
+                    />
+                  ))}
+              </div>
+            )
+          })}
         </div>
       )}
     </aside>
@@ -197,6 +320,13 @@ function TreeNode({
           }}
           title={node.kind === 'table' ? '单击打开查询 · 双击查看结构' : undefined}
         >
+          {node.kind === 'connection' && connection?.colorTag && colorForTag(connection.colorTag) && (
+            <span
+              className="conn-color-dot"
+              style={{ background: colorForTag(connection.colorTag)! }}
+              title="颜色标记"
+            />
+          )}
           <span className="tree-icon">
             {node.kind === 'table' ? <IconTable /> : node.kind === 'column' ? <IconColumn /> : node.kind === 'key' ? <IconColumn /> : <IconDatabase />}
           </span>
