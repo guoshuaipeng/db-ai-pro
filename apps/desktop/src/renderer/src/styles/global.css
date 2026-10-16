@@ -3489,3 +3489,71 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
 .export-column-item input {
   accent-color: var(--accent, #9eb4ff);
 }
+
+.result-col-visibility-pop {
+  position: absolute;
+  z-index: 28;
+  top: 8px;
+  right: 12px;
+  width: min(300px, calc(100% - 24px));
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #161b26;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.result-col-visibility-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.result-col-visibility-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-tertiary);
+  line-height: 1.4;
+}
+.result-col-visibility-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(280px, 40vh);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0f131a;
+}
+.result-col-visibility-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.result-col-visibility-list li:last-child .result-col-visibility-item { border-bottom: 0; }
+.result-col-visibility-item:hover,
+.result-col-visibility-item.is-on {
+  background: rgba(158, 180, 255, 0.06);
+}
+.result-col-visibility-item input { accent-color: var(--accent, #9eb4ff); }
+.result-col-visibility-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.result-col-visibility-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--ink-secondary);
+  background: rgba(148, 163, 184, 0.08);
+  border-bottom: 1px solid var(--line);
+}

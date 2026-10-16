@@ -354,6 +354,7 @@ export function ResultPane() {
   const [resultFilter, setResultFilter] = useState('')
   const [viewRows, setViewRows] = useState<Record<string, unknown>[]>([])
   const [selectedRows, setSelectedRows] = useState<Record<string, unknown>[]>([])
+  const [gridVisibleColumns, setGridVisibleColumns] = useState<string[] | null>(null)
 
   const chartable =
     active?.kind === 'grid' && active.columns
@@ -365,6 +366,7 @@ export function ResultPane() {
     setResultFilter('')
     setViewRows(active?.kind === 'grid' ? (active.rows ?? []) : [])
     setSelectedRows([])
+    setGridVisibleColumns(null)
   }, [active?.id])
 
   useEffect(() => {
@@ -507,7 +509,7 @@ export function ResultPane() {
                     </button>
                   </div>
                 )}
-                <ResultToolbar columns={active.columns} rows={exportRows} selectedRows={selectedRows} focusColumn={focusColumn} filterQuery={resultFilter} onFilterQuery={setResultFilter} totalRows={(active.rows ?? []).length} />
+                <ResultToolbar columns={gridVisibleColumns ?? active.columns} rows={exportRows} selectedRows={selectedRows} focusColumn={focusColumn} filterQuery={resultFilter} onFilterQuery={setResultFilter} totalRows={(active.rows ?? []).length} />
               </div>
             ) : (
               <div className="result-trailing">
@@ -544,7 +546,7 @@ export function ResultPane() {
       {active?.kind === 'plan' && <pre className="message-log plan-log">{active.message}</pre>}
       {active?.kind === 'message' && <pre className="message-log">{active.message}</pre>}
       {active?.kind === 'grid' && active.columns && view === 'table' && (
-        <ResultGrid columns={active.columns} rows={filteredRows} key={`${active.id}:table`} onFocusColumn={setFocusColumn} onViewRowsChange={setViewRows} onSelectedRowsChange={setSelectedRows} />
+        <ResultGrid columns={active.columns} rows={filteredRows} key={`${active.id}:table`} onFocusColumn={setFocusColumn} onViewRowsChange={setViewRows} onSelectedRowsChange={setSelectedRows} onVisibleColumnsChange={setGridVisibleColumns} />
       )}
       {active?.kind === 'grid' && active.columns && view === 'chart' && chartable && (
         <ResultChart columns={active.columns} rows={active.rows ?? []} key={`${active.id}:chart`} />

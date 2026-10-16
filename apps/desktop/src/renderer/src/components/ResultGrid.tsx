@@ -41,6 +41,14 @@ import {
 import { emitDataai, onDataai } from '../appEvents'
 import { ExportColumnDialog } from './ExportColumnDialog'
 import { type ExportFormat } from '@shared/exportColumnPick'
+import {
+  baseResultColumns,
+  canHideColumn,
+  countHiddenColumns,
+  resetHiddenColumns,
+  setColumnHidden,
+  visibleResultColumns,
+} from '@shared/resultColumnVisibility'
 
 const ROW_HEIGHT = 32
 
@@ -237,6 +245,15 @@ export function ResultToolbar({
       <button
         type="button"
         className="btn btn-ghost tiny-btn"
+        disabled={rows.length === 0}
+        title="显示 / 隐藏结果列"
+        onClick={() => emitDataai('dataai:result-column-visibility')}
+      >
+        显示列
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
         disabled={!statsColumn || rows.length === 0}
         title={statsColumn ? `统计列：${statsColumn}` : '无可统计列'}
         onClick={() => {
@@ -357,12 +374,15 @@ export function ResultGrid({
   onFocusColumn,
   onViewRowsChange,
   onSelectedRowsChange,
+  onVisibleColumnsChange,
 }: {
   columns: string[]
   rows: Record<string, unknown>[]
   onFocusColumn?: (column: string | null) => void
   onViewRowsChange?: (rows: Record<string, unknown>[]) => void
   onSelectedRowsChange?: (rows: Record<string, unknown>[]) => void
+  /** Currently shown columns (excludes hidden + __rowid__), for export/copy defaults. */
+  onVisibleColumnsChange?: (columns: string[]) => void
 }) {
   const ws = useWorkspace()
   const parentRef = useRef<HTMLDivElement>(null)
@@ -390,8 +410,19 @@ export function ResultGrid({
   const [filterMenuColumn, setFilterMenuColumn] = useState<string | null>(null)
   const [filterDraft, setFilterDraft] = useState<ColumnFilter>({ mode: 'contains', value: '' })
   const filterMenuRef = useRef<HTMLDivElement>(null)
+  const [hiddenColumns, setHiddenColumns] = useState<string[]>([])
+  const [visibilityOpen, setVisibilityOpen] = useState(false)
+  const visibilityRef = useRef<HTMLDivElement>(null)
 
-  const visibleColumns = useMemo(() => columns.filter((column) => column !== '__rowid__'), [columns])
+  const allBaseColumns = useMemo(() => baseResultColumns(columns), [columns])
+  const visibleColumns = useMemo(
+    () => visibleResultColumns(columns, hiddenColumns),
+    [columns, hiddenColumns],
+  )
+  const hiddenCount = useMemo(
+    () => countHiddenColumns(columns, hiddenColumns),
+    [columns, hiddenColumns],
+  )
   const displayColumns = useMemo(() => {
     const pinnedSet = new Set(pinned.filter((name) => visibleColumns.includes(name)))
     const head = pinned.filter((name) => pinnedSet.has(name)).slice(0, 2)
@@ -424,6 +455,18 @@ export function ResultGrid({
   useEffect(() => {
     onViewRowsChange?.(displayRows)
   }, [displayRows, onViewRowsChange])
+
+  useEffect(() => {
+    onVisibleColumnsChange?.(visibleColumns)
+  }, [visibleColumns, onVisibleColumnsChange])
+
+  useEffect(() => {
+    setFocus((current) => {
+      const maxCol = Math.max(0, displayColumns.length - 1)
+      if (current.col <= maxCol) return current
+      return { ...current, col: maxCol }
+    })
+  }, [displayColumns.length])
 
   useEffect(() => {
     onSelectedRowsChange?.(selectedRowsFromIndexes(displayRows, selectedIndexes))
@@ -469,6 +512,8 @@ export function ResultGrid({
     setColWidths(null)
     setColumnFilters({})
     setFilterMenuColumn(null)
+    setHiddenColumns([])
+    setVisibilityOpen(false)
     setNote(rows.length > 500 ? `已虚拟滚动渲染 ${rows.length.toLocaleString('zh-CN')} 行` : '')
   }, [columns, rows])
 
@@ -490,6 +535,18 @@ export function ResultGrid({
     window.addEventListener('mousedown', onDown)
     return () => window.removeEventListener('mousedown', onDown)
   }, [filterMenuColumn])
+
+  useEffect(() => {
+    if (!visibilityOpen) return
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node | null
+      if (visibilityRef.current?.contains(target)) return
+      setVisibilityOpen(false)
+    }
+    window.addEventListener('mousedown', onDown)
+    return () => window.removeEventListener('mousedown', onDown)
+  }, [visibilityOpen])
+
 
 
   useEffect(() => {
@@ -716,6 +773,24 @@ export function ResultGrid({
     setNote('已清除全部列筛选')
   }
 
+
+  const toggleColumnVisibility = (column: string, show: boolean) => {
+    if (!show && !canHideColumn(columns, hiddenColumns, column)) {
+      setNote('至少保留一列可见')
+      return
+    }
+    setHiddenColumns((current) => setColumnHidden(columns, current, column, !show))
+    if (!show) {
+      setPinned((pins) => pins.filter((name) => name !== column))
+    }
+  }
+
+  const restoreAllColumns = () => {
+    setHiddenColumns(resetHiddenColumns())
+    setVisibilityOpen(false)
+    setNote('已恢复全部列')
+  }
+
   const commitEdit = async () => {
     if (!editing || !ws.activeConnection) return
     const column = displayColumns[editing.col]
@@ -823,6 +898,62 @@ export function ResultGrid({
           </button>
         </div>
       )}
+      {visibilityOpen && (
+        <div
+          ref={visibilityRef}
+          className="result-col-visibility-pop"
+          role="dialog"
+          aria-label="显示列"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div className="result-col-visibility-title">显示列</div>
+          <p className="result-col-visibility-hint">至少保留一列；隐藏列不出现在表格与默认导出中。</p>
+          <ul className="result-col-visibility-list">
+            {allBaseColumns.map((column) => {
+              const shown = visibleColumns.includes(column)
+              const disableHide = shown && !canHideColumn(columns, hiddenColumns, column)
+              return (
+                <li key={column}>
+                  <label className={shown ? 'result-col-visibility-item is-on' : 'result-col-visibility-item'}>
+                    <input
+                      type="checkbox"
+                      checked={shown}
+                      disabled={disableHide}
+                      onChange={(event) => toggleColumnVisibility(column, event.target.checked)}
+                    />
+                    <span>{column}</span>
+                  </label>
+                </li>
+              )
+            })}
+          </ul>
+          <div className="result-col-visibility-actions">
+            <button
+              type="button"
+              className="btn btn-ghost tiny-btn"
+              disabled={hiddenCount === 0}
+              onClick={restoreAllColumns}
+            >
+              恢复全部列
+            </button>
+            <button type="button" className="btn btn-primary tiny-btn" onClick={() => setVisibilityOpen(false)}>
+              完成
+            </button>
+          </div>
+        </div>
+      )}
+      {hiddenCount > 0 && !visibilityOpen && (
+        <div className="result-col-visibility-bar" role="status">
+          <span>已隐藏 {hiddenCount} 列</span>
+          <button type="button" className="btn btn-ghost tiny-btn" onClick={() => setVisibilityOpen(true)}>
+            显示列
+          </button>
+          <button type="button" className="btn btn-ghost tiny-btn" onClick={restoreAllColumns}>
+            恢复全部列
+          </button>
+        </div>
+      )}
+
       {activeColumnFilterCount > 0 && (
         <div className="result-col-filter-bar" role="status">
           <span>
@@ -1173,6 +1304,17 @@ export function ResultGrid({
           <button
             type="button"
             role="menuitem"
+            disabled={!canHideColumn(columns, hiddenColumns, contextMenu.column)}
+            onClick={() => {
+              toggleColumnVisibility(contextMenu.column, false)
+              setContextMenu(null)
+            }}
+          >
+            隐藏此列
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             onClick={() => autofitOneColumn(contextMenu.column)}
           >
             列宽适应（本列）
@@ -1228,7 +1370,7 @@ export function ResultGrid({
       )}
       {note && <p className="result-footnote">{note}</p>}
       <p className="result-footnote">
-        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；「列宽适应」或表头分隔线双击估算列宽；表头「筛」可按列筛选（与上方筛选框叠加）。
+        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；「列宽适应」或表头分隔线双击估算列宽；表头「筛」可按列筛选（与上方筛选框叠加）；「显示列」可隐藏列。
         {sort ? ` 当前排序：${sort.column} ${sort.direction === 'asc' ? '升序' : '降序'}。` : ''}
       </p>
       {canEditSqlite && <p className="result-footnote">SQLite：双击单元格可编辑（需确认）。隐藏列 __rowid__ 用于定位行。</p>}

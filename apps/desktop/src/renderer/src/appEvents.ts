@@ -9,6 +9,7 @@ export type DataaiEventMap = {
   'dataai:find': undefined
   'dataai:result-find': undefined
   'dataai:result-autofit-columns': undefined
+  'dataai:result-column-visibility': undefined
   'dataai:replace': undefined
   'dataai:open-templates': undefined
   'dataai:insert-template': { templateId: string }
