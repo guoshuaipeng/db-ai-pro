@@ -4,6 +4,7 @@ import type { CommandDef } from '@shared/commands'
 import { dialectInfo, isKvDialect } from '@shared/types'
 import { Mark } from './components/icons'
 import { TitleBar } from './components/TitleBar'
+import { NotificationDrawer } from './components/NotificationDrawer'
 import { ConnectionPane } from './components/ConnectionPane'
 import { EditorPane, ResultPane } from './components/EditorPane'
 import { AiPane } from './components/AiPane'
@@ -31,6 +32,7 @@ import { useWorkspace } from './state/workspace'
 export function App() {
   const ws = useWorkspace()
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
   const [paletteFavorites, setPaletteFavorites] = useState<SqlFavorite[]>([])
 
   useEffect(() => {
@@ -339,9 +341,18 @@ export function App() {
         aiOpen={ws.aiOpen}
         alwaysOnTop={prefs.alwaysOnTop}
         zoomLabel={formatZoomPercent(prefs.zoomFactor)}
+        notificationUnread={ws.unreadNotificationCount}
+        notificationsOpen={notifOpen}
         onToggleSidebar={ws.toggleSidebar}
         onToggleAi={ws.toggleAi}
         onToggleAlwaysOnTop={() => void toggleAlwaysOnTop()}
+        onOpenNotifications={() => {
+          setNotifOpen((open) => {
+            const next = !open
+            if (next) ws.markNotificationsRead()
+            return next
+          })
+        }}
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenSettings={() => openSettings('model')}
         recentTables={ws.recentTables}
@@ -349,6 +360,15 @@ export function App() {
         onOpenRecentTable={ws.openRecentTable}
         onOpenRecentQuery={ws.openRecentQuery}
         onClearRecent={() => void ws.clearRecent()}
+      />
+      <NotificationDrawer
+        open={notifOpen}
+        items={ws.notifications}
+        onClose={() => setNotifOpen(false)}
+        onClear={() => {
+          ws.clearNotifications()
+        }}
+        onDismiss={ws.dismissNotification}
       />
       <div className="workspace" style={{ gridTemplateColumns: columns }}>
         {ws.sidebarOpen && <ConnectionPane />}

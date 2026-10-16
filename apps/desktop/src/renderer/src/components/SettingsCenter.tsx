@@ -303,6 +303,28 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
     }
   }
 
+  const setNotifyOnErrorOnly = async (notifyOnErrorOnly: boolean) => {
+    setBusy(true)
+    try {
+      await ws.setNotifyOnErrorOnly(notifyOnErrorOnly)
+      const next = await api.prefs.get()
+      onPrefs(next)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const setNotifyOnSlowQuery = async (notifyOnSlowQuery: boolean) => {
+    setBusy(true)
+    try {
+      await ws.setNotifyOnSlowQuery(notifyOnSlowQuery)
+      const next = await api.prefs.get()
+      onPrefs(next)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="settings-card">
       <p className="settings-lead">界面保持深色一体壳。可调节信息密度与对比度，适配 1366×768 与更宽屏。侧栏 / 编辑器 / 助手分隔比例会自动记住。</p>
@@ -389,6 +411,38 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
           onClick={() => void setAlwaysOnTop(!prefs.alwaysOnTop)}
         >
           {prefs.alwaysOnTop ? '已开启' : '已关闭'}
+        </button>
+      </div>
+      <div className="contrast-block">
+        <div className="contrast-copy">
+          <strong>通知：仅错误</strong>
+          <span>通知中心（标题栏「通知」）只保留失败 / 警告，不记录查询与导入成功。</span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={prefs.notifyOnErrorOnly}
+          className={prefs.notifyOnErrorOnly ? 'contrast-switch is-on' : 'contrast-switch'}
+          disabled={busy}
+          onClick={() => void setNotifyOnErrorOnly(!prefs.notifyOnErrorOnly)}
+        >
+          {prefs.notifyOnErrorOnly ? '已开启' : '已关闭'}
+        </button>
+      </div>
+      <div className="contrast-block">
+        <div className="contrast-copy">
+          <strong>通知：慢查询</strong>
+          <span>运行超过慢查询阈值时写入通知中心（默认关闭）。</span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={prefs.notifyOnSlowQuery}
+          className={prefs.notifyOnSlowQuery ? 'contrast-switch is-on' : 'contrast-switch'}
+          disabled={busy}
+          onClick={() => void setNotifyOnSlowQuery(!prefs.notifyOnSlowQuery)}
+        >
+          {prefs.notifyOnSlowQuery ? '已开启' : '已关闭'}
         </button>
       </div>
     </div>

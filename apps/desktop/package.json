@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — always-on-top + zoom shortcuts",
+  "description": "DataAI TypeScript desktop — in-app notification center",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

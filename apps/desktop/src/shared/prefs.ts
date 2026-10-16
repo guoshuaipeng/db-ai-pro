@@ -38,6 +38,10 @@ export type AppPrefs = {
   alwaysOnTop: boolean
   /** webContents zoomFactor (1 = 100%). */
   zoomFactor: number
+  /** Only record errors/warnings in the notification center. */
+  notifyOnErrorOnly: boolean
+  /** Record a notification when a run exceeds slowQueryMs. */
+  notifyOnSlowQuery: boolean
 }
 
 export const DEFAULT_PREFS: AppPrefs = {
@@ -49,6 +53,8 @@ export const DEFAULT_PREFS: AppPrefs = {
   slowQueryMs: DEFAULT_SLOW_QUERY_MS,
   alwaysOnTop: false,
   zoomFactor: DEFAULT_ZOOM_FACTOR,
+  notifyOnErrorOnly: false,
+  notifyOnSlowQuery: false,
 }
 
 const TIMEOUT_MIN = 0
@@ -78,5 +84,7 @@ export function normalizePrefs(value: unknown): AppPrefs {
     zoomFactor: clampZoomFactor(
       row.zoomFactor === undefined ? DEFAULT_ZOOM_FACTOR : row.zoomFactor,
     ),
+    notifyOnErrorOnly: row.notifyOnErrorOnly === true,
+    notifyOnSlowQuery: row.notifyOnSlowQuery === true,
   }
 }

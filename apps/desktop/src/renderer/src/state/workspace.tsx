@@ -46,7 +46,17 @@ import {
 import { formatExplainText } from '@shared/explain'
 import { analyzeDestructiveSql } from '@shared/destructiveSql'
 import { analyzeReadOnlySql, isReadOnlyEffective } from '@shared/readOnlySql'
-import { DEFAULT_SLOW_QUERY_MS } from '@shared/slowQuery'
+import { DEFAULT_SLOW_QUERY_MS, isSlowQuery } from '@shared/slowQuery'
+import {
+  createNotification,
+  markAllNotificationsRead,
+  prependNotification,
+  shouldRecordNotification,
+  unreadNotificationCount,
+  type AppNotification,
+  type NotifKind,
+  type NotifTone,
+} from '@shared/notifications'
 import type { TableStructure } from '@shared/tableStructure'
 import type { ConnectionGroup, Dialect } from '@shared/types'
 
@@ -215,6 +225,15 @@ type WorkspaceValue = {
   saveSettings: (input: { baseUrl: string; model: string; apiKey?: string }) => Promise<void>
   toasts: Toast[]
   dismissToast: (id: string) => void
+  notifications: AppNotification[]
+  unreadNotificationCount: number
+  clearNotifications: () => void
+  markNotificationsRead: () => void
+  dismissNotification: (id: string) => void
+  notifyOnErrorOnly: boolean
+  notifyOnSlowQuery: boolean
+  setNotifyOnErrorOnly: (value: boolean) => Promise<void>
+  setNotifyOnSlowQuery: (value: boolean) => Promise<void>
   dialog: DialogState
   openCreate: () => void
   openEdit: (connection: ConnectionPublic) => void
@@ -344,6 +363,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [recentQueries, setRecentQueries] = useState<RecentQueryItem[]>([])
   const [settings, setSettings] = useState<AiSettingsPublic | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const [notifyOnErrorOnly, setNotifyOnErrorOnlyState] = useState(false)
+  const [notifyOnSlowQuery, setNotifyOnSlowQueryState] = useState(false)
   const [dialog, setDialog] = useState<DialogState>(null)
   const [structureTarget, setStructureTarget] = useState<{ connectionId: string; tableName: string } | null>(null)
   const [columnStatsTarget, setColumnStatsTarget] = useState<ColumnStatsTarget | null>(null)
@@ -378,6 +400,53 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setToasts((current) => current.filter((toast) => toast.id !== id))
     }, tone === 'error' ? 5200 : 3200)
   }, [])
+
+  const pushNotification = useCallback(
+    (input: {
+      kind: NotifKind
+      tone: NotifTone
+      title: string
+      detail?: string
+    }) => {
+      if (
+        !shouldRecordNotification(input.kind, input.tone, {
+          notifyOnErrorOnly,
+          notifyOnSlowQuery,
+        })
+      ) {
+        return
+      }
+      const item = createNotification(input)
+      setNotifications((current) => prependNotification(current, item))
+    },
+    [notifyOnErrorOnly, notifyOnSlowQuery],
+  )
+
+  const clearNotifications = useCallback(() => setNotifications([]), [])
+  const markNotificationsRead = useCallback(() => {
+    setNotifications((current) => markAllNotificationsRead(current))
+  }, [])
+  const dismissNotification = useCallback((id: string) => {
+    setNotifications((current) => current.filter((row) => row.id !== id))
+  }, [])
+
+  const setNotifyOnErrorOnly = useCallback(
+    async (value: boolean) => {
+      const next = await api.prefs.save({ notifyOnErrorOnly: value })
+      setNotifyOnErrorOnlyState(next.notifyOnErrorOnly === true)
+      pushToast('success', next.notifyOnErrorOnly ? '通知中心仅记录错误' : '通知中心记录成功与错误')
+    },
+    [api, pushToast],
+  )
+
+  const setNotifyOnSlowQuery = useCallback(
+    async (value: boolean) => {
+      const next = await api.prefs.save({ notifyOnSlowQuery: value })
+      setNotifyOnSlowQueryState(next.notifyOnSlowQuery === true)
+      pushToast('success', next.notifyOnSlowQuery ? '已开启慢查询通知' : '已关闭慢查询通知')
+    },
+    [api, pushToast],
+  )
 
   const refreshSchema = useCallback(
     async (rows: ConnectionPublic[], preferredId?: string | null) => {
@@ -431,6 +500,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         applyRecentState(recent)
         setGlobalReadOnlyState(Boolean(prefs.globalReadOnly))
         setSlowQueryMsState(prefs.slowQueryMs ?? DEFAULT_SLOW_QUERY_MS)
+        setNotifyOnErrorOnlyState(prefs.notifyOnErrorOnly === true)
+        setNotifyOnSlowQueryState(prefs.notifyOnSlowQuery === true)
         const connectionIds = new Set(rows.map((row) => row.id))
         let restoreConnectionId = workspace?.activeConnectionId ?? rows[0]?.id ?? null
         if (workspace) {
@@ -796,6 +867,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setConnections(rows)
     await refreshSchema(rows, preferredId ?? activeConnectionId)
     pushToast('success', '导入完成，对象树已刷新')
+    pushNotification({
+      kind: 'import',
+      tone: 'success',
+      title: '导入完成',
+      detail: '对象树已刷新',
+    })
   }
 
 
@@ -816,6 +893,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const raw = await api.connections.health(id)
       const health = buildConnHealth(raw)
       setHealthById((current) => ({ ...current, [id]: health }))
+      if (!health.ok && !health.unsupported) {
+        pushNotification({
+          kind: 'health',
+          tone: 'error',
+          title: '连接探测失败',
+          detail: `${connection.name}: ${health.error ?? '探测失败'}`,
+        })
+      }
       if (!silent) {
         if (health.unsupported) pushToast('info', health.error ?? '暂不支持探测')
         else if (health.ok) pushToast('success', `延迟 ${health.latencyMs} ms`)
@@ -829,6 +914,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         error: error instanceof Error ? error.message : '探测失败',
       })
       setHealthById((current) => ({ ...current, [id]: health }))
+      pushNotification({
+        kind: 'health',
+        tone: 'error',
+        title: '连接探测失败',
+        detail: `${connection.name}: ${health.error ?? '探测失败'}`,
+      })
       if (!silent) pushToast('error', health.error ?? '探测失败')
       return health
     }
@@ -1025,8 +1116,30 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const failed = statements.find((statement) => !statement.ok)
       if (failed) {
         pushToast('error', failed.error ?? '执行失败')
+        pushNotification({
+          kind: 'query',
+          tone: 'error',
+          title: '查询失败',
+          detail: failed.error ?? '执行失败',
+        })
       } else {
-        if (!quiet) pushToast('success', '执行完成')
+        if (!quiet) {
+          pushToast('success', '执行完成')
+          pushNotification({
+            kind: 'query',
+            tone: 'success',
+            title: '查询完成',
+            detail: `${rowCount} 行 · ${elapsedMs} ms · ${connection.name}`,
+          })
+        }
+        if (!quiet && isSlowQuery(elapsedMs, slowQueryMs)) {
+          pushNotification({
+            kind: 'slow',
+            tone: 'warn',
+            title: '慢查询',
+            detail: `${elapsedMs} ms（阈值 ${slowQueryMs} ms）· ${connection.name}`,
+          })
+        }
         void recordQueryRecent(sql, connection.id)
         if (editorId) {
           setEditorTabs((tabs) =>
@@ -1044,8 +1157,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (/查询已取消|查询已超时/.test(message)) {
         setLastRun({ rows: 0, elapsedMs: 0, ok: false, kind: 'run' })
         pushToast('info', message)
+        pushNotification({
+          kind: 'query',
+          tone: 'warn',
+          title: '查询中断',
+          detail: message,
+        })
       } else {
         pushToast('error', message)
+        pushNotification({
+          kind: 'query',
+          tone: 'error',
+          title: '查询失败',
+          detail: message,
+        })
       }
     } finally {
       if (sqlRequestRef.current === requestId) sqlRequestRef.current = null
@@ -1206,8 +1331,30 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const failed = statements.find((statement) => !statement.ok)
       if (failed) {
         pushToast('error', failed.error ?? '执行失败')
+        pushNotification({
+          kind: 'query',
+          tone: 'error',
+          title: '查询失败',
+          detail: failed.error ?? '执行失败',
+        })
         void repairAi(failed.statement || sql, failed.error ?? '执行失败')
-      } else pushToast('success', '执行完成')
+      } else {
+        pushToast('success', '执行完成')
+        pushNotification({
+          kind: 'query',
+          tone: 'success',
+          title: '查询完成',
+          detail: `${rowCount} 行 · ${elapsedMs} ms · ${activeConnection.name}`,
+        })
+        if (isSlowQuery(elapsedMs, slowQueryMs)) {
+          pushNotification({
+            kind: 'slow',
+            tone: 'warn',
+            title: '慢查询',
+            detail: `${elapsedMs} ms（阈值 ${slowQueryMs} ms）· ${activeConnection.name}`,
+          })
+        }
+      }
       if (statements.some((statement) => statement.ok && changesSchema(statement.statement))) {
         const rows = await api.connections.list()
         setConnections(rows)
@@ -1218,8 +1365,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (/查询已取消|查询已超时/.test(message)) {
         setLastRun({ rows: 0, elapsedMs: 0, ok: false, kind: 'run' })
         pushToast('info', message)
+        pushNotification({
+          kind: 'query',
+          tone: 'warn',
+          title: '查询中断',
+          detail: message,
+        })
       } else {
         pushToast('error', message)
+        pushNotification({
+          kind: 'query',
+          tone: 'error',
+          title: '查询失败',
+          detail: message,
+        })
       }
     } finally {
       if (sqlRequestRef.current === requestId) sqlRequestRef.current = null
@@ -1748,6 +1907,15 @@ ${sql.trim()}
     },
     toasts,
     dismissToast: (id) => setToasts((current) => current.filter((toast) => toast.id !== id)),
+    notifications,
+    unreadNotificationCount: unreadNotificationCount(notifications),
+    clearNotifications,
+    markNotificationsRead,
+    dismissNotification,
+    notifyOnErrorOnly,
+    notifyOnSlowQuery,
+    setNotifyOnErrorOnly,
+    setNotifyOnSlowQuery,
     dialog,
     openCreate: () => setDialog({ type: 'connection' }),
     openEdit: (connection) => setDialog({ type: 'connection', connection }),

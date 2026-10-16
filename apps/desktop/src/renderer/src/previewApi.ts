@@ -264,6 +264,14 @@ export function createPreviewApi(): DesktopApi {
             typeof input.zoomFactor === 'number' && Number.isFinite(input.zoomFactor)
               ? Math.min(2, Math.max(0.5, Math.round(input.zoomFactor * 100) / 100))
               : memory.prefs.zoomFactor,
+          notifyOnErrorOnly:
+            input.notifyOnErrorOnly === undefined
+              ? memory.prefs.notifyOnErrorOnly
+              : input.notifyOnErrorOnly === true,
+          notifyOnSlowQuery:
+            input.notifyOnSlowQuery === undefined
+              ? memory.prefs.notifyOnSlowQuery
+              : input.notifyOnSlowQuery === true,
         }
         return { ...memory.prefs }
       },

@@ -13,6 +13,9 @@ type TitleBarProps = {
   onToggleSidebar: () => void
   onToggleAi: () => void
   onToggleAlwaysOnTop?: () => void
+  notificationUnread?: number
+  notificationsOpen?: boolean
+  onOpenNotifications?: () => void
   onOpenPalette: () => void
   onOpenSettings: () => void
   recentTables?: RecentTableItem[]
@@ -32,6 +35,9 @@ export function TitleBar({
   onToggleSidebar,
   onToggleAi,
   onToggleAlwaysOnTop,
+  notificationUnread = 0,
+  notificationsOpen = false,
+  onOpenNotifications,
   onOpenPalette,
   onOpenSettings,
   recentTables = [],
@@ -176,6 +182,19 @@ export function TitleBar({
           aria-pressed={alwaysOnTop}
         >
           置顶
+        </button>
+        <button
+          type="button"
+          className={notificationsOpen ? 'pill is-active notif-bell' : 'pill notif-bell'}
+          onClick={() => onOpenNotifications?.()}
+          title="通知中心"
+          aria-pressed={notificationsOpen}
+          aria-label={notificationUnread > 0 ? `通知中心，${notificationUnread} 条未读` : '通知中心'}
+        >
+          通知
+          {notificationUnread > 0 ? (
+            <span className="notif-badge">{notificationUnread > 9 ? '9+' : notificationUnread}</span>
+          ) : null}
         </button>
         <button type="button" className="pill palette-trigger" onClick={onOpenPalette} title="命令 / 对象搜索 (Ctrl+K · Ctrl+P)">
           Ctrl+K

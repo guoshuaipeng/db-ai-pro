@@ -58,3 +58,14 @@ describe('window chrome prefs', () => {
     expect(formatZoomPercent(1.25)).toBe('125%')
   })
 })
+
+describe('notification prefs', () => {
+  it('defaults notify flags off', () => {
+    expect(normalizePrefs(null).notifyOnErrorOnly).toBe(false)
+    expect(normalizePrefs(null).notifyOnSlowQuery).toBe(false)
+    expect(normalizePrefs({ notifyOnErrorOnly: true, notifyOnSlowQuery: true }).notifyOnErrorOnly).toBe(
+      true,
+    )
+    expect(normalizePrefs({ notifyOnSlowQuery: true }).notifyOnSlowQuery).toBe(true)
+  })
+})
