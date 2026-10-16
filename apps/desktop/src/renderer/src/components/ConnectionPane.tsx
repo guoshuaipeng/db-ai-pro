@@ -3,6 +3,8 @@ import { onDataai } from '../appEvents'
 import { dialectInfo } from '@shared/types'
 import { formatLatency } from '@shared/connHealth'
 import { bucketSchemaByGroup, colorForTag } from '@shared/connGroups'
+import { quoteIdentIfNeeded } from '@shared/sql'
+import { setSqlDragData } from '@shared/sqlDragDrop'
 import type { Dialect, SchemaNode } from '@shared/types'
 import { IconColumn, IconDatabase, IconMore, IconPlus, IconSearch, IconTable } from './icons'
 import { EmptyState } from './EmptyState'
@@ -308,6 +310,14 @@ function TreeNode({
     }
   }
 
+  const dragIdentText = () => {
+    const raw =
+      node.kind === 'table' ? (node.tableName || node.name) : node.kind === 'column' || node.kind === 'key' ? node.name : ''
+    if (!raw?.trim()) return ''
+    const dial = dialect || ws.activeConnection?.dialect || 'sqlite'
+    return quoteIdentIfNeeded(raw.trim(), dial)
+  }
+
   return (
     <div className="tree-branch">
       <div className={rowClass} style={{ paddingLeft: 8 + depth * 14 }} role="treeitem" aria-expanded={hasChildren ? expanded : undefined}>
@@ -326,6 +336,19 @@ function TreeNode({
         <button
           type="button"
           className="tree-hit"
+          draggable={insertable}
+          onDragStart={(event) => {
+            if (!insertable) {
+              event.preventDefault()
+              return
+            }
+            const text = dragIdentText()
+            if (!text) {
+              event.preventDefault()
+              return
+            }
+            setSqlDragData(event.dataTransfer, text, 'object')
+          }}
           onClick={(event) => {
             if (insertable && (event.altKey || event.ctrlKey || event.metaKey)) {
               event.preventDefault()
@@ -341,9 +364,9 @@ function TreeNode({
           }}
           title={
             node.kind === 'table'
-              ? '单击打开查询 · 双击查看结构 · Alt/Ctrl+单击插入表名'
+              ? '单击打开查询 · 双击查看结构 · Alt/Ctrl+单击插入 · 可拖到编辑器'
               : insertable
-                ? 'Alt/Ctrl+单击插入名称到编辑器'
+                ? 'Alt/Ctrl+单击插入名称 · 可拖到编辑器'
                 : undefined
           }
         >

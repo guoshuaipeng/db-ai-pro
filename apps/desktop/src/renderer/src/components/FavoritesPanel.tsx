@@ -6,6 +6,7 @@ import {
   extractSnippetVars,
   hasSnippetVars,
 } from '@shared/snippetVars'
+import { setSqlDragData } from '@shared/sqlDragDrop'
 import type { FavoriteFolder, SqlFavorite } from '@shared/types'
 import { IconStar } from './icons'
 import { useWorkspace } from '../state/workspace'
@@ -275,7 +276,11 @@ export function FavoritesPanel({ open, onClose }: { open: boolean; onClose: () =
                         <button
                           type="button"
                           className="history-main"
-                          title={entry.sql}
+                          title={`${entry.sql}（可拖到编辑器插入）`}
+                          draggable
+                          onDragStart={(event) => {
+                            setSqlDragData(event.dataTransfer, entry.sql, 'favorite')
+                          }}
                           onClick={() => beginInsert(entry)}
                         >
                           <span className="history-meta">

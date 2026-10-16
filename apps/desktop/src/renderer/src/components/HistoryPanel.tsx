@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { historyPreview } from '@shared/queryHistory'
+import { setSqlDragData } from '@shared/sqlDragDrop'
 import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
 import {
   countSlowQueryHistory,
@@ -129,7 +130,11 @@ export function HistoryPanel({
               <button
                 type="button"
                 className="history-main"
-                title={entry.sql}
+                title={`${entry.sql}（可拖到编辑器插入）`}
+                draggable
+                onDragStart={(event) => {
+                  setSqlDragData(event.dataTransfer, entry.sql, 'history')
+                }}
                 onClick={() => {
                   ws.openHistorySql(entry.sql)
                   onClose()

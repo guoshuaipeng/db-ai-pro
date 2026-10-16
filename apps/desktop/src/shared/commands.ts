@@ -422,4 +422,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '括号配对着色', keys: '设置 → 外观 · Ctrl+K「括号」' },
   { action: '慢查询历史', keys: '历史面板「仅慢查询」· Ctrl+K' },
   { action: '结果摘要条', keys: '结果区标签下方自动显示' },
+  { action: '拖拽插入 SQL', keys: '收藏/历史/对象树 → 拖到编辑器' },
 ]

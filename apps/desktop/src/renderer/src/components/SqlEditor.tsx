@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { KeyCode, KeyMod, editor, languages, type IDisposable } from 'monaco-editor/editor/editor.api'
 import { conf, language } from 'monaco-editor/languages/definitions/sql/sql'
 import editorWorker from 'monaco-editor/editor/editor.worker?worker'
 import { filterSuggestions, type SchemaSuggestItem } from '@shared/schemaSuggest'
 import { onDataai } from '../appEvents'
+import { isSqlDragEvent, readSqlDragText } from '@shared/sqlDragDrop'
 import { formatSql } from '@shared/sqlFormat'
 import {
   DEFAULT_EDITOR_FONT_SIZE,
@@ -150,6 +151,7 @@ export function SqlEditor({
 }: SqlEditorProps) {
   const host = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<editor.IStandaloneCodeEditor | null>(null)
+  const [dragOver, setDragOver] = useState(false)
   const onChangeRef = useRef(onChange)
   const onCursorRef = useRef(onCursor)
   onChangeRef.current = onChange
@@ -360,11 +362,81 @@ export function SqlEditor({
     [],
   )
 
+  const insertAtClientPoint = (clientX: number, clientY: number, text: string) => {
+    const instance = instanceRef.current
+    if (!instance || !text) return
+    const target = instance.getTargetAtClientPoint(clientX, clientY)
+    const position = target?.position ?? instance.getPosition()
+    if (!position) {
+      const model = instance.getModel()
+      if (!model) return
+      const lastLine = model.getLineCount()
+      const lastCol = model.getLineMaxColumn(lastLine)
+      instance.executeEdits('dataai-sql-drop', [
+        {
+          range: {
+            startLineNumber: lastLine,
+            startColumn: lastCol,
+            endLineNumber: lastLine,
+            endColumn: lastCol,
+          },
+          text,
+          forceMoveMarkers: true,
+        },
+      ])
+    } else {
+      instance.setPosition(position)
+      instance.executeEdits('dataai-sql-drop', [
+        {
+          range: {
+            startLineNumber: position.lineNumber,
+            startColumn: position.column,
+            endLineNumber: position.lineNumber,
+            endColumn: position.column,
+          },
+          text,
+          forceMoveMarkers: true,
+        },
+      ])
+    }
+    instance.focus()
+  }
+
   return (
-    <div className="editor-wrap">
+    <div
+      className={dragOver ? 'editor-wrap is-drop-target' : 'editor-wrap'}
+      onDragEnter={(event) => {
+        if (!isSqlDragEvent(event.dataTransfer.types)) return
+        event.preventDefault()
+        setDragOver(true)
+      }}
+      onDragOver={(event) => {
+        if (!isSqlDragEvent(event.dataTransfer.types)) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'copy'
+        setDragOver(true)
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node)) return
+        setDragOver(false)
+      }}
+      onDrop={(event) => {
+        if (!isSqlDragEvent(event.dataTransfer.types)) return
+        event.preventDefault()
+        setDragOver(false)
+        const text = readSqlDragText(event.dataTransfer)
+        if (!text) return
+        insertAtClientPoint(event.clientX, event.clientY, text)
+      }}
+    >
       <div ref={host} className="monaco-host" />
-      {value.trim() === '' && (
-        <div className="editor-overlay">编写 SQL，按 F5 运行 · Ctrl+Space 补全表/列</div>
+      {dragOver && (
+        <div className="editor-drop-hint" aria-hidden="true">
+          放到此处插入 SQL
+        </div>
+      )}
+      {value.trim() === '' && !dragOver && (
+        <div className="editor-overlay">编写 SQL，按 F5 运行 · Ctrl+Space 补全表/列 · 可拖入收藏/历史/对象名</div>
       )}
     </div>
   )
