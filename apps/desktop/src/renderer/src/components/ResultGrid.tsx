@@ -3,6 +3,12 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import ExcelJS from 'exceljs'
 import { getApi } from '../bridge'
 import { capExportRows, rowsToCsv, rowsToHtml, rowsToJson, rowsToMarkdown } from '@shared/exportTable'
+import {
+  columnValues,
+  rowsToValuesSql,
+  rowTuples,
+  valuesToInList,
+} from '@shared/sqlCopy'
 import { inferSqliteTable } from '@shared/sql'
 import { formatCell, isNumericColumn } from '../format'
 import { useWorkspace } from '../state/workspace'
@@ -64,6 +70,7 @@ export function ResultToolbar({
 }) {
   const ws = useWorkspace()
   const [busy, setBusy] = useState(false)
+  const [copyNote, setCopyNote] = useState('')
   const visible = columns.filter((column) => column !== '__rowid__')
   const exportColumns = visible.length > 0 ? visible : columns
   const statsColumn = focusColumn && visible.includes(focusColumn) ? focusColumn : visible[0] ?? null
@@ -71,6 +78,30 @@ export function ResultToolbar({
 
   const copyAll = async () => {
     await navigator.clipboard.writeText(rowsToCsv(exportColumns, rows))
+    setCopyNote('已复制 CSV')
+  }
+
+  const copyInList = async () => {
+    if (!statsColumn || rows.length === 0) return
+    const { sql, truncated, count } = valuesToInList(columnValues(rows, statsColumn))
+    await navigator.clipboard.writeText(sql)
+    setCopyNote(
+      truncated
+        ? `已复制 IN（${count}，已截断）· ${statsColumn}`
+        : `已复制 IN（${count}）· ${statsColumn}`,
+    )
+  }
+
+  const copyValuesSnippet = async () => {
+    if (rows.length === 0) return
+    const cols = statsColumn ? [statsColumn] : exportColumns
+    const { sql, truncated, count } = rowsToValuesSql(rowTuples(rows, cols))
+    await navigator.clipboard.writeText('VALUES\n' + sql)
+    setCopyNote(
+      truncated
+        ? `已复制 VALUES（${count} 行，已截断）`
+        : `已复制 VALUES（${count} 行 · ${cols.length} 列）`,
+    )
   }
 
   const exportCapped = (kind: 'markdown' | 'html' | 'excel') => {
@@ -185,6 +216,29 @@ export function ResultToolbar({
       <button type="button" className="btn btn-ghost tiny-btn" onClick={() => void copyAll()}>
         复制表格
       </button>
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
+        disabled={!statsColumn || rows.length === 0}
+        title={statsColumn ? `复制列 ${statsColumn} 为 IN (...)` : '无可用列'}
+        onClick={() => void copyInList()}
+      >
+        复制 IN
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
+        disabled={rows.length === 0}
+        title={
+          statsColumn
+            ? `复制列 ${statsColumn} 为 VALUES`
+            : '复制当前结果为 VALUES'
+        }
+        onClick={() => void copyValuesSnippet()}
+      >
+        复制 VALUES
+      </button>
+      {copyNote && <span className="result-copy-note">{copyNote}</span>}
     </div>
   )
 }
@@ -207,6 +261,12 @@ export function ResultGrid({
   const [note, setNote] = useState('')
   const [sort, setSort] = useState<ResultSort | null>(null)
   const [pinned, setPinned] = useState<string[]>([])
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    column: string
+    rowIndex: number | null
+  } | null>(null)
 
   const visibleColumns = useMemo(() => columns.filter((column) => column !== '__rowid__'), [columns])
   const displayColumns = useMemo(() => {
@@ -239,9 +299,17 @@ export function ResultGrid({
     setFocus({ row: 0, col: 0 })
     setEditing(null)
     setSort(null)
+    setContextMenu(null)
     setPinned((current) => current.filter((name) => columns.includes(name)))
     setNote(rows.length > 500 ? `已虚拟滚动渲染 ${rows.length.toLocaleString('zh-CN')} 行` : '')
   }, [columns, rows])
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => setContextMenu(null)
+    window.addEventListener('mousedown', close)
+    return () => window.removeEventListener('mousedown', close)
+  }, [contextMenu])
 
   useEffect(() => {
     onFocusColumn?.(displayColumns[focus.col] ?? null)
@@ -265,6 +333,36 @@ export function ResultGrid({
     const text = formatCell(displayRows[focus.row]?.[column])
     await navigator.clipboard.writeText(text === '—' ? '' : text)
     setNote('已复制单元格')
+  }
+
+  const copyColumnAsIn = async (column: string) => {
+    const { sql, truncated, count } = valuesToInList(columnValues(displayRows, column))
+    await navigator.clipboard.writeText(sql)
+    setNote(truncated ? `已复制 IN（${count}，已截断）` : `已复制 IN（${count}）· ${column}`)
+    setContextMenu(null)
+  }
+
+  const copyColumnAsValues = async (column: string) => {
+    const { sql, truncated, count } = rowsToValuesSql(rowTuples(displayRows, [column]))
+    await navigator.clipboard.writeText('VALUES\n' + sql)
+    setNote(truncated ? `已复制 VALUES（${count}，已截断）` : `已复制 VALUES（${count}）· ${column}`)
+    setContextMenu(null)
+  }
+
+  const copyRowAsValues = async (rowIndex: number) => {
+    const row = displayRows[rowIndex]
+    if (!row) return
+    const { sql } = rowsToValuesSql([displayColumns.map((column) => row[column] ?? null)])
+    await navigator.clipboard.writeText('VALUES\n' + sql)
+    setNote(`已复制当前行为 VALUES（${displayColumns.length} 列）`)
+    setContextMenu(null)
+  }
+
+  const copyCellAsIn = async (rowIndex: number, column: string) => {
+    const { sql } = valuesToInList([displayRows[rowIndex]?.[column] ?? null], { distinct: false })
+    await navigator.clipboard.writeText(sql)
+    setNote('已复制单元格为 IN')
+    setContextMenu(null)
   }
 
   const beginEdit = (rowIndex: number, colIndex: number) => {
@@ -395,6 +493,10 @@ export function ResultGrid({
                   key={column}
                   scope="col"
                   role="columnheader"
+                  onContextMenu={(event) => {
+                    event.preventDefault()
+                    setContextMenu({ x: event.clientX, y: event.clientY, column, rowIndex: null })
+                  }}
                   aria-sort={
                     sort?.column === column
                       ? sort.direction === 'asc'
@@ -466,6 +568,16 @@ export function ResultGrid({
                     <td
                       key={column}
                       role="gridcell"
+                      onContextMenu={(event) => {
+                        event.preventDefault()
+                        setFocus({ row: rowIndex, col: colIndex })
+                        setContextMenu({
+                          x: event.clientX,
+                          y: event.clientY,
+                          column,
+                          rowIndex,
+                        })
+                      }}
                       title={canEditSqlite ? `${text}（双击编辑 / Ctrl+C 复制）` : `${text}（Ctrl+C 复制）`}
                       className={[
                         numeric[column] ? 'is-number' : '',
@@ -512,9 +624,42 @@ export function ResultGrid({
           )}
         </tbody>
       </table>
+      {contextMenu && (
+        <div
+          className="grid-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          role="menu"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <button type="button" role="menuitem" onClick={() => void copyColumnAsIn(contextMenu.column)}>
+            复制列 IN (...)
+          </button>
+          <button type="button" role="menuitem" onClick={() => void copyColumnAsValues(contextMenu.column)}>
+            复制列 VALUES
+          </button>
+          {contextMenu.rowIndex != null && (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => void copyCellAsIn(contextMenu.rowIndex!, contextMenu.column)}
+              >
+                复制单元格 IN
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => void copyRowAsValues(contextMenu.rowIndex!)}
+              >
+                复制行 VALUES
+              </button>
+            </>
+          )}
+        </div>
+      )}
       {note && <p className="result-footnote">{note}</p>}
       <p className="result-footnote">
-        表头点击排序；「钉」固定最多 2 列横向滚动时保持可见；左侧 # 为行号。
+        表头点击排序；右键可复制 IN / VALUES；「钉」固定最多 2 列；左侧 # 为行号。
         {sort ? ` 当前排序：${sort.column} ${sort.direction === 'asc' ? '升序' : '降序'}。` : ''}
       </p>
       {canEditSqlite && <p className="result-footnote">SQLite：双击单元格可编辑（需确认）。隐藏列 __rowid__ 用于定位行。</p>}
