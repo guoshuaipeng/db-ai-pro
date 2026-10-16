@@ -109,6 +109,10 @@ import {
   SESSION_TAB_CAP,
 } from '@shared/sessionRestore'
 import {
+  sessionTabsRestoredToast,
+  sessionTabsWereCapped,
+} from '@shared/sessionRestoreUi'
+import {
   clampAiWidth,
   clampEditorRatio,
   clampSidebarWidth,
@@ -722,6 +726,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             setAiOpen(layout.aiOpen)
           }
           if (prefs.restoreTabsOnLaunch !== false && workspace.editorTabs.length > 0) {
+            const rawTabCount = Array.isArray(workspace.editorTabs) ? workspace.editorTabs.length : 0
             const tabs = normalizeSessionTabs(workspace.editorTabs, SESSION_TAB_CAP).map(withCleanBaseline)
             setEditorTabs(tabs.length ? tabs : seedTabs())
             setActiveEditorId(pickActiveEditorId(tabs.length ? tabs : seedTabs(), workspace.activeEditorId))
@@ -732,6 +737,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
               restoreConnectionId = workspace.activeConnectionId
             } else {
               restoreConnectionId = rows[0]?.id ?? null
+            }
+            if (tabs.length > 0) {
+              pushToast(
+                'info',
+                sessionTabsRestoredToast(
+                  tabs.length,
+                  sessionTabsWereCapped(rawTabCount, tabs.length, SESSION_TAB_CAP),
+                ),
+              )
             }
           } else {
             setEditorTabs(seedTabs())

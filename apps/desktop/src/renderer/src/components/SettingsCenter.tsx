@@ -60,6 +60,14 @@ import {
   modelSuggestionsFor,
   validateAiModelDraft,
 } from '@shared/aiModelSettings'
+import {
+  sessionRestoreDisabledToast,
+  sessionRestoreEnabledToast,
+  sessionRestoreSettingBody,
+  sessionRestoreSettingOffLabel,
+  sessionRestoreSettingOnLabel,
+  sessionRestoreSettingTitle,
+} from '@shared/sessionRestoreUi'
 import { useWorkspace } from '../state/workspace'
 import { getApi } from '../bridge'
 import {
@@ -598,6 +606,12 @@ function AppearancePanel({
     try {
       const next = await api.prefs.save({ restoreTabsOnLaunch })
       onPrefs(next)
+      ws.pushToast(
+        'success',
+        next.restoreTabsOnLaunch !== false
+          ? sessionRestoreEnabledToast()
+          : sessionRestoreDisabledToast(),
+      )
     } finally {
       setBusy(false)
     }
@@ -860,8 +874,8 @@ function AppearancePanel({
       {show('restoreTabsOnLaunch') ? (
         <div className="contrast-block">
           <div className="contrast-copy">
-            <strong>启动时恢复标签</strong>
-            <span>记住打开的查询标签（标题、SQL、连接 id，最多 20 个）。连接已删除时显示「断开」，不弹错误。</span>
+            <strong>{sessionRestoreSettingTitle()}</strong>
+            <span>{sessionRestoreSettingBody()}</span>
           </div>
           <button
             type="button"
@@ -869,9 +883,12 @@ function AppearancePanel({
             aria-checked={prefs.restoreTabsOnLaunch}
             className={prefs.restoreTabsOnLaunch ? 'contrast-switch is-on' : 'contrast-switch'}
             disabled={busy}
+            title={sessionRestoreSettingBody()}
             onClick={() => void setRestoreTabs(!prefs.restoreTabsOnLaunch)}
           >
-            {prefs.restoreTabsOnLaunch ? '已开启' : '已关闭'}
+            {prefs.restoreTabsOnLaunch
+              ? sessionRestoreSettingOnLabel()
+              : sessionRestoreSettingOffLabel()}
           </button>
         </div>
       ) : null}
