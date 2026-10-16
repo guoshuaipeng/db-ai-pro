@@ -3937,3 +3937,24 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
 .tree-row.is-refreshing .tree-label {
   opacity: 0.85;
 }
+
+
+.menu-color-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  margin: 2px 0;
+}
+.menu-color-label {
+  font-size: 11.5px;
+  color: var(--ink-tertiary);
+  margin-right: 2px;
+}
+.menu-color-row .conn-color-swatch {
+  width: 16px;
+  height: 16px;
+}

@@ -103,6 +103,7 @@ export type ColumnStatsTarget =
       dialect: Dialect
     }
 import type { ImportPlanItem } from '@shared/connectionTransfer'
+import { connectionColorPatch } from '@shared/connColorQuick'
 import type { AiIntent } from '@shared/types'
 import type {
   AiSettingsPublic,
@@ -299,6 +300,7 @@ type WorkspaceValue = {
   askDelete: (connection: ConnectionPublic) => void
   closeDialog: () => void
   saveConnection: (input: ConnectionInput) => Promise<void>
+  setConnectionColorTag: (connectionId: string, colorTag: string | null) => Promise<void>
   testConnection: (input: ConnectionInput) => Promise<{ ok: boolean; error?: string }>
   deleteConnection: (id: string) => Promise<void>
   restoreSample: () => Promise<void>
@@ -2150,6 +2152,18 @@ ${sql.trim()}
     pushToast('success', '连接已保存')
   }
 
+  const setConnectionColorTag = async (connectionId: string, colorTag: string | null) => {
+    const connection = connections.find((row) => row.id === connectionId)
+    if (!connection) {
+      pushToast('error', '连接不存在')
+      return
+    }
+    await api.connections.save(connectionColorPatch(connection, colorTag))
+    const rows = await api.connections.list()
+    setConnections(rows)
+    pushToast('success', colorTag ? '颜色标记已更新' : '已清除颜色标记')
+  }
+
   const deleteConnection = async (id: string) => {
     await api.connections.remove(id)
     const rows = await api.connections.list()
@@ -2346,6 +2360,7 @@ ${sql.trim()}
     },
     closeDialog: () => setDialog(null),
     saveConnection,
+    setConnectionColorTag,
     testConnection: (input) => api.connections.test(input),
     deleteConnection,
     restoreSample,

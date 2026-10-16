@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { onDataai } from '../appEvents'
 import { dialectInfo } from '@shared/types'
 import { formatLatency } from '@shared/connHealth'
-import { bucketSchemaByGroup, colorForTag } from '@shared/connGroups'
+import { bucketSchemaByGroup, colorForTag, CONN_COLOR_TAGS } from '@shared/connGroups'
 import { quoteIdentIfNeeded } from '@shared/sql'
 import { setSqlDragData } from '@shared/sqlDragDrop'
 import type { Dialect, SchemaNode } from '@shared/types'
@@ -481,6 +481,33 @@ function TreeNode({
             <button type="button" role="menuitem" onClick={() => { onMenu(null); ws.openEdit(connection) }}>
               编辑
             </button>
+            <div className="menu-color-row" role="group" aria-label="颜色标记" onMouseDown={(event) => event.stopPropagation()}>
+              <span className="menu-color-label">颜色</span>
+              <button
+                type="button"
+                className={!connection.colorTag ? 'conn-color-swatch is-none is-active' : 'conn-color-swatch is-none'}
+                title="无标记"
+                aria-label="无颜色标记"
+                onClick={() => {
+                  onMenu(null)
+                  void ws.setConnectionColorTag(connection.id, null)
+                }}
+              />
+              {CONN_COLOR_TAGS.map((tag) => (
+                <button
+                  key={tag.id}
+                  type="button"
+                  className={connection.colorTag === tag.id ? 'conn-color-swatch is-active' : 'conn-color-swatch'}
+                  style={{ background: tag.color }}
+                  title={tag.label}
+                  aria-label={tag.label}
+                  onClick={() => {
+                    onMenu(null)
+                    void ws.setConnectionColorTag(connection.id, tag.id)
+                  }}
+                />
+              ))}
+            </div>
             <button type="button" role="menuitem" className="danger" onClick={() => { onMenu(null); ws.askDelete(connection) }}>
               删除
             </button>
