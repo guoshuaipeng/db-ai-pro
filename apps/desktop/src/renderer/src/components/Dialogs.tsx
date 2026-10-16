@@ -133,12 +133,9 @@ function ImportDialog({ path, plan: initial }: { path: string; plan: ImportPlanI
         aria-labelledby="import-title"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <h2 id="import-title">{path.toLowerCase().includes('config.db') ? '从旧版导入连接' : '导入连接'}</h2>
+        <h2 id="import-title">导入连接</h2>
         <p className="dialog-copy">
-          来自 <code className="inline-code">{path}</code>。
-          {path.toLowerCase().includes('config.db')
-            ? '旧版明文密码将写入本机系统密钥环（密封存储），不会以明文落盘。'
-            : '密码仅含密封密文，不会写入明文。'}
+          来自 <code className="inline-code">{path}</code>。密码仅含密封密文，不会写入明文。
         </p>
         <p className="dialog-meta">
           覆盖 {counts.replace} · 新建 {counts.keep} · 跳过 {counts.skip}

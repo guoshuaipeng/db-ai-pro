@@ -282,6 +282,7 @@ type WorkspaceValue = {
   settings: AiSettingsPublic | null
   saveSettings: (input: { baseUrl: string; model: string; apiKey?: string }) => Promise<void>
   toasts: Toast[]
+  pushToast: (tone: Toast['tone'], text: string) => void
   dismissToast: (id: string) => void
   notifications: AppNotification[]
   unreadNotificationCount: number
@@ -1857,7 +1858,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const importPyQtConnections = async () => {
     const result = await api.connections.importPyQtPreview()
     if ('cancelled' in result) {
-      pushToast('info', '已取消旧版导入')
+      pushToast('info', '已取消导入')
       return
     }
     if ('error' in result) {
@@ -2315,6 +2316,7 @@ ${sql.trim()}
       pushToast('success', '模型配置已保存')
     },
     toasts,
+    pushToast,
     dismissToast: (id) => setToasts((current) => current.filter((toast) => toast.id !== id)),
     notifications,
     unreadNotificationCount: unreadNotificationCount(notifications),

@@ -440,7 +440,6 @@ export function App() {
           onNewConnection={ws.openCreate}
           onRestoreSample={() => void ws.restoreSample()}
           onImportConnections={() => void ws.importConnections()}
-          onImportPyQtConnections={() => void ws.importPyQtConnections()}
           onOpenRecentTable={ws.openRecentTable}
           onOpenRecentQuery={ws.openRecentQuery}
           onDismiss={() => void dismissWelcome()}

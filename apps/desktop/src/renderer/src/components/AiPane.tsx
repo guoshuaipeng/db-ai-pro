@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { parseBlocks, extractSql } from '@shared/sql'
+import {
+  aiStepsSummary,
+  joinSqlBlocksForCopy,
+  shouldCollapseAiSteps,
+} from '@shared/aiCardActions'
 import { ASSISTANT_PROMPTS } from '@shared/session'
 import { ALTER_PROMPTS, CREATE_PROMPTS } from '@shared/ddlDraft'
 import type { AiIntent } from '@shared/types'
@@ -14,12 +19,20 @@ const INTENT_LABEL: Record<AiIntent, string> = {
   alter: '改表',
 }
 
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function AiPane() {
   const ws = useWorkspace()
   const [draft, setDraft] = useState('')
   const scroller = useRef<HTMLDivElement>(null)
-
-  // 模型设置改由全局 SettingsCenter 承载；此处不再内嵌卡片。
+  const [stepsOpen, setStepsOpen] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     const el = scroller.current
@@ -35,6 +48,11 @@ export function AiPane() {
     if (!text) return
     setDraft('')
     void ws.sendAi(text)
+  }
+
+  const notifyCopy = (ok: boolean, label: string) => {
+    if (ok) ws.pushToast('success', `已复制${label}`)
+    else ws.pushToast('error', '复制失败，请检查剪贴板权限')
   }
 
   return (
@@ -133,55 +151,120 @@ export function AiPane() {
             }
           />
         )}
-        {ws.aiTurns.map((turn) =>
-          turn.role === 'user' ? (
-            <article key={turn.id} className="card card-user">
-              <p className="card-kicker">你</p>
-              <p className="card-body">{turn.content}</p>
-            </article>
-          ) : (
+        {ws.aiTurns.map((turn) => {
+          const streaming = turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming
+          if (turn.role === 'user') {
+            return (
+              <article key={turn.id} className="card card-user">
+                <div className="card-head">
+                  <p className="card-kicker">你</p>
+                  <div className="card-actions">
+                    <button
+                      type="button"
+                      className="tiny-btn btn btn-ghost"
+                      title="复制"
+                      onClick={() => void copyText(turn.content).then((ok) => notifyCopy(ok, '消息'))}
+                    >
+                      复制
+                    </button>
+                  </div>
+                </div>
+                <p className="card-body">{turn.content}</p>
+              </article>
+            )
+          }
+
+          const sqlCopy = joinSqlBlocksForCopy(turn.content)
+          const stepCount = turn.steps?.length ?? 0
+          const collapseDefault = shouldCollapseAiSteps(stepCount, streaming)
+          const open = stepsOpen[turn.id] ?? !collapseDefault
+
+          return (
             <article
               key={turn.id}
               className={[
                 'card',
-                turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming ? 'is-streaming' : '',
+                'card-assistant',
+                streaming ? 'is-streaming' : '',
                 turn.status === 'cancelled' ? 'is-cancelled' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
             >
-              <p className="card-kicker">
-                <IconSpark />
-                {turn.mode === 'model' ? '模型' : '本地预览'}
-                {turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming ? ' · 进行中' : ''}
-                {turn.status === 'cancelled' ? ' · 已停止' : ''}
-                {turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming && (
-                  <button type="button" className="tiny-btn btn btn-danger ai-stop-inline" onClick={ws.cancelAi}>
-                    <IconStop />
-                    停止
+              <div className="card-head">
+                <p className="card-kicker">
+                  <IconSpark />
+                  {turn.mode === 'model' ? '模型' : '本地预览'}
+                  {streaming ? ' · 进行中' : ''}
+                  {turn.status === 'cancelled' ? ' · 已停止' : ''}
+                </p>
+                <div className="card-actions">
+                  {streaming && (
+                    <button type="button" className="tiny-btn btn btn-danger ai-stop-inline" onClick={ws.cancelAi}>
+                      <IconStop />
+                      停止
+                    </button>
+                  )}
+                  {!streaming && turn.content.trim() && (
+                    <button
+                      type="button"
+                      className="tiny-btn btn btn-ghost"
+                      title="复制全文"
+                      onClick={() => void copyText(turn.content).then((ok) => notifyCopy(ok, '全文'))}
+                    >
+                      复制全文
+                    </button>
+                  )}
+                  {!streaming && sqlCopy && (
+                    <button
+                      type="button"
+                      className="tiny-btn btn btn-ghost"
+                      title="复制全部 SQL"
+                      onClick={() => void copyText(sqlCopy).then((ok) => notifyCopy(ok, ' SQL'))}
+                    >
+                      复制 SQL
+                    </button>
+                  )}
+                </div>
+              </div>
+              {stepCount > 0 && (
+                <div className="ai-steps-wrap">
+                  <button
+                    type="button"
+                    className="ai-steps-toggle"
+                    aria-expanded={open}
+                    onClick={() => setStepsOpen((current) => ({ ...current, [turn.id]: !open }))}
+                  >
+                    <span className={open ? 'ai-steps-chevron is-open' : 'ai-steps-chevron'} aria-hidden="true">
+                      ▸
+                    </span>
+                    {aiStepsSummary(stepCount)}
+                    {collapseDefault && !open ? ' · 已折叠' : ''}
                   </button>
-                )}
-              </p>
-              {turn.steps && turn.steps.length > 0 && (
-                <ul className="ai-steps">
-                  {turn.steps.map((step, index) => {
-                    const active =
-                      turn.id === ws.aiTurns.at(-1)?.id &&
-                      ws.aiStreaming &&
-                      index === turn.steps!.length - 1
-                    return (
-                      <li key={`${turn.id}:step:${index}`} className={active ? 'is-active' : undefined}>
-                        <strong>{step.step}</strong>
-                        {step.detail ? <span>{step.detail}</span> : null}
-                      </li>
-                    )
-                  })}
-                </ul>
+                  {open && (
+                    <ul className="ai-steps">
+                      {turn.steps!.map((step, index) => {
+                        const active = streaming && index === turn.steps!.length - 1
+                        return (
+                          <li key={`${turn.id}:step:${index}`} className={active ? 'is-active' : undefined}>
+                            <strong>{step.step}</strong>
+                            {step.detail ? <span>{step.detail}</span> : null}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
               )}
-              <AssistantBody content={turn.content} streaming={turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming} />
+              <AssistantBody
+                content={turn.content}
+                streaming={streaming}
+                onCopied={(label) => notifyCopy(true, label)}
+                onCopyFail={() => notifyCopy(false, '')}
+              />
             </article>
-          ),
-        )}
+          )
+        })}
       </div>
       <form
         className="composer"
@@ -220,7 +303,17 @@ export function AiPane() {
   )
 }
 
-function AssistantBody({ content, streaming }: { content: string; streaming: boolean }) {
+function AssistantBody({
+  content,
+  streaming,
+  onCopied,
+  onCopyFail,
+}: {
+  content: string
+  streaming: boolean
+  onCopied: (label: string) => void
+  onCopyFail: () => void
+}) {
   const ws = useWorkspace()
   if (!content && streaming) return <p className="card-body dim is-waiting">正在检索 / 生成…</p>
   const blocks = parseBlocks(content)
@@ -237,6 +330,16 @@ function AssistantBody({ content, streaming }: { content: string; streaming: boo
             <div className="sql-block-bar">
               <span>SQL</span>
               <div className="sql-block-actions">
+                {block.closed && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void copyText(block.text).then((ok) => (ok ? onCopied(' SQL') : onCopyFail()))
+                    }
+                  >
+                    复制
+                  </button>
+                )}
                 {block.closed && (
                   <button type="button" onClick={() => ws.applySql(block.text)}>
                     写入编辑器
