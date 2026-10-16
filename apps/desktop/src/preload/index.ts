@@ -5,6 +5,12 @@ import type { ImportPlanItem } from '@shared/connectionTransfer'
 
 const api: DesktopApi = {
   meta: () => ipcRenderer.invoke('meta:get'),
+  window: {
+    minimize: () => ipcRenderer.invoke('window:minimize'),
+    maximize: () => ipcRenderer.invoke('window:maximize'),
+    close: () => ipcRenderer.invoke('window:close'),
+    isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  },
   connections: {
     list: () => ipcRenderer.invoke('connections:list'),
     save: async (input: ConnectionInput) => {

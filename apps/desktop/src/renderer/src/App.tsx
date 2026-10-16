@@ -1,39 +1,152 @@
-import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
-import { IconSidebar, IconSpark, Mark } from './components/icons'
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { emitDataai } from './appEvents'
+import type { CommandDef } from '@shared/commands'
+import { dialectInfo, isKvDialect } from '@shared/types'
+import { Mark } from './components/icons'
+import { TitleBar } from './components/TitleBar'
 import { ConnectionPane } from './components/ConnectionPane'
 import { EditorPane, ResultPane } from './components/EditorPane'
 import { AiPane } from './components/AiPane'
 import { RedisPane } from './components/RedisPane'
 import { Dialogs } from './components/Dialogs'
-import { dialectInfo, isKvDialect } from '@shared/types'
+import { CommandPalette } from './components/CommandPalette'
+import { ShortcutsHelp } from './components/ShortcutsHelp'
 import { useWorkspace } from './state/workspace'
 
 export function App() {
   const ws = useWorkspace()
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+
+  const runCommand = useCallback(
+    (command: CommandDef) => {
+      switch (command.id) {
+        case 'query.new':
+          ws.newTab()
+          break
+        case 'query.run':
+          void ws.run()
+          break
+        case 'query.explain':
+          void ws.explain()
+          break
+        case 'query.favorites':
+          emitDataai('dataai:open-favorites')
+          break
+        case 'query.history':
+          emitDataai('dataai:open-history')
+          break
+        case 'view.focusSearch':
+          if (!ws.sidebarOpen) ws.toggleSidebar()
+          window.setTimeout(() => emitDataai('dataai:focus-tree-search'), 40)
+          break
+        case 'view.focusEditor':
+          emitDataai('dataai:focus-editor')
+          break
+        case 'view.toggleSidebar':
+          ws.toggleSidebar()
+          break
+        case 'view.toggleAi':
+          ws.toggleAi()
+          break
+        case 'connection.new':
+          ws.openCreate()
+          break
+        case 'connection.export':
+          void ws.exportConnections()
+          break
+        case 'connection.import':
+          void ws.importConnections()
+          break
+        case 'ai.settings':
+          if (!ws.aiOpen) ws.toggleAi()
+          window.setTimeout(() => emitDataai('dataai:open-ai-settings'), 40)
+          break
+        case 'ai.clear':
+          ws.clearAiMemory()
+          break
+        case 'help.shortcuts':
+          setShortcutsOpen(true)
+          break
+        case 'help.palette':
+          setPaletteOpen(true)
+          break
+        default:
+          break
+      }
+    },
+    [ws],
+  )
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const meta = event.metaKey || event.ctrlKey
+      const key = event.key.toLowerCase()
+
+      if (paletteOpen || shortcutsOpen) {
+        // Palette / help handle Esc themselves; don't steal other chords.
+        return
+      }
+
+      if (meta && !event.shiftKey && key === 'k') {
+        event.preventDefault()
+        setPaletteOpen(true)
+        return
+      }
+      if (meta && event.shiftKey && key === 'p') {
+        event.preventDefault()
+        setPaletteOpen(true)
+        return
+      }
+      if (event.key === 'F1') {
+        event.preventDefault()
+        setShortcutsOpen(true)
+        return
+      }
       if (event.key === 'F5' || (meta && event.key === 'Enter')) {
         event.preventDefault()
         void ws.run()
-      } else if (meta && event.key.toLowerCase() === 't') {
+        return
+      }
+      if (meta && event.shiftKey && key === 'e') {
+        event.preventDefault()
+        void ws.explain()
+        return
+      }
+      if (meta && event.shiftKey && key === 'f') {
+        event.preventDefault()
+        if (!ws.sidebarOpen) ws.toggleSidebar()
+        window.setTimeout(() => emitDataai('dataai:focus-tree-search'), 40)
+        return
+      }
+      if (meta && event.shiftKey && key === '1') {
+        event.preventDefault()
+        emitDataai('dataai:focus-editor')
+        return
+      }
+      if (meta && !event.shiftKey && key === 't') {
         event.preventDefault()
         ws.newTab()
-      } else if (meta && event.key.toLowerCase() === 'w') {
+        return
+      }
+      if (meta && !event.shiftKey && key === 'w') {
         event.preventDefault()
         if (ws.activeEditor) ws.closeTab(ws.activeEditor.id)
-      } else if (meta && event.key.toLowerCase() === 'b') {
+        return
+      }
+      if (meta && !event.shiftKey && key === 'b') {
         event.preventDefault()
         ws.toggleSidebar()
-      } else if (meta && event.shiftKey && event.key.toLowerCase() === 'a') {
+        return
+      }
+      if (meta && event.shiftKey && key === 'a') {
         event.preventDefault()
         ws.toggleAi()
       }
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [ws])
+  }, [ws, paletteOpen, shortcutsOpen])
 
   if (!ws.ready) {
     return (
@@ -54,35 +167,26 @@ export function App() {
     .filter(Boolean)
     .join(' ')
 
+  const encryptionLabel =
+    ws.meta?.encryption === 'os' ? '密钥：系统' : ws.meta?.encryption === 'unavailable' ? '密钥：不可用' : null
+
+  const lastRunLabel = ws.lastRun
+    ? `${ws.lastRun.kind === 'explain' ? '计划' : '结果'} ${ws.lastRun.rows} 行 · ${ws.lastRun.elapsedMs} ms${
+        ws.lastRun.ok ? '' : ' · 失败'
+      }`
+    : null
+
   return (
     <div className="app">
-      <header className="titlebar">
-        <div className="brand">
-          <Mark />
-          <span className="word">DataAI</span>
-        </div>
-        <p className="crumb">{ws.breadcrumb}</p>
-        <div className="title-actions">
-          <button
-            type="button"
-            className={ws.sidebarOpen ? 'icon-btn is-active' : 'icon-btn'}
-            aria-pressed={ws.sidebarOpen}
-            aria-label="连接栏"
-            onClick={ws.toggleSidebar}
-          >
-            <IconSidebar />
-          </button>
-          <button
-            type="button"
-            className={ws.aiOpen ? 'icon-btn is-active' : 'icon-btn'}
-            aria-pressed={ws.aiOpen}
-            aria-label="助手"
-            onClick={ws.toggleAi}
-          >
-            <IconSpark />
-          </button>
-        </div>
-      </header>
+      <TitleBar
+        crumb={ws.breadcrumb}
+        version={ws.meta?.version}
+        sidebarOpen={ws.sidebarOpen}
+        aiOpen={ws.aiOpen}
+        onToggleSidebar={ws.toggleSidebar}
+        onToggleAi={ws.toggleAi}
+        onOpenPalette={() => setPaletteOpen(true)}
+      />
       <div className="workspace" style={{ gridTemplateColumns: columns }}>
         {ws.sidebarOpen && <ConnectionPane />}
         {ws.sidebarOpen && (
@@ -134,7 +238,13 @@ export function App() {
           />
           {ws.activeConnection ? (
             <>
-              <span className={`badge badge-${ws.activeConnection.dialect}${dialectInfo(ws.activeConnection.dialect).executable || dialectInfo(ws.activeConnection.dialect).kv ? '' : ' badge-pending'}`}>
+              <span
+                className={`badge badge-${ws.activeConnection.dialect}${
+                  dialectInfo(ws.activeConnection.dialect).executable || dialectInfo(ws.activeConnection.dialect).kv
+                    ? ''
+                    : ' badge-pending'
+                }`}
+              >
                 {dialectInfo(ws.activeConnection.dialect).label}
               </span>
               {ws.activeConnection.name}
@@ -146,10 +256,14 @@ export function App() {
         <span className="status-item">
           行 {ws.cursor.line} · 列 {ws.cursor.column}
         </span>
+        {lastRunLabel && (
+          <span className={ws.lastRun?.ok === false ? 'status-item is-warn' : 'status-item'}>{lastRunLabel}</span>
+        )}
         <span className="status-spacer" />
+        {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
-        <span className="status-item">F5 运行</span>
-        <span className="status-item">{ws.meta?.version ?? '0.8.0'}</span>
+        <span className="status-item status-muted">Ctrl+K</span>
+        <span className="status-item">{ws.meta?.version ?? '0.9.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (
@@ -159,6 +273,8 @@ export function App() {
         ))}
       </div>
       <Dialogs />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onRun={runCommand} />
+      <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   )
 }

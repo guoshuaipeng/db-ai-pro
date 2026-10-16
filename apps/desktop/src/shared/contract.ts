@@ -18,6 +18,12 @@ import type { ConnectionBundle, ImportPlanItem } from './connectionTransfer'
 
 export type DesktopApi = {
   meta: () => Promise<AppMeta>
+  window: {
+    minimize: () => Promise<void>
+    maximize: () => Promise<{ maximized: boolean }>
+    close: () => Promise<void>
+    isMaximized: () => Promise<boolean>
+  }
   connections: {
     list: () => Promise<ConnectionPublic[]>
     save: (input: ConnectionInput) => Promise<ConnectionPublic>

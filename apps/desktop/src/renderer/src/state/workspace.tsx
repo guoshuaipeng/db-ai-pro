@@ -45,6 +45,13 @@ export type ResultState = { tabs: ResultTab[]; activeId: string }
 
 export type Toast = { id: string; tone: 'info' | 'error' | 'success'; text: string }
 
+export type LastRunStats = {
+  rows: number
+  elapsedMs: number
+  ok: boolean
+  kind: 'run' | 'explain'
+}
+
 type DialogState =
   | null
   | { type: 'connection'; connection?: ConnectionPublic }
@@ -73,6 +80,7 @@ type WorkspaceValue = {
   results: ResultState | null
   setActiveResult: (id: string) => void
   running: boolean
+  lastRun: LastRunStats | null
   run: () => Promise<void>
   explain: () => Promise<void>
   clearAiMemory: () => void
@@ -197,6 +205,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [activeEditorId, setActiveEditorId] = useState('query-1')
   const [resultMap, setResultMap] = useState<Record<string, ResultState>>({})
   const [running, setRunning] = useState(false)
+  const [lastRun, setLastRun] = useState<LastRunStats | null>(null)
   const [cursor, setCursor] = useState({ line: 1, column: 1 })
   const [aiTurns, setAiTurns] = useState<AiTurnState[]>([])
   const [aiStreaming, setAiStreaming] = useState(false)
@@ -441,6 +450,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       const statements = await api.sql.execute({ connectionId: activeConnection.id, sql: activeEditor.sql })
       const next = resultsFrom(statements)
+      const elapsedMs = statements.reduce((sum, item) => sum + (item.elapsedMs || 0), 0)
+      const rowCount = statements.reduce((sum, item) => sum + (item.rows?.length ?? 0), 0)
+      setLastRun({ rows: rowCount, elapsedMs, ok: statements.every((item) => item.ok), kind: 'run' })
       setResultMap((current) => ({ ...current, [activeEditor.id]: next }))
       const failed = statements.find((statement) => !statement.ok)
       if (failed) {
@@ -513,6 +525,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         activeId: planTab.id,
       }
       setResultMap((current) => ({ ...current, [activeEditor.id]: next }))
+      const elapsedMs = statements.reduce((sum, item) => sum + (item.elapsedMs || 0), 0)
+      const rows = statements.reduce((sum, item) => sum + (item.rows?.length ?? 0), 0)
+      setLastRun({ rows, elapsedMs, ok: !statements.some((item) => !item.ok), kind: 'explain' })
       const failed = statements.find((statement) => !statement.ok)
       if (failed) pushToast('error', failed.error ?? '执行计划失败')
       else pushToast('success', '已生成执行计划')
@@ -818,6 +833,7 @@ ${sql.trim()}
       })
     },
     running,
+    lastRun,
     run,
     explain,
     clearAiMemory,

@@ -1,0 +1,174 @@
+export type CommandCategory = 'query' | 'view' | 'connection' | 'ai' | 'help'
+
+export type CommandDef = {
+  id: string
+  title: string
+  subtitle?: string
+  keywords?: string
+  shortcut?: string
+  category: CommandCategory
+}
+
+export const COMMAND_CATALOG: CommandDef[] = [
+  {
+    id: 'query.new',
+    title: '新建查询标签',
+    subtitle: '打开空白 SQL 标签页',
+    keywords: 'new tab query sql',
+    shortcut: 'Ctrl+T',
+    category: 'query',
+  },
+  {
+    id: 'query.run',
+    title: '运行当前 SQL',
+    subtitle: '执行编辑器中的语句',
+    keywords: 'run execute f5',
+    shortcut: 'Ctrl+Enter',
+    category: 'query',
+  },
+  {
+    id: 'query.explain',
+    title: '查看执行计划',
+    subtitle: 'EXPLAIN / SHOWPLAN',
+    keywords: 'explain plan analyze',
+    shortcut: 'Ctrl+Shift+E',
+    category: 'query',
+  },
+  {
+    id: 'query.favorites',
+    title: '打开收藏片段',
+    subtitle: '插入已保存的 SQL',
+    keywords: 'favorites snippets star',
+    category: 'query',
+  },
+  {
+    id: 'query.history',
+    title: '打开查询历史',
+    subtitle: '重跑最近执行的语句',
+    keywords: 'history recent',
+    category: 'query',
+  },
+  {
+    id: 'view.focusSearch',
+    title: '聚焦对象树搜索',
+    subtitle: '过滤连接 / 表 / 列',
+    keywords: 'search tree filter host',
+    shortcut: 'Ctrl+Shift+F',
+    category: 'view',
+  },
+  {
+    id: 'view.focusEditor',
+    title: '聚焦 SQL 编辑器',
+    keywords: 'editor monaco focus',
+    shortcut: 'Ctrl+Shift+1',
+    category: 'view',
+  },
+  {
+    id: 'view.toggleSidebar',
+    title: '显示/隐藏连接栏',
+    keywords: 'sidebar connections',
+    shortcut: 'Ctrl+B',
+    category: 'view',
+  },
+  {
+    id: 'view.toggleAi',
+    title: '显示/隐藏助手',
+    keywords: 'assistant ai pane',
+    shortcut: 'Ctrl+Shift+A',
+    category: 'view',
+  },
+  {
+    id: 'connection.new',
+    title: '新建连接',
+    keywords: 'new connection database',
+    category: 'connection',
+  },
+  {
+    id: 'connection.export',
+    title: '导出连接',
+    subtitle: 'JSON（仅密封密文）',
+    keywords: 'export backup',
+    category: 'connection',
+  },
+  {
+    id: 'connection.import',
+    title: '导入连接',
+    subtitle: '合并 / 覆盖 / 跳过',
+    keywords: 'import restore',
+    category: 'connection',
+  },
+  {
+    id: 'ai.settings',
+    title: '打开模型设置',
+    subtitle: 'Base URL / Model / API Key',
+    keywords: 'settings openai key',
+    category: 'ai',
+  },
+  {
+    id: 'ai.clear',
+    title: '清空助手会话',
+    keywords: 'clear memory chat',
+    category: 'ai',
+  },
+  {
+    id: 'help.shortcuts',
+    title: '键盘快捷键',
+    subtitle: '查看常用快捷键',
+    keywords: 'shortcuts keymap help',
+    shortcut: 'F1',
+    category: 'help',
+  },
+  {
+    id: 'help.palette',
+    title: '命令面板',
+    keywords: 'command palette',
+    shortcut: 'Ctrl+K',
+    category: 'help',
+  },
+]
+
+/** Case-insensitive subsequence / substring score. Higher is better; null = no match. */
+export function fuzzyScore(query: string, ...fields: string[]): number | null {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return 0
+  const haystack = fields.filter(Boolean).join(' ').toLowerCase()
+  if (!haystack) return null
+  if (haystack === needle) return 10_000
+  const idx = haystack.indexOf(needle)
+  if (idx >= 0) return 5_000 - idx * 10 + Math.min(haystack.length, 200)
+
+  let score = 0
+  let from = 0
+  for (const ch of needle) {
+    const at = haystack.indexOf(ch, from)
+    if (at < 0) return null
+    score += 20 - Math.min(at - from, 15)
+    from = at + 1
+  }
+  return score
+}
+
+export function filterCommands(query: string, catalog: CommandDef[] = COMMAND_CATALOG): CommandDef[] {
+  const ranked = catalog
+    .map((command) => {
+      const score = fuzzyScore(query, command.title, command.subtitle ?? '', command.keywords ?? '', command.id)
+      return score === null ? null : { command, score }
+    })
+    .filter((row): row is { command: CommandDef; score: number } => row !== null)
+
+  ranked.sort((a, b) => b.score - a.score || a.command.title.localeCompare(b.command.title, 'zh-CN'))
+  return ranked.map((row) => row.command)
+}
+
+export const SHORTCUT_HELP: { action: string; keys: string }[] = [
+  { action: '命令面板', keys: 'Ctrl+K · Ctrl+Shift+P' },
+  { action: '运行 SQL', keys: 'Ctrl+Enter · F5' },
+  { action: '执行计划', keys: 'Ctrl+Shift+E' },
+  { action: '新建查询', keys: 'Ctrl+T' },
+  { action: '关闭标签', keys: 'Ctrl+W' },
+  { action: '连接栏', keys: 'Ctrl+B' },
+  { action: '助手面板', keys: 'Ctrl+Shift+A' },
+  { action: '对象树搜索', keys: 'Ctrl+Shift+F' },
+  { action: '聚焦编辑器', keys: 'Ctrl+Shift+1' },
+  { action: '快捷键说明', keys: 'F1' },
+]

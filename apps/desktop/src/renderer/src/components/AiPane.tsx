@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { onDataai } from '../appEvents'
 import { parseBlocks, extractSql } from '@shared/sql'
 import { ASSISTANT_PROMPTS } from '@shared/session'
 import { ALTER_PROMPTS, CREATE_PROMPTS } from '@shared/ddlDraft'
@@ -17,6 +18,11 @@ export function AiPane() {
   const [draft, setDraft] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const scroller = useRef<HTMLDivElement>(null)
+
+  useEffect(() => onDataai('dataai:open-ai-settings', () => {
+    if (!ws.aiOpen) ws.toggleAi()
+    setSettingsOpen(true)
+  }), [ws])
 
   useEffect(() => {
     const el = scroller.current

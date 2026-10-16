@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { onDataai } from '../appEvents'
 import { dialectInfo } from '@shared/types'
 import type { Dialect, SchemaNode } from '@shared/types'
 import { IconColumn, IconDatabase, IconMore, IconPlus, IconSearch, IconTable } from './icons'
@@ -8,6 +9,7 @@ export function ConnectionPane() {
   const ws = useWorkspace()
   const [menuId, setMenuId] = useState<string | null>(null)
   const root = useRef<HTMLElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const close = (event: MouseEvent) => {
@@ -16,6 +18,14 @@ export function ConnectionPane() {
     window.addEventListener('mousedown', close)
     return () => window.removeEventListener('mousedown', close)
   }, [])
+
+  useEffect(() => onDataai('dataai:focus-tree-search', () => {
+    if (!ws.sidebarOpen) ws.toggleSidebar()
+    window.setTimeout(() => {
+      searchRef.current?.focus()
+      searchRef.current?.select()
+    }, 0)
+  }), [ws])
 
   return (
     <aside className="sidebar" ref={root} aria-label="连接">
@@ -36,6 +46,7 @@ export function ConnectionPane() {
       <label className="search">
         <IconSearch />
         <input
+          ref={searchRef}
           value={ws.search}
           onChange={(event) => ws.setSearch(event.target.value)}
           placeholder="搜索主机 / 库 / 表 / 列"

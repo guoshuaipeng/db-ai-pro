@@ -24,6 +24,8 @@ function createWindow(): BrowserWindow {
     minWidth: 1100,
     minHeight: 720,
     show: false,
+    frame: false,
+    transparent: false,
     backgroundColor: '#0c0e13',
     title: 'DataAI',
     icon: iconPath(),

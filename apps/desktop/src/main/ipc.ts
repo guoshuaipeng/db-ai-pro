@@ -158,6 +158,21 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     mode: 'desktop' as const,
   }))
 
+  ipcMain.handle('window:minimize', () => {
+    getWindow()?.minimize()
+  })
+  ipcMain.handle('window:maximize', () => {
+    const win = getWindow()
+    if (!win) return { maximized: false }
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+    return { maximized: win.isMaximized() }
+  })
+  ipcMain.handle('window:close', () => {
+    getWindow()?.close()
+  })
+  ipcMain.handle('window:isMaximized', () => Boolean(getWindow()?.isMaximized()))
+
   ipcMain.handle('connections:list', () => listConnections())
 
   ipcMain.handle('connections:save', (_event, input: ConnectionInput) => {

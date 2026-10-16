@@ -3,6 +3,7 @@ import { editor, languages, type IDisposable } from 'monaco-editor/editor/editor
 import { conf, language } from 'monaco-editor/languages/definitions/sql/sql'
 import editorWorker from 'monaco-editor/editor/editor.worker?worker'
 import { filterSuggestions, type SchemaSuggestItem } from '@shared/schemaSuggest'
+import { onDataai } from '../appEvents'
 
 globalThis.MonacoEnvironment = {
   getWorker() {
@@ -174,6 +175,10 @@ export function SqlEditor({ value, onChange, onCursor, suggestions = [] }: SqlEd
     if (!instance) return
     if (instance.getValue() !== value) instance.setValue(value)
   }, [value])
+
+  useEffect(() => onDataai('dataai:focus-editor', () => {
+    instanceRef.current?.focus()
+  }), [])
 
   return (
     <div className="editor-wrap">

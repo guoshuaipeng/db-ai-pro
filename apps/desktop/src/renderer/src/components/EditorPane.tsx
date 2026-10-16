@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { onDataai } from '../appEvents'
 import { suggestionsFromSchema } from '@shared/schemaSuggest'
 import { IconClock, IconPlay, IconPlus, IconStar } from './icons'
 import { ScrollTabs } from './ScrollTabs'
@@ -12,6 +13,16 @@ export function EditorPane() {
   const ws = useWorkspace()
   const [historyOpen, setHistoryOpen] = useState(false)
   const [favoritesOpen, setFavoritesOpen] = useState(false)
+
+  useEffect(() => onDataai('dataai:open-favorites', () => {
+    setFavoritesOpen(true)
+    setHistoryOpen(false)
+  }), [])
+  useEffect(() => onDataai('dataai:open-history', () => {
+    setHistoryOpen(true)
+    setFavoritesOpen(false)
+  }), [])
+
   const suggestions = useMemo(
     () => suggestionsFromSchema(ws.schema, ws.activeConnection?.id ?? null),
     [ws.schema, ws.activeConnection?.id],

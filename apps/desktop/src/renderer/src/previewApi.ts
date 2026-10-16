@@ -189,7 +189,13 @@ export function createPreviewApi(): DesktopApi {
   }
 
   return {
-    meta: async () => ({ version: '0.8.0', encryption: 'unavailable', mode: 'preview' }),
+    meta: async () => ({ version: '0.9.0', encryption: 'unavailable', mode: 'preview' }),
+    window: {
+      minimize: async () => undefined,
+      maximize: async () => ({ maximized: false }),
+      close: async () => undefined,
+      isMaximized: async () => false,
+    },
     connections: {
       list: async () => memory.connections,
       save: async (input: ConnectionInput) => {
