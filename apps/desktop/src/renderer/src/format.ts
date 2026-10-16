@@ -1,14 +1,11 @@
+import {
+  cellDisplayKind,
+  formatCellDisplay,
+} from '@shared/cellDisplay'
+
+/** @deprecated Prefer formatCellDisplay; kept for existing imports. */
 export function formatCell(value: unknown): string {
-  if (value == null) return '—'
-  if (typeof value === 'number') {
-    if (Number.isInteger(value)) return String(value)
-    return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value)
-  }
-  if (typeof value === 'string') return value
-  if (typeof value === 'object' && value && 'type' in value && (value as { type?: string }).type === 'blob') {
-    return '二进制'
-  }
-  return String(value)
+  return formatCellDisplay(value)
 }
 
 export function isNumericColumn(rows: Record<string, unknown>[], key: string): boolean {
@@ -21,3 +18,5 @@ export function isNumericColumn(rows: Record<string, unknown>[], key: string): b
   }
   return seen
 }
+
+export { cellDisplayKind, formatCellDisplay }

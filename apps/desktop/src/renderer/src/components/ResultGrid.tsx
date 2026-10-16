@@ -18,6 +18,7 @@ import {
 } from '@shared/sqlCopy'
 import { inferSqliteTable } from '@shared/sql'
 import { formatCell, isNumericColumn } from '../format'
+import { cellClipboardText, cellDisplayHint, cellDisplayKind } from '@shared/cellDisplay'
 import { useWorkspace } from '../state/workspace'
 import { nextSortState, sortResultRows, type ResultSort } from '@shared/resultSort'
 import {
@@ -667,8 +668,8 @@ export function ResultGrid({
   const copyFocused = async () => {
     const column = displayColumns[focus.col]
     if (!column) return
-    const text = formatCell(displayRows[focus.row]?.[column])
-    await navigator.clipboard.writeText(text === '—' ? '' : text)
+    const raw = displayRows[focus.row]?.[column]
+    await navigator.clipboard.writeText(cellClipboardText(raw))
     setNote('已复制单元格')
   }
 
@@ -1261,13 +1262,17 @@ export function ResultGrid({
                         })
                       }}
                       title={
-                        canEditSqlite
-                          ? `${text}（双击查看 · Enter 编辑 / Ctrl+C 复制）`
-                          : `${text}（双击查看 / Ctrl+C 复制）`
+                        (() => {
+                          const hint = cellDisplayHint(value)
+                          return canEditSqlite
+                            ? `${hint}（双击查看 · Enter 编辑 / Ctrl+C 复制）`
+                            : `${hint}（双击查看 / Ctrl+C 复制）`
+                        })()
                       }
                       className={[
                         numeric[column] ? 'is-number' : '',
-                        value == null ? 'is-null' : '',
+                        cellDisplayKind(value) === 'null' ? 'is-null' : '',
+                        cellDisplayKind(value) === 'empty' ? 'is-empty' : '',
                         focused ? 'is-focused' : '',
                         pinnedAt >= 0 ? `is-pinned is-pinned-${pinnedAt}` : '',
                         colWidths?.[column] != null ? 'has-autofit' : '',
@@ -1421,7 +1426,7 @@ export function ResultGrid({
       />
       {note && <p className="result-footnote">{note}</p>}
       <p className="result-footnote">
-        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；「列宽适应」或表头分隔线双击估算列宽；表头「筛」可按列筛选（与上方筛选框叠加）；「显示列」可隐藏列；双击或「查看单元格」只读预览全文。
+        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；「列宽适应」或表头分隔线双击估算列宽；表头「筛」可按列筛选（与上方筛选框叠加）；「显示列」可隐藏列；双击或「查看单元格」只读预览全文；NULL 与空字符串 "" 分别显示。
         {sort ? ` 当前排序：${sort.column} ${sort.direction === 'asc' ? '升序' : '降序'}。` : ''}
       </p>
       {canEditSqlite && <p className="result-footnote">SQLite：双击查看单元格；Enter 进入编辑（需确认）。隐藏列 __rowid__ 用于定位行。</p>}

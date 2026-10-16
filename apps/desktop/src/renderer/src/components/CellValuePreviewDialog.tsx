@@ -50,10 +50,16 @@ export function CellValuePreviewDialog({
         <p className="dialog-copy">
           只读预览（不写库）
           {preview.jsonPretty ? ' · 已格式化为 JSON' : ''}
-          {preview.isNull ? ' · 空值' : ''}
+          {preview.isNull ? ' · NULL' : preview.isEmpty ? ' · 空字符串' : ''}
         </p>
         <pre
-          className={preview.isNull ? 'cell-preview-body is-null' : 'cell-preview-body'}
+          className={
+            preview.isNull
+              ? 'cell-preview-body is-null'
+              : preview.isEmpty
+                ? 'cell-preview-body is-empty'
+                : 'cell-preview-body'
+          }
           tabIndex={0}
         >
           {preview.text}

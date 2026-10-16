@@ -3,7 +3,11 @@ import { buildCellPreview, cellPreviewTitle } from './cellValuePreview'
 
 describe('cellValuePreview', () => {
   it('marks null', () => {
-    expect(buildCellPreview(null)).toEqual({ text: 'NULL', jsonPretty: false, isNull: true })
+    expect(buildCellPreview(null)).toEqual({ text: 'NULL', jsonPretty: false, isNull: true, isEmpty: false })
+  })
+
+  it('marks empty string', () => {
+    expect(buildCellPreview('')).toEqual({ text: '""', jsonPretty: false, isNull: false, isEmpty: true })
   })
 
   it('pretty-prints JSON strings', () => {

@@ -5,8 +5,10 @@ export type CellPreviewPayload = {
   text: string
   /** Whether text was pretty-printed as JSON. */
   jsonPretty: boolean
-  /** Raw null / empty marker for UI. */
+  /** Raw SQL NULL. */
   isNull: boolean
+  /** Empty string (distinct from NULL). */
+  isEmpty: boolean
 }
 
 function tryPrettyJson(raw: string): string | null {
@@ -26,24 +28,27 @@ function tryPrettyJson(raw: string): string | null {
 /** Build preview text from a cell value (no DB write). */
 export function buildCellPreview(value: unknown): CellPreviewPayload {
   if (value == null) {
-    return { text: 'NULL', jsonPretty: false, isNull: true }
+    return { text: 'NULL', jsonPretty: false, isNull: true, isEmpty: false }
   }
   if (typeof value === 'object' && value && 'type' in value && (value as { type?: string }).type === 'blob') {
-    return { text: '二进制', jsonPretty: false, isNull: false }
+    return { text: '二进制', jsonPretty: false, isNull: false, isEmpty: false }
   }
   if (typeof value === 'string') {
+    if (value.length === 0) {
+      return { text: '""', jsonPretty: false, isNull: false, isEmpty: true }
+    }
     const pretty = tryPrettyJson(value)
-    if (pretty != null) return { text: pretty, jsonPretty: true, isNull: false }
-    return { text: value, jsonPretty: false, isNull: false }
+    if (pretty != null) return { text: pretty, jsonPretty: true, isNull: false, isEmpty: false }
+    return { text: value, jsonPretty: false, isNull: false, isEmpty: false }
   }
   if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
-    return { text: String(value), jsonPretty: false, isNull: false }
+    return { text: String(value), jsonPretty: false, isNull: false, isEmpty: false }
   }
   try {
     const pretty = JSON.stringify(value, null, 2)
-    return { text: pretty, jsonPretty: true, isNull: false }
+    return { text: pretty, jsonPretty: true, isNull: false, isEmpty: false }
   } catch {
-    return { text: String(value), jsonPretty: false, isNull: false }
+    return { text: String(value), jsonPretty: false, isNull: false, isEmpty: false }
   }
 }
 
