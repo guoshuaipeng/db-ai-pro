@@ -172,6 +172,11 @@ export type ColumnStatsTarget =
     }
 import type { ImportPlanItem } from '@shared/connectionTransfer'
 import { connectionColorPatch } from '@shared/connColorQuick'
+import {
+  connColorClearedToast,
+  connColorMissingToast,
+  connColorSetToast,
+} from '@shared/connColorUi'
 import { resolveTabConnectionId } from '@shared/tabConnection'
 import type { AiIntent } from '@shared/types'
 import type {
@@ -2499,13 +2504,18 @@ ${sql.trim()}
   const setConnectionColorTag = async (connectionId: string, colorTag: string | null) => {
     const connection = connections.find((row) => row.id === connectionId)
     if (!connection) {
-      pushToast('error', '连接不存在')
+      pushToast('error', connColorMissingToast())
       return
     }
     await api.connections.save(connectionColorPatch(connection, colorTag))
     const rows = await api.connections.list()
     setConnections(rows)
-    pushToast('success', colorTag ? '颜色标记已更新' : '已清除颜色标记')
+    pushToast(
+      'success',
+      colorTag
+        ? connColorSetToast(connection.name, colorTag)
+        : connColorClearedToast(connection.name),
+    )
   }
 
   const deleteConnection = async (id: string) => {

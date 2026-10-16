@@ -5978,3 +5978,7 @@ body.is-col-resizing .grid-col-resizer {
 .connection-test-result .empty-state {
   margin: 0;
 }
+
+.conn-color-picker + .field-hint {
+  margin-top: 6px;
+}

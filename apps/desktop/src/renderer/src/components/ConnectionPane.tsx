@@ -12,6 +12,14 @@ import {
   healthProbeMenuTitle,
 } from '@shared/connHealthUi'
 import {
+  connColorClearAria,
+  connColorClearTitle,
+  connColorGroupAria,
+  connColorGroupLabel,
+  connColorTagAria,
+  connColorTagTitle,
+} from '@shared/connColorUi'
+import {
   duplicateConnectionMenuLabel,
   duplicateConnectionMenuTitle,
 } from '@shared/duplicateConnectionUi'
@@ -695,13 +703,13 @@ function TreeNode({
             <button type="button" role="menuitem" onClick={() => { onMenu(null); ws.openEdit(connection) }}>
               编辑
             </button>
-            <div className="menu-color-row" role="group" aria-label="颜色标记" onMouseDown={(event) => event.stopPropagation()}>
-              <span className="menu-color-label">颜色</span>
+            <div className="menu-color-row" role="group" aria-label={connColorGroupAria()} onMouseDown={(event) => event.stopPropagation()}>
+              <span className="menu-color-label">{connColorGroupLabel()}</span>
               <button
                 type="button"
                 className={!connection.colorTag ? 'conn-color-swatch is-none is-active' : 'conn-color-swatch is-none'}
-                title="无标记"
-                aria-label="无颜色标记"
+                title={connColorClearTitle()}
+                aria-label={connColorClearAria()}
                 onClick={() => {
                   onMenu(null)
                   void ws.setConnectionColorTag(connection.id, null)
@@ -713,8 +721,8 @@ function TreeNode({
                   type="button"
                   className={connection.colorTag === tag.id ? 'conn-color-swatch is-active' : 'conn-color-swatch'}
                   style={{ background: tag.color }}
-                  title={tag.label}
-                  aria-label={tag.label}
+                  title={connColorTagTitle(tag.id)}
+                  aria-label={connColorTagAria(tag.id)}
                   onClick={() => {
                     onMenu(null)
                     void ws.setConnectionColorTag(connection.id, tag.id)

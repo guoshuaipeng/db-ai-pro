@@ -77,6 +77,15 @@ import {
   connectionTestSuccessTitle,
   connectionTestSuccessToast,
 } from '@shared/connectionTestUi'
+import {
+  connColorClearAria,
+  connColorClearTitle,
+  connColorDialogFieldLabel,
+  connColorDialogHint,
+  connColorGroupAria,
+  connColorTagAria,
+  connColorTagTitle,
+} from '@shared/connColorUi'
 import { EmptyState } from './EmptyState'
 
 export function Dialogs() {
@@ -501,14 +510,15 @@ function ConnectionDialog() {
           </select>
         </label>
         <div className="field">
-          <span>颜色标记</span>
-          <div className="conn-color-picker" role="radiogroup" aria-label="颜色标记">
+          <span>{connColorDialogFieldLabel()}</span>
+          <div className="conn-color-picker" role="radiogroup" aria-label={connColorGroupAria()}>
             <button
               type="button"
               className={!colorTag ? 'conn-color-swatch is-none is-active' : 'conn-color-swatch is-none'}
               aria-checked={!colorTag}
+              aria-label={connColorClearAria()}
               role="radio"
-              title="无"
+              title={connColorClearTitle()}
               onClick={() => setColorTag('')}
             />
             {CONN_COLOR_TAGS.map((tag) => (
@@ -518,12 +528,14 @@ function ConnectionDialog() {
                 className={colorTag === tag.id ? 'conn-color-swatch is-active' : 'conn-color-swatch'}
                 style={{ background: tag.color }}
                 aria-checked={colorTag === tag.id}
+                aria-label={connColorTagAria(tag.id)}
                 role="radio"
-                title={tag.label}
+                title={connColorTagTitle(tag.id)}
                 onClick={() => setColorTag(tag.id)}
               />
             ))}
           </div>
+          <p className="field-hint">{connColorDialogHint()}</p>
         </div>
         <label className="checkline">
           <input type="checkbox" checked={readOnly} onChange={(event) => setReadOnly(event.target.checked)} />
