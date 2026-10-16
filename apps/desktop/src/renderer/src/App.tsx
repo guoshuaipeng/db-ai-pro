@@ -251,6 +251,11 @@ export function App() {
         onToggleAi={ws.toggleAi}
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenSettings={() => openSettings('model')}
+        recentTables={ws.recentTables}
+        recentQueries={ws.recentQueries}
+        onOpenRecentTable={ws.openRecentTable}
+        onOpenRecentQuery={ws.openRecentQuery}
+        onClearRecent={() => void ws.clearRecent()}
       />
       <div className="workspace" style={{ gridTemplateColumns: columns }}>
         {ws.sidebarOpen && <ConnectionPane />}
@@ -338,7 +343,7 @@ export function App() {
         {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '1.8.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '1.9.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (
@@ -352,7 +357,15 @@ export function App() {
       <ColumnStatsPanel />
       <ImportWizard />
       <SchemaDiffPanel />
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onRun={runCommand} />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onRun={runCommand}
+        recentTables={ws.recentTables}
+        recentQueries={ws.recentQueries}
+        onOpenRecentTable={ws.openRecentTable}
+        onOpenRecentQuery={ws.openRecentQuery}
+      />
       <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <SettingsCenter
         open={settingsOpen}

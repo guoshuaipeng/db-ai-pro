@@ -6,6 +6,7 @@ import type { Dialect, SchemaNode } from '@shared/types'
 import { IconColumn, IconDatabase, IconMore, IconPlus, IconSearch, IconTable } from './icons'
 import { EmptyState } from './EmptyState'
 import { useWorkspace } from '../state/workspace'
+import { recentQueryTitle } from '@shared/recentItems'
 
 export function ConnectionPane() {
   const ws = useWorkspace()
@@ -64,6 +65,47 @@ export function ConnectionPane() {
         <p className="search-stats">
           {ws.searchStats.connections} 连接 · {ws.searchStats.tables} 表 · {ws.searchStats.columns} 列
         </p>
+      )}
+
+      {(ws.recentTables.length > 0 || ws.recentQueries.length > 0) && !ws.search.trim() && (
+        <div className="recent-side" aria-label="最近">
+          <div className="recent-side-head">
+            <span>最近</span>
+            <button type="button" className="tiny-btn btn btn-ghost" onClick={() => void ws.clearRecent()}>
+              清空
+            </button>
+          </div>
+          {ws.recentTables.slice(0, 6).map((item) => (
+            <button
+              key={`t:${item.connectionId}:${item.tableName}`}
+              type="button"
+              className="recent-side-item"
+              title={`${item.connectionName} / ${item.tableName}`}
+              onClick={() => ws.openRecentTable(item)}
+            >
+              <IconTable />
+              <span className="recent-side-text">
+                <span className="recent-side-title">{item.tableName}</span>
+                <span className="recent-side-sub">{item.connectionName || '表'}</span>
+              </span>
+            </button>
+          ))}
+          {ws.recentQueries.slice(0, 4).map((item) => (
+            <button
+              key={`q:${item.connectionId ?? 'g'}:${item.at}`}
+              type="button"
+              className="recent-side-item"
+              title={item.sql}
+              onClick={() => ws.openRecentQuery(item)}
+            >
+              <span className="recent-side-sql-badge">SQL</span>
+              <span className="recent-side-text">
+                <span className="recent-side-title">{recentQueryTitle(item.sql, 40)}</span>
+                <span className="recent-side-sub">{item.connectionName || '查询'}</span>
+              </span>
+            </button>
+          ))}
+        </div>
       )}
       {ws.connections.length === 0 ? (
         <EmptyState

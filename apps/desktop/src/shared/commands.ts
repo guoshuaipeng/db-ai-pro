@@ -247,4 +247,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '聚焦编辑器', keys: 'Ctrl+Shift+1' },
   { action: '快捷键说明', keys: 'F1' },
   { action: '收藏片段变量 {{table}} / {{limit}}', keys: '插入时填写' },
+  { action: '最近表 / 最近查询', keys: '标题栏「最近」· Ctrl+K' },
 ]

@@ -1,3 +1,4 @@
+import { pushRecentQuery, pushRecentTable, type RecentQueryItem, type RecentTableItem } from '@shared/recentItems'
 import type { DesktopApi } from '@shared/contract'
 import { connectionErrorNode } from '@shared/schema'
 import { draftAlterTable, draftCreateTable } from '@shared/ddlDraft'
@@ -21,6 +22,7 @@ const memory = {
   connections: [] as ConnectionPublic[],
   history: {} as Record<string, QueryHistoryEntry[]>,
   favorites: [] as SqlFavorite[],
+  recent: { version: 1 as const, tables: [] as RecentTableItem[], queries: [] as RecentQueryItem[] },
   favoriteFolders: [] as import('@shared/types').FavoriteFolder[],
   workspace: null as WorkspaceState | null,
   settings: {
@@ -196,6 +198,27 @@ export function createPreviewApi(): DesktopApi {
       maximize: async () => ({ maximized: false }),
       close: async () => undefined,
       isMaximized: async () => false,
+    },
+    recent: {
+      list: async () => memory.recent,
+      recordTable: async (input) => {
+        memory.recent = {
+          ...memory.recent,
+          tables: pushRecentTable(memory.recent.tables, input),
+        }
+        return memory.recent
+      },
+      recordQuery: async (input) => {
+        memory.recent = {
+          ...memory.recent,
+          queries: pushRecentQuery(memory.recent.queries, input),
+        }
+        return memory.recent
+      },
+      clear: async () => {
+        memory.recent = { version: 1, tables: [], queries: [] }
+        return memory.recent
+      },
     },
     prefs: {
       get: async () => ({ density: 'comfortable' as const, highContrast: false, queryTimeoutSec: 30 }),

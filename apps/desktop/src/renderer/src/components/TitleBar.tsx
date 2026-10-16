@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getApi } from '../bridge'
+import { recentQueryTitle, type RecentQueryItem, type RecentTableItem } from '@shared/recentItems'
 import { IconSidebar, IconSpark, Mark } from './icons'
 
 type TitleBarProps = {
@@ -11,6 +12,11 @@ type TitleBarProps = {
   onToggleAi: () => void
   onOpenPalette: () => void
   onOpenSettings: () => void
+  recentTables?: RecentTableItem[]
+  recentQueries?: RecentQueryItem[]
+  onOpenRecentTable?: (item: RecentTableItem) => void
+  onOpenRecentQuery?: (item: RecentQueryItem) => void
+  onClearRecent?: () => void
 }
 
 export function TitleBar({
@@ -22,9 +28,16 @@ export function TitleBar({
   onToggleAi,
   onOpenPalette,
   onOpenSettings,
+  recentTables = [],
+  recentQueries = [],
+  onOpenRecentTable,
+  onOpenRecentQuery,
+  onClearRecent,
 }: TitleBarProps) {
   const api = getApi()
   const [maximized, setMaximized] = useState(false)
+  const [recentOpen, setRecentOpen] = useState(false)
+  const recentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -41,6 +54,15 @@ export function TitleBar({
     }
   }, [api])
 
+  useEffect(() => {
+    if (!recentOpen) return
+    const onDoc = (event: MouseEvent) => {
+      if (!recentRef.current?.contains(event.target as Node)) setRecentOpen(false)
+    }
+    window.addEventListener('mousedown', onDoc)
+    return () => window.removeEventListener('mousedown', onDoc)
+  }, [recentOpen])
+
   const minimize = () => void api.window.minimize().catch(() => undefined)
   const toggleMax = () =>
     void api.window
@@ -48,6 +70,8 @@ export function TitleBar({
       .then((result) => setMaximized(Boolean(result?.maximized)))
       .catch(() => undefined)
   const close = () => void api.window.close().catch(() => undefined)
+
+  const hasRecent = recentTables.length > 0 || recentQueries.length > 0
 
   return (
     <header className="titlebar" onDoubleClick={toggleMax}>
@@ -62,6 +86,77 @@ export function TitleBar({
         </p>
       </div>
       <div className="title-actions titlebar-no-drag">
+        <div className="recent-menu" ref={recentRef}>
+          <button
+            type="button"
+            className={recentOpen ? 'pill is-active' : 'pill'}
+            onClick={() => setRecentOpen((open) => !open)}
+            title="最近表与查询"
+            aria-expanded={recentOpen}
+          >
+            最近
+          </button>
+          {recentOpen && (
+            <div className="recent-popover" role="menu" aria-label="最近">
+              {!hasRecent && <p className="recent-empty">暂无最近项。打开表或运行 SQL 后会出现在这里。</p>}
+              {recentTables.length > 0 && (
+                <div className="recent-block">
+                  <div className="recent-block-head">最近表</div>
+                  {recentTables.slice(0, 8).map((item) => (
+                    <button
+                      key={`${item.connectionId}:${item.tableName}`}
+                      type="button"
+                      className="recent-row"
+                      role="menuitem"
+                      onClick={() => {
+                        onOpenRecentTable?.(item)
+                        setRecentOpen(false)
+                      }}
+                    >
+                      <span className="recent-row-title">{item.tableName}</span>
+                      <span className="recent-row-sub">{item.connectionName || '连接'}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {recentQueries.length > 0 && (
+                <div className="recent-block">
+                  <div className="recent-block-head">最近查询</div>
+                  {recentQueries.slice(0, 8).map((item) => (
+                    <button
+                      key={`${item.connectionId ?? 'g'}:${item.at}:${item.sql.slice(0, 20)}`}
+                      type="button"
+                      className="recent-row"
+                      role="menuitem"
+                      title={item.sql}
+                      onClick={() => {
+                        onOpenRecentQuery?.(item)
+                        setRecentOpen(false)
+                      }}
+                    >
+                      <span className="recent-row-title">{recentQueryTitle(item.sql, 56)}</span>
+                      <span className="recent-row-sub">{item.connectionName || '查询'}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {hasRecent && (
+                <div className="recent-foot">
+                  <button
+                    type="button"
+                    className="tiny-btn btn btn-ghost"
+                    onClick={() => {
+                      onClearRecent?.()
+                      setRecentOpen(false)
+                    }}
+                  >
+                    清空
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <button type="button" className="pill palette-trigger" onClick={onOpenPalette} title="命令面板 (Ctrl+K)">
           Ctrl+K
         </button>

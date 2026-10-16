@@ -17,6 +17,7 @@ import type {
 } from './types'
 import type { ConnectionBundle, ImportPlanItem } from './connectionTransfer'
 import type { AppPrefs } from './prefs'
+import type { RecentItemsState } from './recentItems'
 import type { TableStructure } from './tableStructure'
 import type { ImportSheetData } from './importPlan'
 
@@ -31,6 +32,20 @@ export type DesktopApi = {
   prefs: {
     get: () => Promise<AppPrefs>
     save: (input: Partial<AppPrefs>) => Promise<AppPrefs>
+  }
+  recent: {
+    list: () => Promise<RecentItemsState>
+    recordTable: (input: {
+      connectionId: string
+      connectionName: string
+      tableName: string
+    }) => Promise<RecentItemsState>
+    recordQuery: (input: {
+      connectionId: string | null
+      connectionName: string
+      sql: string
+    }) => Promise<RecentItemsState>
+    clear: () => Promise<RecentItemsState>
   }
   app: {
     openUserData: () => Promise<{ ok: true; path: string } | { ok: false; error: string }>

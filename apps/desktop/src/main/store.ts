@@ -17,6 +17,13 @@ import { QUERY_HISTORY_LIMIT, pushQueryHistory } from '@shared/queryHistory'
 import { upsertFavorite, upsertFolder } from '@shared/favorites'
 import { DEFAULT_PREFS, normalizePrefs, type AppPrefs } from '@shared/prefs'
 import {
+  EMPTY_RECENT,
+  normalizeRecentItems,
+  pushRecentQuery,
+  pushRecentTable,
+  type RecentItemsState,
+} from '@shared/recentItems'
+import {
   applyImportPlan,
   isConnectionBundle,
   planConnectionImport,
@@ -470,4 +477,46 @@ export function savePrefs(input: Partial<AppPrefs>): AppPrefs {
   const next = normalizePrefs({ ...loadPrefs(), ...input })
   writeJson('prefs.json', next)
   return next
+}
+
+export function loadRecentItems(): RecentItemsState {
+  return normalizeRecentItems(readJson<unknown>('recent-items.json', EMPTY_RECENT))
+}
+
+function writeRecentItems(state: RecentItemsState): RecentItemsState {
+  const next = normalizeRecentItems(state)
+  writeJson('recent-items.json', next)
+  return next
+}
+
+export function listRecentItems(): RecentItemsState {
+  return loadRecentItems()
+}
+
+export function recordRecentTable(input: {
+  connectionId: string
+  connectionName: string
+  tableName: string
+}): RecentItemsState {
+  const file = loadRecentItems()
+  return writeRecentItems({
+    ...file,
+    tables: pushRecentTable(file.tables, input),
+  })
+}
+
+export function recordRecentQuery(input: {
+  connectionId: string | null
+  connectionName: string
+  sql: string
+}): RecentItemsState {
+  const file = loadRecentItems()
+  return writeRecentItems({
+    ...file,
+    queries: pushRecentQuery(file.queries, input),
+  })
+}
+
+export function clearRecentItems(): RecentItemsState {
+  return writeRecentItems({ ...EMPTY_RECENT })
 }

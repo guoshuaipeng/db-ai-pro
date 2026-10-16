@@ -18,6 +18,8 @@ import { buildConnHealth, type ConnHealth } from '@shared/connHealth'
 import { supportsManualTransaction } from '@shared/transaction'
 import { trimAiTurns } from '@shared/aiMemory'
 import { settleCancelledTurn } from '@shared/aiStream'
+import type { RecentQueryItem, RecentTableItem } from '@shared/recentItems'
+import { EMPTY_RECENT } from '@shared/recentItems'
 import { formatExplainText } from '@shared/explain'
 import { analyzeDestructiveSql } from '@shared/destructiveSql'
 import type { TableStructure } from '@shared/tableStructure'
@@ -149,6 +151,12 @@ type WorkspaceValue = {
   }) => Promise<void>
   removeFavorite: (id: string) => Promise<void>
   insertFavoriteSql: (sql: string) => void
+  recentTables: RecentTableItem[]
+  recentQueries: RecentQueryItem[]
+  refreshRecent: () => Promise<void>
+  clearRecent: () => Promise<void>
+  openRecentTable: (item: RecentTableItem) => void
+  openRecentQuery: (item: RecentQueryItem) => void
   searchStats: { connections: number; tables: number; columns: number }
   cursor: { line: number; column: number }
   setCursor: (cursor: { line: number; column: number }) => void
@@ -290,6 +298,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [aiIntent, setAiIntent] = useState<AiIntent>('query')
   const [referenceTable, setReferenceTable] = useState('')
   const [targetTable, setTargetTable] = useState('')
+  const [recentTables, setRecentTables] = useState<RecentTableItem[]>([])
+  const [recentQueries, setRecentQueries] = useState<RecentQueryItem[]>([])
   const [settings, setSettings] = useState<AiSettingsPublic | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [dialog, setDialog] = useState<DialogState>(null)
@@ -351,16 +361,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     void (async () => {
       try {
-        const [info, rows, workspace, aiSettings] = await Promise.all([
+        const [info, rows, workspace, aiSettings, recent] = await Promise.all([
           api.meta(),
           api.connections.list(),
           api.workspace.load(),
           api.ai.getSettings(),
+          api.recent.list().catch(() => EMPTY_RECENT),
         ])
         if (cancelled) return
         setMeta(info)
         setConnections(rows)
         setSettings(aiSettings)
+        applyRecentState(recent)
         if (workspace) {
           setEditorTabs(workspace.editorTabs.length ? workspace.editorTabs : seedTabs())
           setActiveEditorId(workspace.activeEditorId || workspace.editorTabs[0]?.id || 'query-1')
@@ -478,9 +490,71 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   )
   const searchStats = useMemo(() => countTreeNodes(filteredSchema), [filteredSchema])
 
+
+  const applyRecentState = (state: { tables: RecentTableItem[]; queries: RecentQueryItem[] }) => {
+    setRecentTables(state.tables)
+    setRecentQueries(state.queries)
+  }
+
+  const refreshRecent = useCallback(async () => {
+    try {
+      const state = await api.recent.list()
+      applyRecentState(state)
+    } catch {
+      applyRecentState(EMPTY_RECENT)
+    }
+  }, [api])
+
+  const recordTableRecent = useCallback(
+    async (connectionId: string, tableName: string) => {
+      const connection = connections.find((item) => item.id === connectionId)
+      try {
+        const state = await api.recent.recordTable({
+          connectionId,
+          connectionName: connection?.name ?? '',
+          tableName,
+        })
+        applyRecentState(state)
+      } catch {
+        /* ignore */
+      }
+    },
+    [api, connections],
+  )
+
+  const recordQueryRecent = useCallback(
+    async (sql: string, connectionId: string | null) => {
+      const trimmed = sql.trim()
+      if (!trimmed) return
+      const connection = connectionId ? connections.find((item) => item.id === connectionId) : null
+      try {
+        const state = await api.recent.recordQuery({
+          connectionId,
+          connectionName: connection?.name ?? '',
+          sql: trimmed,
+        })
+        applyRecentState(state)
+      } catch {
+        /* ignore */
+      }
+    },
+    [api, connections],
+  )
+
+  const clearRecent = useCallback(async () => {
+    try {
+      const state = await api.recent.clear()
+      applyRecentState(state)
+      pushToast('success', '已清空最近记录')
+    } catch (error) {
+      pushToast('error', error instanceof Error ? error.message : '清空失败')
+    }
+  }, [api, pushToast])
+
   const openTableStructure = (connectionId: string, tableName: string) => {
     setActiveConnectionId(connectionId)
     setStructureTarget({ connectionId, tableName })
+    void recordTableRecent(connectionId, tableName)
   }
 
   const closeTableStructure = () => setStructureTarget(null)
@@ -490,10 +564,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const connection = connections.find((item) => item.id === connectionId)
     const dialect = connection?.dialect ?? 'sqlite'
     if (dialect === 'redis') return
+    void recordTableRecent(connectionId, tableName)
     const title = tableName
     const existing = editorTabs.find((tab) => tab.title === title)
     if (existing) {
       setActiveEditorId(existing.id)
+      setTargetTable(tableName)
       return
     }
     const id = crypto.randomUUID()
@@ -501,6 +577,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setEditorTabs((tabs) => [...tabs, { id, title, sql }])
     setActiveEditorId(id)
     setTargetTable(tableName)
+  }
+
+  const openRecentTable = (item: RecentTableItem) => {
+    openTableQuery(item.connectionId, item.tableName)
+  }
+
+  const openRecentQuery = (item: RecentQueryItem) => {
+    if (item.connectionId) setActiveConnectionId(item.connectionId)
+    openHistorySql(item.sql)
   }
 
   const loadTableStructure = async (connectionId: string, tableName: string) =>
@@ -688,7 +773,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const failed = statements.find((statement) => !statement.ok)
       if (failed) {
         pushToast('error', failed.error ?? '执行失败')
-      } else pushToast('success', '执行完成')
+      } else {
+        pushToast('success', '执行完成')
+        void recordQueryRecent(sql, activeConnection.id)
+      }
       if (statements.some((statement) => statement.ok && changesSchema(statement.statement))) {
         const rows = await api.connections.list()
         setConnections(rows)
@@ -1108,6 +1196,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     folderId?: string | null
   }) => {
     await api.favorites.save(input)
+    void recordQueryRecent(input.sql, input.connectionId ?? activeConnectionId)
     pushToast('success', input.id ? '片段已更新' : '片段已收藏')
   }
 
@@ -1304,6 +1393,12 @@ ${sql.trim()}
     saveFavorite,
     removeFavorite,
     insertFavoriteSql,
+    recentTables,
+    recentQueries,
+    refreshRecent,
+    clearRecent,
+    openRecentTable,
+    openRecentQuery,
     searchStats,
     cursor,
     setCursor,

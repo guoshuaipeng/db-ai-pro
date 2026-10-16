@@ -15,6 +15,12 @@ const api: DesktopApi = {
     get: () => ipcRenderer.invoke('prefs:get'),
     save: (input) => ipcRenderer.invoke('prefs:save', input),
   },
+  recent: {
+    list: () => ipcRenderer.invoke('recent:list'),
+    recordTable: (input) => ipcRenderer.invoke('recent:recordTable', input),
+    recordQuery: (input) => ipcRenderer.invoke('recent:recordQuery', input),
+    clear: () => ipcRenderer.invoke('recent:clear'),
+  },
   app: {
     openUserData: () => ipcRenderer.invoke('app:openUserData'),
     openLogs: () => ipcRenderer.invoke('app:openLogs'),

@@ -7,6 +7,10 @@ TypeScript 桌面端（当前主力迭代）见：[`apps/desktop/CHANGELOG.md`](
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**，尚未发布到 GitHub Releases。
 
+## 1.9.0 — M28 最近表 / 最近查询
+
+- 最近表/查询 + Ctrl+K / 标题栏
+
 ## 1.8.0 — M27 片段变量
 
 - 收藏片段 `{{var}}` 占位符 + 插入填写

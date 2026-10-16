@@ -45,6 +45,10 @@ import {
   connectionPassword,
   exportConnectionsBundle,
   loadPrefs,
+  listRecentItems,
+  recordRecentTable,
+  recordRecentQuery,
+  clearRecentItems,
   savePrefs,
   getConnection,
   hasConnectionStore,
@@ -202,6 +206,22 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
   })
   ipcMain.handle('window:isMaximized', () => Boolean(getWindow()?.isMaximized()))
 
+  ipcMain.handle('recent:list', () => listRecentItems())
+  ipcMain.handle(
+    'recent:recordTable',
+    (
+      _event,
+      input: { connectionId: string; connectionName: string; tableName: string },
+    ) => recordRecentTable(input),
+  )
+  ipcMain.handle(
+    'recent:recordQuery',
+    (
+      _event,
+      input: { connectionId: string | null; connectionName: string; sql: string },
+    ) => recordRecentQuery(input),
+  )
+  ipcMain.handle('recent:clear', () => clearRecentItems())
   ipcMain.handle('prefs:get', () => loadPrefs())
   ipcMain.handle('prefs:save', (_event, input: Partial<import('@shared/prefs').AppPrefs>) => savePrefs(input))
 
