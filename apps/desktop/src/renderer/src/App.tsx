@@ -30,7 +30,7 @@ import {
   type AppPrefs,
 } from '@shared/prefs'
 import { LAYOUT } from '@shared/layoutBounds'
-import { cycleTabId } from '@shared/cycleTabs'
+import { cycleResultTabsEmptyToast, cycleTabId } from '@shared/cycleTabs'
 import {
   layoutResetDefaults,
   layoutResetToast,
@@ -255,6 +255,36 @@ export function App() {
             if (next) ws.setActiveEditor(next)
           }
           break
+        case 'view.nextResultTab':
+          {
+            const tabs = ws.results?.tabs ?? []
+            if (tabs.length === 0) {
+              ws.pushToast('info', cycleResultTabsEmptyToast())
+              break
+            }
+            const next = cycleTabId(
+              tabs.map((tab) => tab.id),
+              ws.results?.activeId,
+              1,
+            )
+            if (next) ws.setActiveResult(next)
+          }
+          break
+        case 'view.prevResultTab':
+          {
+            const tabs = ws.results?.tabs ?? []
+            if (tabs.length === 0) {
+              ws.pushToast('info', cycleResultTabsEmptyToast())
+              break
+            }
+            const next = cycleTabId(
+              tabs.map((tab) => tab.id),
+              ws.results?.activeId,
+              -1,
+            )
+            if (next) ws.setActiveResult(next)
+          }
+          break
         case 'view.focusEditor':
           emitDataai('dataai:focus-editor')
           break
@@ -474,6 +504,37 @@ export function App() {
           -1,
         )
         if (next) ws.setActiveEditor(next)
+        return
+      }
+
+      if (event.altKey && !meta && key === 'pagedown') {
+        event.preventDefault()
+        const tabs = ws.results?.tabs ?? []
+        if (tabs.length === 0) {
+          ws.pushToast('info', cycleResultTabsEmptyToast())
+          return
+        }
+        const next = cycleTabId(
+          tabs.map((tab) => tab.id),
+          ws.results?.activeId,
+          1,
+        )
+        if (next) ws.setActiveResult(next)
+        return
+      }
+      if (event.altKey && !meta && key === 'pageup') {
+        event.preventDefault()
+        const tabs = ws.results?.tabs ?? []
+        if (tabs.length === 0) {
+          ws.pushToast('info', cycleResultTabsEmptyToast())
+          return
+        }
+        const next = cycleTabId(
+          tabs.map((tab) => tab.id),
+          ws.results?.activeId,
+          -1,
+        )
+        if (next) ws.setActiveResult(next)
         return
       }
       if (meta && !event.shiftKey && key === 't') {

@@ -48,6 +48,11 @@ describe('filterCommands', () => {
     expect(filterCommands('上一个').some((item) => item.id === 'view.prevEditorTab')).toBe(true)
   })
 
+  it('finds cycle result tab commands', () => {
+    expect(filterCommands('下一个结果').some((item) => item.id === 'view.nextResultTab')).toBe(true)
+    expect(filterCommands('上一个结果').some((item) => item.id === 'view.prevResultTab')).toBe(true)
+  })
+
   it('finds focus result command', () => {
     expect(filterCommands('结果').some((item) => item.id === 'view.focusResult')).toBe(true)
     expect(filterCommands('focus result').some((item) => item.id === 'view.focusResult')).toBe(true)

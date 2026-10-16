@@ -11,3 +11,8 @@ export function cycleTabId(
   const next = (current + delta + ids.length) % ids.length
   return ids[next]!
 }
+
+export function cycleResultTabsEmptyToast(): string {
+  return '当前没有结果标签可切换'
+}
+

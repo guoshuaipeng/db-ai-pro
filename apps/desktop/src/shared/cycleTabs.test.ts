@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cycleTabId } from './cycleTabs'
+import { cycleResultTabsEmptyToast, cycleTabId } from './cycleTabs'
 
 describe('cycleTabId', () => {
   it('returns null for empty', () => {
@@ -18,3 +18,10 @@ describe('cycleTabId', () => {
     expect(cycleTabId(['a', 'b'], 'missing', 1)).toBe('b')
   })
 })
+
+describe('cycleResultTabsEmptyToast', () => {
+  it('mentions 结果', () => {
+    expect(cycleResultTabsEmptyToast()).toContain('结果')
+  })
+})
+
