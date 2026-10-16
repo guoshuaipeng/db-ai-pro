@@ -7,6 +7,10 @@ TypeScript 桌面端（当前主力迭代）见：[`apps/desktop/CHANGELOG.md`](
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**，尚未发布到 GitHub Releases。
 
+## 1.4.0 — M23 主题抛光 + 高对比度
+
+- 深色 token 抛光；设置高对比度开关
+
 ## 1.3.0 — M22 列排序 / 固定列 + 行号
 
 - 结果表排序、钉列、行号

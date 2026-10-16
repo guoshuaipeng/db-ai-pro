@@ -6,6 +6,9 @@ describe('normalizePrefs', () => {
     expect(normalizePrefs(null).density).toBe('comfortable')
     expect(normalizePrefs({ density: 'compact' }).density).toBe('compact')
     expect(normalizePrefs({ density: 'weird' }).density).toBe('comfortable')
+    expect(normalizePrefs(null).highContrast).toBe(false)
+    expect(normalizePrefs({ highContrast: true }).highContrast).toBe(true)
+    expect(normalizePrefs({ highContrast: 'yes' as unknown as boolean }).highContrast).toBe(false)
   })
 
   it('defaults and clamps query timeout', () => {

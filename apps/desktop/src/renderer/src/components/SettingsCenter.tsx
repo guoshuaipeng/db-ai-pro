@@ -84,7 +84,7 @@ export function SettingsCenter({ open, tab, onTab, onClose, prefs, onPrefs }: Se
             {tab === 'model' && <ModelPanel onClose={onClose} />}
             {tab === 'appearance' && <AppearancePanel prefs={prefs} onPrefs={onPrefs} />}
             {tab === 'query' && <QueryPanel prefs={prefs} onPrefs={onPrefs} />}
-            {tab === 'about' && <AboutPanel version={ws.meta?.version ?? '1.3.0'} encryption={ws.meta?.encryption} />}
+            {tab === 'about' && <AboutPanel version={ws.meta?.version ?? '1.4.0'} encryption={ws.meta?.encryption} />}
           </div>
         </section>
       </div>
@@ -221,9 +221,19 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
     }
   }
 
+  const setHighContrast = async (highContrast: boolean) => {
+    setBusy(true)
+    try {
+      const next = await api.prefs.save({ highContrast })
+      onPrefs(next)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="settings-card">
-      <p className="settings-lead">界面保持深色一体壳。可调节信息密度，适配 1366×768 与更宽屏。</p>
+      <p className="settings-lead">界面保持深色一体壳。可调节信息密度与对比度，适配 1366×768 与更宽屏。</p>
       <div className="density-grid" role="radiogroup" aria-label="界面密度">
         {(
           [
@@ -244,6 +254,22 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
             <span>{item.body}</span>
           </button>
         ))}
+      </div>
+      <div className="contrast-block">
+        <div className="contrast-copy">
+          <strong>高对比度</strong>
+          <span>加强边框、文字与焦点环，便于投影或弱光环境阅读。仍保持深色壳。</span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={prefs.highContrast}
+          className={prefs.highContrast ? 'contrast-switch is-on' : 'contrast-switch'}
+          disabled={busy}
+          onClick={() => void setHighContrast(!prefs.highContrast)}
+        >
+          {prefs.highContrast ? '已开启' : '已关闭'}
+        </button>
       </div>
     </div>
   )

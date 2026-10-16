@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — grid sort / pin / row numbers",
+  "description": "DataAI TypeScript desktop — theme polish + high contrast",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

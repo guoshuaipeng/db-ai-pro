@@ -2,6 +2,11 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 1.4.0 — M23 主题抛光 + 高对比度
+
+- 收紧深色 token（hairline / focus / selection），减少壳层缝隙
+- 设置「高对比度」开关（`data-contrast=high`），偏好持久化；密度舒适/紧凑保留
+
 ## 1.3.0 — M22 列排序 / 固定列 + 行号
 
 - 结果表头点击排序（升序 / 降序 / 取消），与筛选、虚拟滚动兼容

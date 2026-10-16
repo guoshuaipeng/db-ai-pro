@@ -235,7 +235,7 @@ export function App() {
     : null
 
   return (
-    <div className="app" data-density={prefs.density}>
+    <div className="app" data-density={prefs.density} data-contrast={prefs.highContrast ? 'high' : 'normal'}>
       <TitleBar
         crumb={ws.breadcrumb}
         version={ws.meta?.version}
@@ -332,7 +332,7 @@ export function App() {
         {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '1.3.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '1.4.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (

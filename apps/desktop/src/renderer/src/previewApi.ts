@@ -198,9 +198,10 @@ export function createPreviewApi(): DesktopApi {
       isMaximized: async () => false,
     },
     prefs: {
-      get: async () => ({ density: 'comfortable' as const, queryTimeoutSec: 30 }),
+      get: async () => ({ density: 'comfortable' as const, highContrast: false, queryTimeoutSec: 30 }),
       save: async (input) => ({
         density: input.density === 'compact' ? ('compact' as const) : ('comfortable' as const),
+        highContrast: input.highContrast === true,
         queryTimeoutSec:
           typeof input.queryTimeoutSec === 'number' && Number.isFinite(input.queryTimeoutSec)
             ? Math.min(600, Math.max(0, Math.round(input.queryTimeoutSec)))

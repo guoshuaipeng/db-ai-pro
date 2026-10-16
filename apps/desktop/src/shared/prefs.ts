@@ -2,12 +2,15 @@ export type UiDensity = 'comfortable' | 'compact'
 
 export type AppPrefs = {
   density: UiDensity
+  /** Stronger borders / text for accessibility. */
+  highContrast: boolean
   /** Soft query timeout in seconds. 0 = no timeout. Default 30. */
   queryTimeoutSec: number
 }
 
 export const DEFAULT_PREFS: AppPrefs = {
   density: 'comfortable',
+  highContrast: false,
   queryTimeoutSec: 30,
 }
 
@@ -25,6 +28,7 @@ export function normalizePrefs(value: unknown): AppPrefs {
   const row = value as Partial<AppPrefs>
   return {
     density: row.density === 'compact' ? 'compact' : 'comfortable',
+    highContrast: row.highContrast === true,
     queryTimeoutSec: clampQueryTimeoutSec(
       row.queryTimeoutSec === undefined ? DEFAULT_PREFS.queryTimeoutSec : row.queryTimeoutSec,
     ),
