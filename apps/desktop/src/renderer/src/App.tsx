@@ -21,6 +21,7 @@ import { CommandPalette } from './components/CommandPalette'
 import type { SqlFavorite } from '@shared/types'
 import { ShortcutsHelp } from './components/ShortcutsHelp'
 import { GotoLineDialog } from './components/GotoLineDialog'
+import { estimateEditorLineCount } from '@shared/gotoLineUi'
 import { StatusBar } from './components/StatusBar'
 import { SettingsCenter, type SettingsTab } from './components/SettingsCenter'
 import {
@@ -854,6 +855,8 @@ case 'query.openFromFile':
         open={gotoOpen}
         seedLine={ws.cursor.line}
         seedColumn={ws.cursor.column}
+        lineCount={estimateEditorLineCount(ws.activeEditor?.sql)}
+        hasDocument={Boolean(ws.activeEditor)}
         onClose={() => setGotoOpen(false)}
         onGoto={(target) => emitDataai('dataai:goto-line', target)}
       />
