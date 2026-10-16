@@ -1,14 +1,21 @@
-import { useState } from 'react'
-import { IconClock, IconPlay, IconPlus } from './icons'
+import { useMemo, useState } from 'react'
+import { suggestionsFromSchema } from '@shared/schemaSuggest'
+import { IconClock, IconPlay, IconPlus, IconStar } from './icons'
 import { ScrollTabs } from './ScrollTabs'
 import { SqlEditor } from './SqlEditor'
 import { ResultGrid, ResultToolbar } from './ResultGrid'
 import { HistoryPanel } from './HistoryPanel'
+import { FavoritesPanel } from './FavoritesPanel'
 import { useWorkspace } from '../state/workspace'
 
 export function EditorPane() {
   const ws = useWorkspace()
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [favoritesOpen, setFavoritesOpen] = useState(false)
+  const suggestions = useMemo(
+    () => suggestionsFromSchema(ws.schema, ws.activeConnection?.id ?? null),
+    [ws.schema, ws.activeConnection?.id],
+  )
 
   return (
     <section className="editor-pane" aria-label="SQL 编辑器">
@@ -22,10 +29,25 @@ export function EditorPane() {
           <div className="tab-actions">
             <button
               type="button"
+              className={favoritesOpen ? 'icon-btn is-active' : 'icon-btn'}
+              aria-label="收藏片段"
+              aria-pressed={favoritesOpen}
+              onClick={() => {
+                setFavoritesOpen((open) => !open)
+                if (!favoritesOpen) setHistoryOpen(false)
+              }}
+            >
+              <IconStar />
+            </button>
+            <button
+              type="button"
               className={historyOpen ? 'icon-btn is-active' : 'icon-btn'}
               aria-label="查询历史"
               aria-pressed={historyOpen}
-              onClick={() => setHistoryOpen((open) => !open)}
+              onClick={() => {
+                setHistoryOpen((open) => !open)
+                if (!historyOpen) setFavoritesOpen(false)
+              }}
             >
               <IconClock />
             </button>
@@ -41,9 +63,15 @@ export function EditorPane() {
       />
       <div className="editor-body">
         {ws.activeEditor && (
-          <SqlEditor value={ws.activeEditor.sql} onChange={ws.updateSql} onCursor={ws.setCursor} />
+          <SqlEditor
+            value={ws.activeEditor.sql}
+            onChange={ws.updateSql}
+            onCursor={ws.setCursor}
+            suggestions={suggestions}
+          />
         )}
         <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} />
+        <FavoritesPanel open={favoritesOpen} onClose={() => setFavoritesOpen(false)} />
       </div>
     </section>
   )
@@ -79,7 +107,7 @@ export function ResultPane() {
       {!results && (
         <div className="result-empty">
           <p>运行当前语句后，结果会显示在这里。</p>
-          <p className="hint">F5 或 Ctrl/⌘ Enter</p>
+          <p className="hint">F5 或 Ctrl/⌘ Enter · Ctrl+Space 补全</p>
         </div>
       )}
       {active?.kind === 'message' && <pre className="message-log">{active.message}</pre>}

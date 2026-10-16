@@ -154,6 +154,16 @@ export type WorkspaceState = {
   aiOpen: boolean
 }
 
+export type SqlFavorite = {
+  id: string
+  name: string
+  sql: string
+  /** null = global snippet */
+  connectionId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export type QueryHistoryEntry = {
   id: string
   connectionId: string

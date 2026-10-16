@@ -43,6 +43,15 @@ const api: DesktopApi = {
     remove: (connectionId: string, entryId: string) =>
       ipcRenderer.invoke('history:remove', { connectionId, entryId }),
   },
+  favorites: {
+    list: () => ipcRenderer.invoke('favorites:list'),
+    save: async (input) => {
+      const result = await ipcRenderer.invoke('favorites:save', input)
+      if (result?.error) throw new Error(result.error)
+      return result.favorite
+    },
+    remove: (id: string) => ipcRenderer.invoke('favorites:remove', id),
+  },
   redis: {
     scan: async (payload) => {
       const result = await ipcRenderer.invoke('redis:scan', payload)

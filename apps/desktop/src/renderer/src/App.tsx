@@ -149,7 +149,7 @@ export function App() {
         <span className="status-spacer" />
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item">F5 运行</span>
-        <span className="status-item">{ws.meta?.version ?? '0.6.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '0.7.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (

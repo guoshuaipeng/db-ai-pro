@@ -10,6 +10,7 @@ import type {
   RedisKeyInfo,
   RedisValueView,
   SchemaNode,
+  SqlFavorite,
   StatementResult,
   WorkspaceState,
 } from './types'
@@ -39,6 +40,16 @@ export type DesktopApi = {
     list: (connectionId: string) => Promise<QueryHistoryEntry[]>
     clear: (connectionId: string) => Promise<void>
     remove: (connectionId: string, entryId: string) => Promise<void>
+  }
+  favorites: {
+    list: () => Promise<SqlFavorite[]>
+    save: (input: {
+      id?: string
+      name: string
+      sql: string
+      connectionId?: string | null
+    }) => Promise<SqlFavorite>
+    remove: (id: string) => Promise<void>
   }
   redis: {
     scan: (payload: { connectionId: string; pattern?: string; count?: number }) => Promise<RedisKeyInfo[]>

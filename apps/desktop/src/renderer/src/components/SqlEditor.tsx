@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
-import { editor, languages } from 'monaco-editor/editor/editor.api'
+import { editor, languages, type IDisposable } from 'monaco-editor/editor/editor.api'
 import { conf, language } from 'monaco-editor/languages/definitions/sql/sql'
 import editorWorker from 'monaco-editor/editor/editor.worker?worker'
+import { filterSuggestions, type SchemaSuggestItem } from '@shared/schemaSuggest'
 
 globalThis.MonacoEnvironment = {
   getWorker() {
@@ -10,6 +11,14 @@ globalThis.MonacoEnvironment = {
 }
 
 let languageReady = false
+let completionDisposable: IDisposable | null = null
+const suggestionBag: { current: SchemaSuggestItem[] } = { current: [] }
+
+function kindToMonaco(kind: SchemaSuggestItem['kind']): languages.CompletionItemKind {
+  if (kind === 'table') return languages.CompletionItemKind.Class
+  if (kind === 'column') return languages.CompletionItemKind.Field
+  return languages.CompletionItemKind.Keyword
+}
 
 function ensureSql() {
   if (languageReady) return
@@ -37,6 +46,49 @@ function ensureSql() {
       'editorCursor.foreground': '#9EB4FF',
       'editorWidget.background': '#161B26',
       'editorWidget.border': '#2A3142',
+      'editorSuggestWidget.background': '#161B26',
+      'editorSuggestWidget.border': '#2A3142',
+      'editorSuggestWidget.selectedBackground': '#2A3A66',
+      'editorSuggestWidget.foreground': '#E8EDF7',
+    },
+  })
+
+  completionDisposable?.dispose()
+  completionDisposable = languages.registerCompletionItemProvider('sql', {
+    triggerCharacters: ['.', ' ', '_'],
+    provideCompletionItems(model, position) {
+      const word = model.getWordUntilPosition(position)
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn,
+      }
+      const line = model.getLineContent(position.lineNumber).slice(0, position.column - 1)
+      const dotted = line.match(/([A-Za-z_][\w]*)\.([A-Za-z_][\w]*)$/)
+      const prefix = dotted?.[2] ?? word.word
+      const tableHint = dotted?.[1]?.toLowerCase()
+      let pool = suggestionBag.current
+      if (tableHint) {
+        pool = pool.filter(
+          (item) =>
+            item.kind === 'column' &&
+            (item.detail?.toLowerCase().includes(tableHint) ||
+              item.label.toLowerCase().startsWith(`${tableHint}.`) ||
+              item.insertText.toLowerCase().startsWith(`${tableHint}.`)),
+        )
+      }
+      const filtered = filterSuggestions(pool, prefix)
+      return {
+        suggestions: filtered.map((item, index) => ({
+          label: item.label,
+          kind: kindToMonaco(item.kind),
+          detail: item.detail,
+          insertText: tableHint && item.insertText.includes('.') ? item.insertText.split('.').pop()! : item.insertText,
+          range,
+          sortText: `${String(index).padStart(4, '0')}`,
+        })),
+      }
     },
   })
 }
@@ -45,15 +97,21 @@ type SqlEditorProps = {
   value: string
   onChange: (value: string) => void
   onCursor: (cursor: { line: number; column: number }) => void
+  suggestions?: SchemaSuggestItem[]
 }
 
-export function SqlEditor({ value, onChange, onCursor }: SqlEditorProps) {
+export function SqlEditor({ value, onChange, onCursor, suggestions = [] }: SqlEditorProps) {
   const host = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const onChangeRef = useRef(onChange)
   const onCursorRef = useRef(onCursor)
   onChangeRef.current = onChange
   onCursorRef.current = onCursor
+  suggestionBag.current = suggestions
+
+  useEffect(() => {
+    suggestionBag.current = suggestions
+  }, [suggestions])
 
   useEffect(() => {
     const node = host.current
@@ -83,6 +141,16 @@ export function SqlEditor({ value, onChange, onCursor }: SqlEditorProps) {
       occurrencesHighlight: 'off',
       renderWhitespace: 'none',
       stickyScroll: { enabled: false },
+      quickSuggestions: { other: true, comments: false, strings: false },
+      suggestOnTriggerCharacters: true,
+      wordBasedSuggestions: 'off',
+      snippetSuggestions: 'none',
+      suggest: {
+        showKeywords: true,
+        showSnippets: false,
+        preview: true,
+        insertMode: 'replace',
+      },
     })
     instanceRef.current = instance
     const position = instance.getPosition()
@@ -98,7 +166,7 @@ export function SqlEditor({ value, onChange, onCursor }: SqlEditorProps) {
       changeSub.dispose()
       instance.dispose()
       instanceRef.current = null
-  }
+    }
   }, [])
 
   useEffect(() => {
@@ -110,7 +178,9 @@ export function SqlEditor({ value, onChange, onCursor }: SqlEditorProps) {
   return (
     <div className="editor-wrap">
       <div ref={host} className="monaco-host" />
-      {value.trim() === '' && <div className="editor-overlay">编写 SQL，按 F5 运行</div>}
+      {value.trim() === '' && (
+        <div className="editor-overlay">编写 SQL，按 F5 运行 · Ctrl+Space 补全表/列</div>
+      )}
     </div>
   )
 }

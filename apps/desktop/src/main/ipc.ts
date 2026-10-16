@@ -32,11 +32,14 @@ import {
   getConnection,
   hasConnectionStore,
   listConnections,
+  listFavorites,
   listQueryHistory,
   loadWorkspace,
   removeConnection,
+  removeFavorite,
   removeQueryHistoryEntry,
   saveConnection,
+  saveFavorite,
   saveSettings,
   saveWorkspace,
   settingsPublic,
@@ -245,6 +248,18 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
   })
   ipcMain.handle('history:remove', (_event, payload: { connectionId: string; entryId: string }) => {
     removeQueryHistoryEntry(payload.connectionId, payload.entryId)
+  })
+
+  ipcMain.handle('favorites:list', () => listFavorites())
+  ipcMain.handle(
+    'favorites:save',
+    (
+      _event,
+      input: { id?: string; name: string; sql: string; connectionId?: string | null },
+    ) => saveFavorite(input),
+  )
+  ipcMain.handle('favorites:remove', (_event, id: string) => {
+    removeFavorite(id)
   })
 
   ipcMain.handle(

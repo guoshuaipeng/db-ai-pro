@@ -12,7 +12,7 @@ import { getApi } from '../bridge'
 import { connectionErrorNode } from '@shared/schema'
 import { changesSchema, identStyle, selectAll, selectAllWithRowid, statementTitle } from '@shared/sql'
 import { INITIAL_TABS } from '@shared/session'
-import { filterNodes } from '@shared/tree'
+import { countTreeNodes, extrasFromConnections, filterNodes } from '@shared/tree'
 import { isKvDialect } from '@shared/types'
 import type { AiIntent } from '@shared/types'
 import type {
@@ -23,6 +23,7 @@ import type {
   ConnectionPublic,
   EditorTabState,
   QueryHistoryEntry,
+  SqlFavorite,
   SchemaNode,
   StatementResult,
   WorkspaceState,
@@ -74,6 +75,16 @@ type WorkspaceValue = {
   removeHistory: (connectionId: string, entryId: string) => Promise<void>
   openHistorySql: (sql: string) => void
   rerunHistory: (sql: string) => Promise<void>
+  listFavorites: () => Promise<SqlFavorite[]>
+  saveFavorite: (input: {
+    id?: string
+    name: string
+    sql: string
+    connectionId?: string | null
+  }) => Promise<void>
+  removeFavorite: (id: string) => Promise<void>
+  insertFavoriteSql: (sql: string) => void
+  searchStats: { connections: number; tables: number; columns: number }
   cursor: { line: number; column: number }
   setCursor: (cursor: { line: number; column: number }) => void
   aiTurns: AiTurnState[]
@@ -349,7 +360,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const activeConnection = connections.find((connection) => connection.id === activeConnectionId) ?? null
   const activeEditor = editorTabs.find((tab) => tab.id === activeEditorId) ?? editorTabs[0] ?? null
-  const filteredSchema = useMemo(() => filterNodes(schema, search), [schema, search])
+  const filteredSchema = useMemo(
+    () => filterNodes(schema, search, extrasFromConnections(connections)),
+    [schema, search, connections],
+  )
+  const searchStats = useMemo(() => countTreeNodes(filteredSchema), [filteredSchema])
 
   const selectNode = (node: SchemaNode) => {
     setSelectedId(node.id)
@@ -547,6 +562,40 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
 
+
+  const listFavorites = async () => api.favorites.list()
+
+  const saveFavorite = async (input: {
+    id?: string
+    name: string
+    sql: string
+    connectionId?: string | null
+  }) => {
+    await api.favorites.save(input)
+    pushToast('success', '片段已收藏')
+  }
+
+  const removeFavorite = async (id: string) => {
+    await api.favorites.remove(id)
+    pushToast('success', '已删除片段')
+  }
+
+  const insertFavoriteSql = (sql: string) => {
+    if (!activeEditor) {
+      const id = crypto.randomUUID()
+      setEditorTabs((tabs) => [...tabs, { id, title: `查询 ${tabs.length + 1}`, sql }])
+      setActiveEditorId(id)
+    } else {
+      const next = activeEditor.sql.trim() ? `${activeEditor.sql.trim()}
+
+${sql.trim()}
+` : `${sql.trim()}
+`
+      updateSql(next)
+    }
+    pushToast('success', '片段已插入编辑器')
+  }
+
   const loadHistory = async (connectionId: string) => api.history.list(connectionId)
 
   const clearHistory = async (connectionId: string) => {
@@ -667,6 +716,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     removeHistory,
     openHistorySql,
     rerunHistory,
+    listFavorites,
+    saveFavorite,
+    removeFavorite,
+    insertFavoriteSql,
+    searchStats,
     cursor,
     setCursor,
     aiTurns,

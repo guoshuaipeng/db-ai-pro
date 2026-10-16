@@ -30,10 +30,20 @@ export function ConnectionPane() {
         <input
           value={ws.search}
           onChange={(event) => ws.setSearch(event.target.value)}
-          placeholder="搜索连接或对象"
-          aria-label="搜索连接或对象"
+          placeholder="搜索主机 / 库 / 表 / 列"
+          aria-label="搜索主机、数据库、表或列"
         />
+        {ws.search.trim() && (
+          <button type="button" className="search-clear" aria-label="清除搜索" onClick={() => ws.setSearch('')}>
+            ×
+          </button>
+        )}
       </label>
+      {ws.search.trim() && ws.filteredSchema.length > 0 && (
+        <p className="search-stats">
+          {ws.searchStats.connections} 连接 · {ws.searchStats.tables} 表 · {ws.searchStats.columns} 列
+        </p>
+      )}
       {ws.connections.length === 0 ? (
         <div className="empty">
           <IconDatabase />

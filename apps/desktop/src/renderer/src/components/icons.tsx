@@ -105,6 +105,14 @@ export function IconMore() {
   )
 }
 
+export function IconStar() {
+  return (
+    <Svg>
+      <path d="M8 2.8 9.4 6.2 13.1 6.6 10.4 9.1 11.2 12.8 8 11 4.8 12.8 5.6 9.1 2.9 6.6 6.6 6.2 8 2.8Z" {...stroke} />
+    </Svg>
+  )
+}
+
 export function IconClock() {
   return (
     <Svg>

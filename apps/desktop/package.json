@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — tip package, OS secrets, query history",
+  "description": "DataAI TypeScript desktop — schema autocomplete, favorites, tree search",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

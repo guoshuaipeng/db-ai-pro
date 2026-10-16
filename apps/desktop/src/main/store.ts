@@ -9,9 +9,11 @@ import type {
   ConnectionPublic,
   Dialect,
   QueryHistoryEntry,
+  SqlFavorite,
   WorkspaceState,
 } from '@shared/types'
 import { QUERY_HISTORY_LIMIT, pushQueryHistory } from '@shared/queryHistory'
+import { upsertFavorite } from '@shared/favorites'
 import { createId } from './sampleDb'
 import { migrateConnectionPlaintext, migrateSettingsPlaintext } from './migratePlaintext'
 import { encryptionAvailable, openSecret, sealSecret } from './secrets'
@@ -310,4 +312,41 @@ export function removeQueryHistoryEntry(connectionId: string, entryId: string): 
   if (!rows) return
   file.byConnection[connectionId] = rows.filter((row) => row.id !== entryId)
   writeJson('query-history.json', file)
+}
+
+
+export function listFavorites(): SqlFavorite[] {
+  return readJson<SqlFavorite[]>('favorites.json', [])
+}
+
+export function saveFavorite(input: {
+  id?: string
+  name: string
+  sql: string
+  connectionId?: string | null
+}): { favorite: SqlFavorite } | { error: string } {
+  const name = input.name.trim()
+  const sql = input.sql.trim()
+  if (!name) return { error: '请填写片段名称' }
+  if (!sql) return { error: '请填写 SQL 内容' }
+  const rows = listFavorites()
+  const now = new Date().toISOString()
+  const existing = input.id ? rows.find((row) => row.id === input.id) : undefined
+  const next: SqlFavorite = {
+    id: existing?.id ?? createId(),
+    name,
+    sql,
+    connectionId: input.connectionId === undefined ? (existing?.connectionId ?? null) : input.connectionId,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  }
+  writeJson('favorites.json', upsertFavorite(rows, next))
+  return { favorite: next }
+}
+
+export function removeFavorite(id: string): void {
+  writeJson(
+    'favorites.json',
+    listFavorites().filter((row) => row.id !== id),
+  )
 }

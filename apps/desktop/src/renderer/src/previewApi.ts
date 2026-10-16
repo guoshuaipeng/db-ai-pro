@@ -12,6 +12,7 @@ import type {
   ConnectionPublic,
   QueryHistoryEntry,
   SchemaNode,
+  SqlFavorite,
   StatementResult,
   WorkspaceState,
 } from '@shared/types'
@@ -19,6 +20,7 @@ import type {
 const memory = {
   connections: [] as ConnectionPublic[],
   history: {} as Record<string, QueryHistoryEntry[]>,
+  favorites: [] as SqlFavorite[],
   workspace: null as WorkspaceState | null,
   settings: {
     baseUrl: 'https://api.openai.com/v1',
@@ -187,7 +189,7 @@ export function createPreviewApi(): DesktopApi {
   }
 
   return {
-    meta: async () => ({ version: '0.6.0', encryption: 'unavailable', mode: 'preview' }),
+    meta: async () => ({ version: '0.7.0', encryption: 'unavailable', mode: 'preview' }),
     connections: {
       list: async () => memory.connections,
       save: async (input: ConnectionInput) => {
@@ -274,6 +276,26 @@ export function createPreviewApi(): DesktopApi {
       },
       remove: async (connectionId: string, entryId: string) => {
         memory.history[connectionId] = (memory.history[connectionId] ?? []).filter((row) => row.id !== entryId)
+      },
+    },
+    favorites: {
+      list: async () => memory.favorites,
+      save: async (input) => {
+        const now = new Date().toISOString()
+        const existing = memory.favorites.find((row) => row.id === input.id)
+        const next: SqlFavorite = {
+          id: existing?.id ?? crypto.randomUUID(),
+          name: input.name.trim(),
+          sql: input.sql.trim(),
+          connectionId: input.connectionId === undefined ? null : input.connectionId,
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+        }
+        memory.favorites = [next, ...memory.favorites.filter((row) => row.id !== next.id)]
+        return next
+      },
+      remove: async (id: string) => {
+        memory.favorites = memory.favorites.filter((row) => row.id !== id)
       },
     },
     redis: {
