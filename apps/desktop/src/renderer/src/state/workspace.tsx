@@ -24,6 +24,12 @@ import {
 } from '@shared/tablePaging'
 import { INITIAL_TABS } from '@shared/session'
 import { isTabDirty, withCleanBaseline } from '@shared/tabDirty'
+import {
+  closeOthersTargets,
+  closeToRightTargets,
+  sortPinnedFirst,
+  togglePinnedFlag,
+} from '@shared/tabPin'
 import { countTreeNodes, extrasFromConnections, filterNodes } from '@shared/tree'
 import { dialectInfo, isKvDialect } from '@shared/types'
 import { buildConnHealth, type ConnHealth } from '@shared/connHealth'
@@ -177,6 +183,9 @@ type WorkspaceValue = {
   closeTab: (id: string) => void
   isEditorDirty: (id: string) => boolean
   requestCloseWindow: () => void
+  togglePinTab: (id: string) => void
+  closeOtherTabs: (id: string) => void
+  closeTabsToRight: (id: string) => void
   results: ResultState | null
   setActiveResult: (id: string) => void
   running: boolean
@@ -1091,6 +1100,64 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     })
   }
 
+
+  const togglePinTab = (id: string) => {
+    setEditorTabs((tabs) =>
+      sortPinnedFirst(tabs.map((tab) => (tab.id === id ? togglePinnedFlag(tab) : tab))),
+    )
+  }
+
+  const closeTabsBatch = (targets: EditorTabState[], dialogTitle: string) => {
+    if (targets.length === 0) return
+    const dirty = targets.filter(isTabDirty)
+    const apply = () => {
+      const ids = new Set(targets.map((tab) => tab.id))
+      const remaining = editorTabs.filter((tab) => !ids.has(tab.id))
+      setResultMap((current) => {
+        const next = { ...current }
+        for (const id of ids) delete next[id]
+        return next
+      })
+      if (remaining.length === 0) {
+        const fallbackId = editorTabs[0]?.id ?? crypto.randomUUID()
+        setEditorTabs([withCleanBaseline({ id: fallbackId, title: '查询 1', sql: '' })])
+        setActiveEditorId(fallbackId)
+        return
+      }
+      setEditorTabs(remaining)
+      if (ids.has(activeEditorId)) {
+        setActiveEditorId(remaining[0].id)
+      }
+    }
+    if (dirty.length === 0) {
+      apply()
+      return
+    }
+    const names = dirty
+      .slice(0, 3)
+      .map((tab) => tab.title)
+      .join('、')
+    const more = dirty.length > 3 ? ` 等 ${dirty.length} 个` : ''
+    setDialog({
+      type: 'unsaved',
+      scope: 'tab',
+      title: dialogTitle,
+      detail: `将关闭 ${targets.length} 个未固定标签，其中未保存：${names}${more}。固定标签会保留。`,
+      onDecide: (decision) => {
+        setDialog(null)
+        if (decision === 'discard') apply()
+      },
+    })
+  }
+
+  const closeOtherTabs = (id: string) => {
+    closeTabsBatch(closeOthersTargets(editorTabs, id), '关闭其他标签？')
+  }
+
+  const closeTabsToRight = (id: string) => {
+    closeTabsBatch(closeToRightTargets(editorTabs, id), '关闭右侧标签？')
+  }
+
   const confirmIfDestructive = async (sql: string): Promise<boolean> => {
     if (skipDestructiveRef.current) return true
     const analysis = analyzeDestructiveSql(sql)
@@ -1962,6 +2029,9 @@ ${sql.trim()}
     closeTab,
     isEditorDirty,
     requestCloseWindow,
+    togglePinTab,
+    closeOtherTabs,
+    closeTabsToRight,
     results: activeEditor ? (resultMap[activeEditor.id] ?? null) : null,
     setActiveResult: (id) => {
       if (!activeEditor) return

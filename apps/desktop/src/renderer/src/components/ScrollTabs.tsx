@@ -6,7 +6,10 @@ type TabItem = {
   /** Optional muted badge, e.g. disconnected connection */
   badge?: string
   tone?: 'warn' | 'muted'
+  pinned?: boolean
 }
+
+export type TabContextAction = 'pin' | 'unpin' | 'close' | 'close-others' | 'close-right'
 
 type ScrollTabsProps = {
   label: string
@@ -14,12 +17,24 @@ type ScrollTabsProps = {
   activeId: string
   onSelect: (id: string) => void
   onClose?: (id: string) => void
+  onContextAction?: (id: string, action: TabContextAction) => void
   trailing?: ReactNode
 }
 
-export function ScrollTabs({ label, tabs, activeId, onSelect, onClose, trailing }: ScrollTabsProps) {
+type MenuState = { id: string; x: number; y: number } | null
+
+export function ScrollTabs({
+  label,
+  tabs,
+  activeId,
+  onSelect,
+  onClose,
+  onContextAction,
+  trailing,
+}: ScrollTabsProps) {
   const scroller = useRef<HTMLDivElement>(null)
   const [overflow, setOverflow] = useState({ left: false, right: false })
+  const [menu, setMenu] = useState<MenuState>(null)
 
   const measure = () => {
     const el = scroller.current
@@ -56,6 +71,23 @@ export function ScrollTabs({ label, tabs, activeId, onSelect, onClose, trailing 
     el?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
   }, [activeId, tabs.length])
 
+  useEffect(() => {
+    if (!menu) return
+    const close = () => setMenu(null)
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        close()
+      }
+    }
+    window.addEventListener('mousedown', close)
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('mousedown', close)
+      window.removeEventListener('keydown', onKey, true)
+    }
+  }, [menu])
+
   const move = (direction: -1 | 1) => {
     const el = scroller.current
     if (!el) return
@@ -72,6 +104,12 @@ export function ScrollTabs({ label, tabs, activeId, onSelect, onClose, trailing 
     })
   }
 
+  const runAction = (id: string, action: TabContextAction) => {
+    setMenu(null)
+    onContextAction?.(id, action)
+  }
+
+  const menuTab = menu ? tabs.find((tab) => tab.id === menu.id) : null
   const hasOverflow = overflow.left || overflow.right
 
   return (
@@ -91,15 +129,32 @@ export function ScrollTabs({ label, tabs, activeId, onSelect, onClose, trailing 
       >
         {tabs.map((tab) => {
           const selected = tab.id === activeId
+          const tabClass = [
+            'tab',
+            selected ? 'is-active' : '',
+            tab.pinned ? 'is-pinned' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')
           return (
-            <div key={tab.id} className={selected ? 'tab is-active' : 'tab'} role="presentation">
+            <div
+              key={tab.id}
+              className={tabClass}
+              role="presentation"
+              onContextMenu={(event) => {
+                if (!onContextAction) return
+                event.preventDefault()
+                onSelect(tab.id)
+                setMenu({ id: tab.id, x: event.clientX, y: event.clientY })
+              }}
+            >
               <button
                 type="button"
                 role="tab"
                 data-tab={tab.id}
                 className="tab-main"
                 aria-selected={selected}
-                title={tab.label}
+                title={tab.pinned ? `${tab.label}（已固定）` : tab.label}
                 onClick={() => onSelect(tab.id)}
                 onKeyDown={(event) => {
                   if (event.key === 'ArrowRight') {
@@ -112,6 +167,11 @@ export function ScrollTabs({ label, tabs, activeId, onSelect, onClose, trailing 
                   }
                 }}
               >
+                {tab.pinned && (
+                  <span className="tab-pin" aria-hidden="true">
+                    <PinIcon />
+                  </span>
+                )}
                 <span className="tab-label">{tab.label}</span>
                 {tab.badge && (
                   <span className={tab.tone === 'warn' ? 'tab-badge is-warn' : 'tab-badge'}>{tab.badge}</span>
@@ -137,6 +197,33 @@ export function ScrollTabs({ label, tabs, activeId, onSelect, onClose, trailing 
         </button>
       )}
       {trailing}
+      {menu && menuTab && onContextAction && (
+        <div
+          className="tab-context-menu"
+          role="menu"
+          style={{ left: menu.x, top: menu.y }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runAction(menuTab.id, menuTab.pinned ? 'unpin' : 'pin')}
+          >
+            {menuTab.pinned ? '取消固定' : '固定'}
+          </button>
+          {onClose && (
+            <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'close')}>
+              关闭
+            </button>
+          )}
+          <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'close-others')}>
+            关闭其他
+          </button>
+          <button type="button" role="menuitem" onClick={() => runAction(menuTab.id, 'close-right')}>
+            关闭右侧
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -154,6 +241,18 @@ function CloseIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function PinIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8.2 1.8 10.8 4.4c.4.4.4 1 0 1.4l-.6.6 2.1 2.1-.9.9-2.1-2.1-.6.6c-.4.4-1 .4-1.4 0L4.7 5.3 3 7 2.2 6.2 8.2 1.8Z"
+        fill="currentColor"
+      />
+      <path d="M6.2 9.2 3.4 14.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   )
 }

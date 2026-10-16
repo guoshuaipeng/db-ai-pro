@@ -47,6 +47,18 @@ describe('sessionRestore', () => {
     expect(pickActiveEditorId(tabs, 'missing')).toBe('a')
   })
 
+  it('persists pinned and sorts left; strips baselineSql', () => {
+    const tabs = normalizeSessionTabs([
+      { id: 'a', title: 'A', sql: '1', baselineSql: '1' },
+      { id: 'b', title: 'B', sql: '2', pinned: true, baselineSql: 'nope' },
+      { id: 'c', title: 'C', sql: '3', pinned: false },
+    ])
+    expect(tabs.map((tab) => tab.id)).toEqual(['b', 'a', 'c'])
+    expect(tabs[0].pinned).toBe(true)
+    expect(tabs[1].pinned).toBeUndefined()
+    expect(tabs.every((tab) => !('baselineSql' in tab))).toBe(true)
+  })
+
   it('keeps browse paging meta without secrets', () => {
     const tabs = normalizeSessionTabs([
       {

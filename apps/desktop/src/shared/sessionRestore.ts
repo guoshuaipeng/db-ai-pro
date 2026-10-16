@@ -1,5 +1,6 @@
 import type { EditorTabState } from './types'
 import { normalizeBrowseState } from './tablePaging'
+import { sortPinnedFirst } from './tabPin'
 
 /** Max query tabs persisted / restored. */
 export const SESSION_TAB_CAP = 20
@@ -19,12 +20,14 @@ export function normalizeSessionTab(raw: unknown): EditorTabState | null {
           ? row.connectionId
           : null
   const browse = normalizeBrowseState(row.browse)
+  const pinned = row.pinned === true
   return {
     id: row.id.trim(),
     title: row.title.trim() || '查询',
     sql: row.sql,
     connectionId,
     ...(browse ? { browse } : {}),
+    ...(pinned ? { pinned: true } : {}),
   }
 }
 
@@ -42,7 +45,7 @@ export function normalizeSessionTabs(
     out.push(tab)
     if (out.length >= Math.max(1, cap)) break
   }
-  return out
+  return sortPinnedFirst(out)
 }
 
 export function isTabDisconnected(

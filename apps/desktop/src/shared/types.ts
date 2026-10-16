@@ -158,6 +158,8 @@ export type EditorTabState = {
    * restored / newly opened content is stamped clean via withCleanBaseline.
    */
   baselineSql?: string
+  /** When true, tab stays left and resists close-others / close-to-right. Persisted. */
+  pinned?: boolean
 }
 
 export type AiTurnState = {

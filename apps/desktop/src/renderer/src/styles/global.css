@@ -516,6 +516,50 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   background: var(--accent);
   border-radius: 2px 2px 0 0;
 }
+
+.tab.is-pinned {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: rgba(129, 140, 248, 0.28);
+}
+.tab.is-pinned.is-active {
+  background: rgba(99, 102, 241, 0.2);
+}
+.tab-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #a5b4fc;
+  margin-right: 2px;
+  flex: 0 0 auto;
+}
+.tab-context-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 148px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: #111827;
+  box-shadow: 0 12px 32px rgba(2, 6, 23, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tab-context-menu button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #e2e8f0;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.tab-context-menu button:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
 .tab-close {
   width: 22px;
   height: 22px;

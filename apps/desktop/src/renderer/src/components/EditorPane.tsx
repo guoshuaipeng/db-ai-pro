@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { emitDataai, onDataai } from '../appEvents'
 import { suggestionsFromSchema } from '@shared/schemaSuggest'
 import { IconClock, IconPlay, IconPlus, IconStar, IconStop } from './icons'
-import { ScrollTabs } from './ScrollTabs'
+import { ScrollTabs, type TabContextAction } from './ScrollTabs'
 import { SqlEditor } from './SqlEditor'
 import { ResultGrid, ResultToolbar } from './ResultGrid'
 import { filterResultRows } from '@shared/resultFilter'
@@ -117,10 +117,17 @@ export function EditorPane() {
           label: tabTitleWithDirty(tab.title, isTabDirty(tab)),
           badge: ws.tabDisconnected(tab) ? '断开' : undefined,
           tone: ws.tabDisconnected(tab) ? ('warn' as const) : undefined,
+          pinned: tab.pinned === true,
         }))}
         activeId={ws.activeEditor?.id ?? ''}
         onSelect={ws.setActiveEditor}
         onClose={ws.closeTab}
+        onContextAction={(id, action: TabContextAction) => {
+          if (action === 'pin' || action === 'unpin') ws.togglePinTab(id)
+          else if (action === 'close') ws.closeTab(id)
+          else if (action === 'close-others') ws.closeOtherTabs(id)
+          else if (action === 'close-right') ws.closeTabsToRight(id)
+        }}
         trailing={
           <div className="tab-actions">
             <button
