@@ -1,5 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { buildCellPreview, cellPreviewTitle } from '@shared/cellValuePreview'
+import {
+  cellPreviewBinaryBody,
+  cellPreviewBinaryTitle,
+  cellPreviewClipboardText,
+  cellPreviewCopiedToast,
+  cellPreviewCopyLabel,
+  cellPreviewEmptyBody,
+  cellPreviewEmptyTitle,
+  cellPreviewFindCount,
+  cellPreviewFindLabel,
+  cellPreviewKicker,
+  cellPreviewLead,
+  cellPreviewNullBody,
+  cellPreviewNullTitle,
+  cellPreviewStats,
+  cellPreviewWrapOffLabel,
+  cellPreviewWrapOnLabel,
+  countPreviewFindHits,
+} from '@shared/cellPreviewUi'
+import { useWorkspace } from '../state/workspace'
+import { EmptyState } from './EmptyState'
 
 export function CellValuePreviewDialog({
   open,
@@ -14,12 +35,20 @@ export function CellValuePreviewDialog({
   value: unknown
   onClose: () => void
 }) {
-  const [copyNote, setCopyNote] = useState('')
-  const preview = buildCellPreview(value)
+  const ws = useWorkspace()
+  const [wrap, setWrap] = useState(true)
+  const [findQuery, setFindQuery] = useState('')
+  const preview = useMemo(() => buildCellPreview(value), [value])
+  const stats = useMemo(() => cellPreviewStats(preview.text), [preview.text])
+  const findHits = useMemo(
+    () => countPreviewFindHits(preview.text, findQuery),
+    [preview.text, findQuery],
+  )
 
   useEffect(() => {
     if (!open) return
-    setCopyNote('')
+    setWrap(true)
+    setFindQuery('')
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
@@ -32,10 +61,16 @@ export function CellValuePreviewDialog({
 
   if (!open) return null
 
-  const copy = async () => {
-    await navigator.clipboard.writeText(preview.text)
-    setCopyNote('已复制')
+  const isBinary = preview.text === '二进制' && !preview.isNull && !preview.isEmpty && !preview.jsonPretty
+
+  const copy = () => {
+    void navigator.clipboard.writeText(cellPreviewClipboardText(preview)).then(
+      () => ws.pushToast('success', cellPreviewCopiedToast()),
+      () => ws.pushToast('error', '复制失败'),
+    )
   }
+
+  const showEmptyState = preview.isNull || preview.isEmpty || isBinary
 
   return (
     <div className="overlay cell-preview-overlay" role="presentation" onMouseDown={onClose}>
@@ -47,27 +82,65 @@ export function CellValuePreviewDialog({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h2 id="cell-preview-title">{cellPreviewTitle(column, rowIndex)}</h2>
-        <p className="dialog-copy">
-          只读预览（不写库）
-          {preview.jsonPretty ? ' · 已格式化为 JSON' : ''}
-          {preview.isNull ? ' · NULL' : preview.isEmpty ? ' · 空字符串' : ''}
-        </p>
-        <pre
-          className={
-            preview.isNull
-              ? 'cell-preview-body is-null'
-              : preview.isEmpty
-                ? 'cell-preview-body is-empty'
-                : 'cell-preview-body'
-          }
-          tabIndex={0}
-        >
-          {preview.text}
-        </pre>
+        <p className="dialog-copy">{cellPreviewLead(preview)}</p>
+        {showEmptyState ? (
+          <EmptyState
+            compact
+            kicker={cellPreviewKicker()}
+            title={
+              preview.isNull
+                ? cellPreviewNullTitle()
+                : preview.isEmpty
+                  ? cellPreviewEmptyTitle()
+                  : cellPreviewBinaryTitle()
+            }
+            body={
+              preview.isNull
+                ? cellPreviewNullBody()
+                : preview.isEmpty
+                  ? cellPreviewEmptyBody()
+                  : cellPreviewBinaryBody()
+            }
+          />
+        ) : (
+          <>
+            <div className="cell-preview-toolbar">
+              <span className="cell-preview-stats">{stats.label}</span>
+              <label className="cell-preview-find">
+                <span className="sr-only">{cellPreviewFindLabel()}</span>
+                <input
+                  value={findQuery}
+                  onChange={(event) => setFindQuery(event.target.value)}
+                  placeholder={cellPreviewFindLabel()}
+                  spellCheck={false}
+                  aria-label={cellPreviewFindLabel()}
+                />
+                {findQuery.trim() ? (
+                  <span className="cell-preview-find-count">{cellPreviewFindCount(findHits)}</span>
+                ) : null}
+              </label>
+              <button
+                type="button"
+                className={wrap ? 'btn btn-ghost tiny-btn is-active' : 'btn btn-ghost tiny-btn'}
+                aria-pressed={wrap}
+                onClick={() => setWrap((value) => !value)}
+              >
+                {wrap ? cellPreviewWrapOnLabel() : cellPreviewWrapOffLabel()}
+              </button>
+            </div>
+            <pre
+              className={
+                wrap ? 'cell-preview-body is-wrap' : 'cell-preview-body is-nowrap'
+              }
+              tabIndex={0}
+            >
+              {preview.text}
+            </pre>
+          </>
+        )}
         <div className="dialog-actions">
-          {copyNote && <span className="cell-preview-copy-note">{copyNote}</span>}
           <button type="button" className="btn btn-ghost" onClick={() => void copy()}>
-            复制全文
+            {cellPreviewCopyLabel()}
           </button>
           <button type="button" className="btn btn-primary" onClick={onClose}>
             关闭

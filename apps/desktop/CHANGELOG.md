@@ -2,6 +2,12 @@
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**；后续小版本仍为本机迭代，尚未发布到 GitHub Releases。
 
+## 3.116.0 — M155 单元格预览：空状态、查找与换行
+
+- 结果单元格预览：NULL / 空串 / 二进制 EmptyState；字符与行数统计
+- 预览内查找命中计数、自动换行开关；复制全文 Toast
+- 不改动 Redis 浏览器、结果图表、列统计等近期能力
+
 ## 3.115.0 — M154 Redis 浏览器：空状态、匹配预设与复制
 
 - Redis 面板：未连接 / 无匹配键 / 未选键 / 空值 EmptyState；* / user:* 等 SCAN 预设
