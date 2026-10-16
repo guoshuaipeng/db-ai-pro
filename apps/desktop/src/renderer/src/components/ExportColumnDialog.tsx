@@ -12,6 +12,27 @@ import {
   type ExportFormat,
   type ExportRowScope,
 } from '@shared/exportColumnPick'
+import {
+  exportColumnConfirmLabel,
+  exportColumnCountLabel,
+  exportColumnFilterAria,
+  exportColumnFilterEmptyBody,
+  exportColumnFilterEmptyTitle,
+  exportColumnFilterPlaceholder,
+  exportColumnInvertLabel,
+  exportColumnKicker,
+  exportColumnNoColumnsBody,
+  exportColumnNoColumnsTitle,
+  exportColumnSelectAllLabel,
+  exportColumnSelectNoneLabel,
+  exportColumnTitle,
+  exportColumnVisibleOnlyHint,
+  exportColumnZeroRowsBody,
+  exportColumnZeroRowsTitle,
+  filterExportColumns,
+  invertExportColumns,
+} from '@shared/exportColumnUi'
+import { EmptyState } from './EmptyState'
 
 export function ExportColumnDialog({
   open,
@@ -35,11 +56,13 @@ export function ExportColumnDialog({
   const available = useMemo(() => defaultExportColumns(columns), [columns])
   const [picked, setPicked] = useState<string[]>(() => available)
   const [rowScope, setRowScope] = useState<ExportRowScope>(() => defaultExportRowScope(selectedRowCount))
+  const [filter, setFilter] = useState('')
 
   useEffect(() => {
     if (!open) return
     setPicked(selectAllExportColumns(columns))
     setRowScope(defaultExportRowScope(selectedRowCount))
+    setFilter('')
   }, [open, columns, selectedRowCount])
 
   useEffect(() => {
@@ -54,14 +77,20 @@ export function ExportColumnDialog({
     return () => window.removeEventListener('keydown', onKey, true)
   }, [open, onCancel])
 
-  if (!open) return null
-
+  const visible = useMemo(() => filterExportColumns(available, filter), [available, filter])
   const selectedCount = normalizePickedColumns(columns, picked).length
   const label = EXPORT_FORMAT_LABELS[format]
   const hasSelection = selectedRowCount > 0
   const effectiveScope: ExportRowScope = hasSelection ? rowScope : 'all'
   const exportRowCount =
     effectiveScope === 'selected' && hasSelection ? selectedRowCount : rowCount
+  const filterHint = exportColumnVisibleOnlyHint(visible.length, available.length)
+
+  if (!open) return null
+
+  const noColumns = available.length === 0
+  const filterEmpty = !noColumns && visible.length === 0
+  const zeroRows = exportRowCount === 0
 
   return (
     <div className="overlay export-column-overlay" role="presentation" onMouseDown={onCancel}>
@@ -72,11 +101,11 @@ export function ExportColumnDialog({
         aria-labelledby="export-column-title"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <h2 id="export-column-title">导出 {label} · 选择列</h2>
+        <h2 id="export-column-title">{exportColumnTitle(label)}</h2>
         <p className="dialog-copy">
           {exportRowScopeSummary(effectiveScope, rowCount, selectedRowCount)}
         </p>
-        {hasSelection && (
+        {hasSelection ? (
           <div className="export-row-scope" role="radiogroup" aria-label="导出行范围">
             <button
               type="button"
@@ -103,45 +132,105 @@ export function ExportColumnDialog({
               {exportRowScopeOptionLabel('all', rowCount, selectedRowCount)}
             </button>
           </div>
+        ) : null}
+
+        {noColumns ? (
+          <EmptyState
+            compact
+            kicker={exportColumnKicker()}
+            title={exportColumnNoColumnsTitle()}
+            body={exportColumnNoColumnsBody()}
+          />
+        ) : (
+          <>
+            <div className="export-column-toolbar">
+              <button
+                type="button"
+                className="btn btn-ghost tiny-btn"
+                onClick={() => setPicked(selectAllExportColumns(columns))}
+              >
+                {exportColumnSelectAllLabel()}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost tiny-btn"
+                onClick={() => setPicked(selectNoneExportColumns())}
+              >
+                {exportColumnSelectNoneLabel()}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost tiny-btn"
+                onClick={() => setPicked(invertExportColumns(available, picked))}
+              >
+                {exportColumnInvertLabel()}
+              </button>
+              <span className="export-column-count">
+                {exportColumnCountLabel(selectedCount, available.length, exportRowCount)}
+              </span>
+            </div>
+            <label className="export-column-filter">
+              <span className="sr-only">{exportColumnFilterAria()}</span>
+              <input
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+                placeholder={exportColumnFilterPlaceholder()}
+                aria-label={exportColumnFilterAria()}
+                spellCheck={false}
+              />
+              {filterHint ? <span className="export-column-filter-hint">{filterHint}</span> : null}
+            </label>
+            {zeroRows ? (
+              <EmptyState
+                compact
+                kicker={exportColumnKicker()}
+                title={exportColumnZeroRowsTitle()}
+                body={exportColumnZeroRowsBody()}
+              />
+            ) : null}
+            {filterEmpty ? (
+              <EmptyState
+                compact
+                kicker={exportColumnKicker()}
+                title={exportColumnFilterEmptyTitle()}
+                body={exportColumnFilterEmptyBody(filter)}
+                actions={
+                  <button type="button" className="btn btn-ghost" onClick={() => setFilter('')}>
+                    清除筛选
+                  </button>
+                }
+              />
+            ) : (
+              <ul
+                className="export-column-list"
+                role="listbox"
+                aria-label="导出列"
+                aria-multiselectable="true"
+              >
+                {visible.map((column) => {
+                  const checked = picked.includes(column)
+                  return (
+                    <li key={column}>
+                      <label className={checked ? 'export-column-item is-on' : 'export-column-item'}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) =>
+                            setPicked((current) =>
+                              togglePickedColumn(current, column, event.target.checked),
+                            )
+                          }
+                        />
+                        <span>{column}</span>
+                      </label>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </>
         )}
-        <div className="export-column-toolbar">
-          <button
-            type="button"
-            className="btn btn-ghost tiny-btn"
-            onClick={() => setPicked(selectAllExportColumns(columns))}
-          >
-            全选
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost tiny-btn"
-            onClick={() => setPicked(selectNoneExportColumns())}
-          >
-            全不选
-          </button>
-          <span className="export-column-count">
-            已选 {selectedCount}/{available.length} 列 · {exportRowCount.toLocaleString('zh-CN')} 行
-          </span>
-        </div>
-        <ul className="export-column-list" role="listbox" aria-label="导出列" aria-multiselectable="true">
-          {available.map((column) => {
-            const checked = picked.includes(column)
-            return (
-              <li key={column}>
-                <label className={checked ? 'export-column-item is-on' : 'export-column-item'}>
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(event) =>
-                      setPicked((current) => togglePickedColumn(current, column, event.target.checked))
-                    }
-                  />
-                  <span>{column}</span>
-                </label>
-              </li>
-            )
-          })}
-        </ul>
+
         <div className="dialog-actions">
           <button type="button" className="btn btn-ghost" onClick={onCancel}>
             取消
@@ -149,10 +238,10 @@ export function ExportColumnDialog({
           <button
             type="button"
             className="btn btn-primary"
-            disabled={selectedCount === 0 || exportRowCount === 0}
+            disabled={noColumns || selectedCount === 0 || exportRowCount === 0}
             onClick={() => onConfirm(normalizePickedColumns(columns, picked), effectiveScope)}
           >
-            导出 {label}
+            {exportColumnConfirmLabel(label)}
           </button>
         </div>
       </div>
