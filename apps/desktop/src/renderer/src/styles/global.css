@@ -5417,9 +5417,40 @@ body.is-col-resizing .grid-col-resizer {
   min-height: 0;
   background: transparent;
 }
+.tab-conn-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.tab-conn-empty {
+  max-width: 280px;
+  padding: 2px 0;
+}
+.tab-conn-empty .empty-state {
+  margin: 0;
+}
+.tab-conn-follow {
+  flex: 0 0 auto;
+}
+.tab-conn-status {
+  margin: 0;
+  padding: 0 2px;
+  font-size: 11px;
+  color: var(--ink-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 360px;
+}
+.tab-conn-status.is-warn {
+  color: #fbbf24;
+}
+
 .tab-conn-select {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   flex: 0 1 280px;
   min-width: 140px;
