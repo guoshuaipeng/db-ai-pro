@@ -135,6 +135,8 @@ type SqlEditorProps = {
   value: string
   onChange: (value: string) => void
   onCursor: (cursor: { line: number; column: number }) => void
+  /** Non-empty primary selection stats for status bar; null when collapsed. */
+  onSelectionChange?: (info: { charCount: number; lineCount: number } | null) => void
   suggestions?: SchemaSuggestItem[]
   minimap?: boolean
   fontSize?: number
@@ -149,6 +151,7 @@ export function SqlEditor({
   value,
   onChange,
   onCursor,
+  onSelectionChange,
   suggestions = [],
   minimap = false,
   fontSize = DEFAULT_EDITOR_FONT_SIZE,
@@ -161,8 +164,10 @@ export function SqlEditor({
   const [dragOver, setDragOver] = useState(false)
   const onChangeRef = useRef(onChange)
   const onCursorRef = useRef(onCursor)
+  const onSelectionChangeRef = useRef(onSelectionChange)
   onChangeRef.current = onChange
   onCursorRef.current = onCursor
+  onSelectionChangeRef.current = onSelectionChange
   suggestionBag.current = suggestions
 
   useEffect(() => {
@@ -236,16 +241,41 @@ export function SqlEditor({
       },
     })
 
+    const reportSelection = () => {
+      const cb = onSelectionChangeRef.current
+      if (!cb) return
+      const model = instance.getModel()
+      const sel = instance.getSelection()
+      if (!model || !sel || sel.isEmpty()) {
+        cb(null)
+        return
+      }
+      const text = model.getValueInRange(sel)
+      if (!text) {
+        cb(null)
+        return
+      }
+      cb({
+        charCount: text.length,
+        lineCount: Math.max(1, Math.abs(sel.endLineNumber - sel.startLineNumber) + 1),
+      })
+    }
     const position = instance.getPosition()
     if (position) onCursorRef.current({ line: position.lineNumber, column: position.column })
+    reportSelection()
     const cursorSub = instance.onDidChangeCursorPosition((event) => {
       onCursorRef.current({ line: event.position.lineNumber, column: event.position.column })
     })
+    const selectionSub = instance.onDidChangeCursorSelection(() => {
+      reportSelection()
+    })
     const changeSub = instance.onDidChangeModelContent(() => {
       onChangeRef.current(instance.getValue())
+      reportSelection()
     })
     return () => {
       cursorSub.dispose()
+      selectionSub.dispose()
       changeSub.dispose()
       instance.dispose()
       instanceRef.current = null

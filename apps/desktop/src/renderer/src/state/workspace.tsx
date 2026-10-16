@@ -278,6 +278,9 @@ type WorkspaceValue = {
   searchStats: { connections: number; tables: number; columns: number }
   cursor: { line: number; column: number }
   setCursor: (cursor: { line: number; column: number }) => void
+  /** Primary editor selection for status bar; null when empty. */
+  editorSelection: { charCount: number; lineCount: number } | null
+  setEditorSelection: (info: { charCount: number; lineCount: number } | null) => void
   aiTurns: AiTurnState[]
   aiStreaming: boolean
   aiIntent: AiIntent
@@ -439,6 +442,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [txnSupported, setTxnSupported] = useState(false)
   const [lastRun, setLastRun] = useState<LastRunStats | null>(null)
   const [cursor, setCursor] = useState({ line: 1, column: 1 })
+  const [editorSelection, setEditorSelection] = useState<{
+    charCount: number
+    lineCount: number
+  } | null>(null)
   const [aiTurns, setAiTurns] = useState<AiTurnState[]>([])
   const [aiStreaming, setAiStreaming] = useState(false)
   const [aiIntent, setAiIntent] = useState<AiIntent>('query')
@@ -2456,6 +2463,8 @@ ${sql.trim()}
     searchStats,
     cursor,
     setCursor,
+    editorSelection,
+    setEditorSelection,
     aiTurns,
     aiStreaming,
     aiIntent,

@@ -437,6 +437,7 @@ export function EditorPane() {
             value={ws.activeEditor.sql}
             onChange={ws.updateSql}
             onCursor={ws.setCursor}
+            onSelectionChange={ws.setEditorSelection}
             suggestions={suggestions}
             minimap={ws.editorMinimap}
             fontSize={ws.editorFontSize}

@@ -4,6 +4,7 @@ import { formatElapsedMs } from '@shared/slowQuery'
 import { statusHealthView } from '@shared/statusBar'
 import { statusBarConnectionTitle } from '@shared/revealConnection'
 import { statusBarRerunTitle } from '@shared/statusBarRerun'
+import { editorSelectionStatusTitle } from '@shared/editorSelection'
 import type { ConnHealth } from '@shared/connHealth'
 import type { ConnectionPublic } from '@shared/types'
 
@@ -16,6 +17,8 @@ type StatusBarProps = {
   /** e.g. 「3 条语句」 when editor has 2+ statements. */
   statementCountLabel?: string | null
   statementCountTitle?: string
+  /** e.g. 「已选 12 字符」 when editor has a selection. */
+  selectionLabel?: string | null
   readOnlyActive: boolean
   globalReadOnly: boolean
   txnOpen: boolean
@@ -46,6 +49,7 @@ export function StatusBar({
   cursorColumn,
   statementCountLabel,
   statementCountTitle,
+  selectionLabel,
   readOnlyActive,
   globalReadOnly,
   txnOpen,
@@ -131,6 +135,15 @@ export function StatusBar({
           aria-label={statementCountTitle || statementCountLabel}
         >
           {statementCountLabel}
+        </span>
+      ) : null}
+      {selectionLabel ? (
+        <span
+          className="status-item status-muted"
+          title={editorSelectionStatusTitle()}
+          aria-label={selectionLabel}
+        >
+          {selectionLabel}
         </span>
       ) : null}
       {readOnlyActive ? (

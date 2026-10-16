@@ -37,6 +37,7 @@ import {
   sqlStatementCountLabel,
   sqlStatementCountTitle,
 } from '@shared/sqlStatementCount'
+import { editorSelectionStatusLabel } from '@shared/editorSelection'
 import { shouldCancelRunOnEscape } from '@shared/escCancelRun'
 import { isUiModalOpen } from './uiModal'
 import { getApi } from './bridge'
@@ -457,6 +458,7 @@ export function App() {
   const statementCountLabel = sqlStatementCountLabel(statementCount)
   const statementCountTitle =
     statementCountLabel != null ? sqlStatementCountTitle(statementCount) : undefined
+  const selectionLabel = editorSelectionStatusLabel(ws.editorSelection)
   const lastRunLabel = ws.lastRun
     ? `${ws.lastRun.kind === 'explain' ? '计划' : '结果'} ${ws.lastRun.rows} 行 · ${formatElapsedMs(ws.lastRun.elapsedMs)}${
         lastRunSlow ? ' · 慢' : ''
@@ -570,6 +572,7 @@ export function App() {
         cursorColumn={ws.cursor.column}
         statementCountLabel={statementCountLabel}
         statementCountTitle={statementCountTitle}
+        selectionLabel={selectionLabel}
         readOnlyActive={ws.readOnlyActive}
         globalReadOnly={ws.globalReadOnly}
         txnOpen={ws.txnOpen}
