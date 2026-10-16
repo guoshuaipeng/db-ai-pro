@@ -537,6 +537,16 @@ function TreeNode({
             >
               复制连接
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onMenu(null)
+                void ws.copyConnectionEndpoint(connection.id)
+              }}
+            >
+              复制地址
+            </button>
             <button type="button" role="menuitem" onClick={() => { onMenu(null); ws.openEdit(connection) }}>
               编辑
             </button>

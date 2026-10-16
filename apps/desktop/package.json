@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "3.45.0",
+  "version": "3.46.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — status bar rerun",
+  "description": "DataAI TypeScript desktop — copy connection endpoint",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

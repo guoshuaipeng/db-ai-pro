@@ -53,6 +53,10 @@ describe('filterCommands', () => {
     expect(filterCommands('复制连接').some((item) => item.id === 'connection.duplicate')).toBe(true)
   })
 
+  it('finds copy connection endpoint command', () => {
+    expect(filterCommands('连接地址').some((item) => item.id === 'connection.copyEndpoint')).toBe(true)
+  })
+
   it('finds query templates', () => {
     expect(filterCommands('模板').some((item) => item.id === 'query.templates')).toBe(true)
     expect(filterCommands('COUNT').some((item) => item.id === 'query.tpl.selectCount')).toBe(true)

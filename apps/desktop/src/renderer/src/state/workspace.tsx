@@ -26,6 +26,10 @@ import {
 import { INITIAL_TABS } from '@shared/session'
 import { isTabDirty, withCleanBaseline } from '@shared/tabDirty'
 import {
+  connectionEndpointCopiedToast,
+  connectionEndpointText,
+} from '@shared/connectionEndpoint'
+import {
   closeOthersTargets,
   closeToRightTargets,
   moveTabToIndex,
@@ -306,6 +310,7 @@ type WorkspaceValue = {
   closeDialog: () => void
   saveConnection: (input: ConnectionInput) => Promise<void>
   duplicateConnection: (id: string) => Promise<void>
+  copyConnectionEndpoint: (id: string) => Promise<void>
   setConnectionColorTag: (connectionId: string, colorTag: string | null) => Promise<void>
   testConnection: (input: ConnectionInput) => Promise<{ ok: boolean; error?: string }>
   deleteConnection: (id: string) => Promise<void>
@@ -2109,6 +2114,25 @@ ${sql.trim()}
     }
   }
 
+  const copyConnectionEndpoint = async (id: string) => {
+    const connection = connections.find((row) => row.id === id)
+    if (!connection) {
+      pushToast('error', '连接不存在')
+      return
+    }
+    const text = connectionEndpointText(connection)
+    if (!text) {
+      pushToast('info', '没有可复制的地址（请先填写主机或 SQLite 路径）')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(text)
+      pushToast('success', connectionEndpointCopiedToast(text))
+    } catch (error) {
+      pushToast('error', error instanceof Error ? error.message : '复制失败')
+    }
+  }
+
   const openDbVisibility = (connection: ConnectionPublic) => {
     if (connection.dialect === 'sqlite' || connection.dialect === 'redis') {
       pushToast('info', '当前连接类型不支持实例库列表')
@@ -2374,6 +2398,7 @@ ${sql.trim()}
     closeDialog: () => setDialog(null),
     saveConnection,
     duplicateConnection,
+    copyConnectionEndpoint,
     setConnectionColorTag,
     testConnection: (input) => api.connections.test(input),
     deleteConnection,
