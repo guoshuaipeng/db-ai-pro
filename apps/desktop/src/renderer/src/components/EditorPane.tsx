@@ -1,11 +1,14 @@
-import { IconPlay, IconPlus } from './icons'
+import { useState } from 'react'
+import { IconClock, IconPlay, IconPlus } from './icons'
 import { ScrollTabs } from './ScrollTabs'
 import { SqlEditor } from './SqlEditor'
 import { ResultGrid, ResultToolbar } from './ResultGrid'
+import { HistoryPanel } from './HistoryPanel'
 import { useWorkspace } from '../state/workspace'
 
 export function EditorPane() {
   const ws = useWorkspace()
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   return (
     <section className="editor-pane" aria-label="SQL 编辑器">
@@ -17,6 +20,15 @@ export function EditorPane() {
         onClose={ws.closeTab}
         trailing={
           <div className="tab-actions">
+            <button
+              type="button"
+              className={historyOpen ? 'icon-btn is-active' : 'icon-btn'}
+              aria-label="查询历史"
+              aria-pressed={historyOpen}
+              onClick={() => setHistoryOpen((open) => !open)}
+            >
+              <IconClock />
+            </button>
             <button type="button" className="icon-btn" aria-label="新建查询" onClick={ws.newTab}>
               <IconPlus />
             </button>
@@ -27,9 +39,12 @@ export function EditorPane() {
           </div>
         }
       />
-      {ws.activeEditor && (
-        <SqlEditor value={ws.activeEditor.sql} onChange={ws.updateSql} onCursor={ws.setCursor} />
-      )}
+      <div className="editor-body">
+        {ws.activeEditor && (
+          <SqlEditor value={ws.activeEditor.sql} onChange={ws.updateSql} onCursor={ws.setCursor} />
+        )}
+        <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      </div>
     </section>
   )
 }

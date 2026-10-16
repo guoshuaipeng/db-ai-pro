@@ -2,8 +2,18 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
 import { dialectInfo, needsServerDatabase } from '@shared/types'
-import type { AiSettingsInput, AiSettingsPublic, ConnectionInput, ConnectionPublic, Dialect, WorkspaceState } from '@shared/types'
+import type {
+  AiSettingsInput,
+  AiSettingsPublic,
+  ConnectionInput,
+  ConnectionPublic,
+  Dialect,
+  QueryHistoryEntry,
+  WorkspaceState,
+} from '@shared/types'
+import { QUERY_HISTORY_LIMIT, pushQueryHistory } from '@shared/queryHistory'
 import { createId } from './sampleDb'
+import { migrateConnectionPlaintext, migrateSettingsPlaintext } from './migratePlaintext'
 import { encryptionAvailable, openSecret, sealSecret } from './secrets'
 
 type StoredConnection = {
@@ -16,6 +26,8 @@ type StoredConnection = {
   database?: string
   username?: string
   passwordCipher?: string
+  /** Legacy plaintext — migrated on load and never written back. */
+  password?: string
   createdAt: string
   updatedAt: string
 }
@@ -24,6 +36,13 @@ type StoredSettings = {
   baseUrl: string
   model: string
   apiKeyCipher?: string
+  /** Legacy plaintext — migrated on load and never written back. */
+  apiKey?: string
+}
+
+type HistoryFile = {
+  version: 1
+  byConnection: Record<string, QueryHistoryEntry[]>
 }
 
 const DEFAULT_SETTINGS: StoredSettings = {
@@ -51,6 +70,28 @@ function writeJson(file: string, value: unknown): void {
   writeFileSync(join(dir(), file), JSON.stringify(value, null, 2), 'utf8')
 }
 
+export function migrateStoredConnection(row: StoredConnection): { row: StoredConnection; changed: boolean } {
+  const result = migrateConnectionPlaintext(row, sealSecret)
+  return { row: result.row as StoredConnection, changed: result.changed }
+}
+
+export function migrateStoredSettings(stored: StoredSettings): { settings: StoredSettings; changed: boolean } {
+  const result = migrateSettingsPlaintext(stored, sealSecret)
+  return { settings: result.settings as StoredSettings, changed: result.changed }
+}
+
+function loadConnectionsRaw(): StoredConnection[] {
+  const rows = readJson<StoredConnection[]>('connections.json', [])
+  let dirty = false
+  const migrated = rows.map((row) => {
+    const result = migrateStoredConnection(row)
+    if (result.changed) dirty = true
+    return result.row
+  })
+  if (dirty) writeJson('connections.json', migrated)
+  return migrated
+}
+
 function toPublic(row: StoredConnection): ConnectionPublic {
   return {
     id: row.id,
@@ -68,11 +109,11 @@ function toPublic(row: StoredConnection): ConnectionPublic {
 }
 
 export function listConnections(): ConnectionPublic[] {
-  return readJson<StoredConnection[]>('connections.json', []).map(toPublic)
+  return loadConnectionsRaw().map(toPublic)
 }
 
 export function getConnection(id: string): StoredConnection | undefined {
-  return readJson<StoredConnection[]>('connections.json', []).find((row) => row.id === id)
+  return loadConnectionsRaw().find((row) => row.id === id)
 }
 
 export function saveConnection(input: ConnectionInput): { connection: ConnectionPublic } | { error: string } {
@@ -83,7 +124,7 @@ export function saveConnection(input: ConnectionInput): { connection: Connection
   if (info.id !== 'sqlite' && !input.host?.trim()) return { error: '请填写主机' }
   if (needsServerDatabase(info.id) && !input.database?.trim()) return { error: '请填写数据库名' }
 
-  const rows = readJson<StoredConnection[]>('connections.json', [])
+  const rows = loadConnectionsRaw()
   const now = new Date().toISOString()
   const existing = input.id ? rows.find((row) => row.id === input.id) : undefined
 
@@ -118,26 +159,41 @@ export function saveConnection(input: ConnectionInput): { connection: Connection
 }
 
 export function connectionPassword(row: StoredConnection): { password: string; locked: boolean } {
-  if (!row.passwordCipher) return { password: '', locked: false }
-  const password = openSecret(row.passwordCipher)
-  if (!password && !encryptionAvailable()) return { password: '', locked: true }
-  return { password, locked: false }
+  if (row.passwordCipher) {
+    const password = openSecret(row.passwordCipher)
+    if (!password && !encryptionAvailable()) return { password: '', locked: true }
+    return { password, locked: false }
+  }
+  if (row.password) return { password: row.password, locked: false }
+  return { password: '', locked: false }
 }
 
 export function removeConnection(id: string): void {
-  const rows = readJson<StoredConnection[]>('connections.json', [])
+  const rows = loadConnectionsRaw()
   writeJson(
     'connections.json',
     rows.filter((row) => row.id !== id),
   )
+  const history = readHistoryFile()
+  if (history.byConnection[id]) {
+    delete history.byConnection[id]
+    writeJson('query-history.json', history)
+  }
 }
 
 export function hasConnectionStore(): boolean {
   return existsSync(join(dir(), 'connections.json'))
 }
 
-export function settingsPublic(): AiSettingsPublic {
+function loadSettingsRaw(): StoredSettings {
   const stored = readJson<StoredSettings>('ai-settings.json', DEFAULT_SETTINGS)
+  const { settings, changed } = migrateStoredSettings(stored)
+  if (changed) writeJson('ai-settings.json', settings)
+  return settings
+}
+
+export function settingsPublic(): AiSettingsPublic {
+  const stored = loadSettingsRaw()
   const probe = sealSecret('')
   return {
     baseUrl: stored.baseUrl || DEFAULT_SETTINGS.baseUrl,
@@ -148,7 +204,7 @@ export function settingsPublic(): AiSettingsPublic {
 }
 
 export function settingsSecrets(): { baseUrl: string; model: string; apiKey: string } {
-  const stored = readJson<StoredSettings>('ai-settings.json', DEFAULT_SETTINGS)
+  const stored = loadSettingsRaw()
   return {
     baseUrl: stored.baseUrl || DEFAULT_SETTINGS.baseUrl,
     model: stored.model || DEFAULT_SETTINGS.model,
@@ -157,7 +213,7 @@ export function settingsSecrets(): { baseUrl: string; model: string; apiKey: str
 }
 
 export function saveSettings(input: AiSettingsInput): { settings: AiSettingsPublic } | { error: string } {
-  const current = readJson<StoredSettings>('ai-settings.json', DEFAULT_SETTINGS)
+  const current = loadSettingsRaw()
   let apiKeyCipher = current.apiKeyCipher
   if (input.apiKey !== undefined) {
     if (!input.apiKey) {
@@ -191,4 +247,67 @@ export function loadWorkspace(): WorkspaceState | null {
 
 export function saveWorkspace(state: WorkspaceState): void {
   writeJson('workspace.json', state)
+}
+
+function readHistoryFile(): HistoryFile {
+  const raw = readJson<HistoryFile | QueryHistoryEntry[]>('query-history.json', { version: 1, byConnection: {} })
+  if (Array.isArray(raw)) {
+    const byConnection: Record<string, QueryHistoryEntry[]> = {}
+    for (const entry of raw) {
+      if (!entry?.connectionId) continue
+      byConnection[entry.connectionId] = byConnection[entry.connectionId] ?? []
+      byConnection[entry.connectionId].push(entry)
+    }
+    return { version: 1, byConnection }
+  }
+  if (!raw || raw.version !== 1 || typeof raw.byConnection !== 'object' || !raw.byConnection) {
+    return { version: 1, byConnection: {} }
+  }
+  return raw
+}
+
+export function listQueryHistory(connectionId: string, limit = QUERY_HISTORY_LIMIT): QueryHistoryEntry[] {
+  const file = readHistoryFile()
+  const rows = file.byConnection[connectionId] ?? []
+  return rows.slice(0, Math.max(1, limit))
+}
+
+export function appendQueryHistory(input: {
+  connectionId: string
+  sql: string
+  ok: boolean
+  error?: string
+  elapsedMs?: number
+}): QueryHistoryEntry {
+  const entry: QueryHistoryEntry = {
+    id: createId(),
+    connectionId: input.connectionId,
+    sql: input.sql.trim(),
+    ok: input.ok,
+    error: input.error,
+    elapsedMs: input.elapsedMs,
+    createdAt: new Date().toISOString(),
+  }
+  if (!entry.sql) return entry
+
+  const file = readHistoryFile()
+  const existing = file.byConnection[input.connectionId] ?? []
+  file.byConnection[input.connectionId] = pushQueryHistory(existing, entry)
+  writeJson('query-history.json', file)
+  return entry
+}
+
+export function clearQueryHistory(connectionId: string): void {
+  const file = readHistoryFile()
+  if (!file.byConnection[connectionId]) return
+  delete file.byConnection[connectionId]
+  writeJson('query-history.json', file)
+}
+
+export function removeQueryHistoryEntry(connectionId: string, entryId: string): void {
+  const file = readHistoryFile()
+  const rows = file.byConnection[connectionId]
+  if (!rows) return
+  file.byConnection[connectionId] = rows.filter((row) => row.id !== entryId)
+  writeJson('query-history.json', file)
 }

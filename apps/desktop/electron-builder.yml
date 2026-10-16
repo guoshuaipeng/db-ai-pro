@@ -24,11 +24,14 @@ linux:
   artifactName: DataAI-${version}-linux-tip.${ext}
 win:
   target:
+    - portable
     - nsis
   icon: ../../resources/icons/app_icon.ico
+  artifactName: DataAI-${version}-win-tip.${ext}
+portable:
   artifactName: DataAI-${version}-win-tip.${ext}
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
-  artifactName: DataAI-${version}-win-tip.${ext}
+  artifactName: DataAI-${version}-win-setup.${ext}

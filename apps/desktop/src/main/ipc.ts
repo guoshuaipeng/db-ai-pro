@@ -26,12 +26,16 @@ import type { SqlTarget } from './target'
 import { readRedisValue, scanRedisKeys } from './redis'
 import { databaseExists, openDatabase } from './sqlite'
 import {
+  appendQueryHistory,
+  clearQueryHistory,
   connectionPassword,
   getConnection,
   hasConnectionStore,
   listConnections,
+  listQueryHistory,
   loadWorkspace,
   removeConnection,
+  removeQueryHistoryEntry,
   saveConnection,
   saveSettings,
   saveWorkspace,
@@ -212,10 +216,35 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     if (!row) return { error: '连接不存在' }
     if (!dialectInfo(row.dialect).executable) return { error: '这个类型还不能查询。连接已保存在本机。' }
     try {
-      return { results: await executeSession(targetFromStored(row), payload.sql) }
+      const results = await executeSession(targetFromStored(row), payload.sql)
+      const failed = results.find((item) => !item.ok)
+      const elapsedMs = results.reduce((sum, item) => sum + (item.elapsedMs || 0), 0)
+      appendQueryHistory({
+        connectionId: payload.connectionId,
+        sql: payload.sql,
+        ok: !failed,
+        error: failed?.error,
+        elapsedMs,
+      })
+      return { results }
     } catch (error) {
-      return { error: explainDbError(error) }
+      const message = explainDbError(error)
+      appendQueryHistory({
+        connectionId: payload.connectionId,
+        sql: payload.sql,
+        ok: false,
+        error: message,
+      })
+      return { error: message }
     }
+  })
+
+  ipcMain.handle('history:list', (_event, connectionId: string) => listQueryHistory(connectionId))
+  ipcMain.handle('history:clear', (_event, connectionId: string) => {
+    clearQueryHistory(connectionId)
+  })
+  ipcMain.handle('history:remove', (_event, payload: { connectionId: string; entryId: string }) => {
+    removeQueryHistoryEntry(payload.connectionId, payload.entryId)
   })
 
   ipcMain.handle(

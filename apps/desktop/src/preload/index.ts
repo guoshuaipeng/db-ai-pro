@@ -37,6 +37,12 @@ const api: DesktopApi = {
       return result.results
     },
   },
+  history: {
+    list: (connectionId: string) => ipcRenderer.invoke('history:list', connectionId),
+    clear: (connectionId: string) => ipcRenderer.invoke('history:clear', connectionId),
+    remove: (connectionId: string, entryId: string) =>
+      ipcRenderer.invoke('history:remove', { connectionId, entryId }),
+  },
   redis: {
     scan: async (payload) => {
       const result = await ipcRenderer.invoke('redis:scan', payload)

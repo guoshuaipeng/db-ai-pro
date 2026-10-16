@@ -22,6 +22,7 @@ import type {
   ConnectionInput,
   ConnectionPublic,
   EditorTabState,
+  QueryHistoryEntry,
   SchemaNode,
   StatementResult,
   WorkspaceState,
@@ -68,6 +69,11 @@ type WorkspaceValue = {
   setActiveResult: (id: string) => void
   running: boolean
   run: () => Promise<void>
+  loadHistory: (connectionId: string) => Promise<QueryHistoryEntry[]>
+  clearHistory: (connectionId: string) => Promise<void>
+  removeHistory: (connectionId: string, entryId: string) => Promise<void>
+  openHistorySql: (sql: string) => void
+  rerunHistory: (sql: string) => Promise<void>
   cursor: { line: number; column: number }
   setCursor: (cursor: { line: number; column: number }) => void
   aiTurns: AiTurnState[]
@@ -540,6 +546,61 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     pushToast('success', '语句已写入编辑器')
   }
 
+
+  const loadHistory = async (connectionId: string) => api.history.list(connectionId)
+
+  const clearHistory = async (connectionId: string) => {
+    await api.history.clear(connectionId)
+    pushToast('success', '已清空查询历史')
+  }
+
+  const removeHistory = async (connectionId: string, entryId: string) => {
+    await api.history.remove(connectionId, entryId)
+  }
+
+  const openHistorySql = (sql: string) => {
+    const id = crypto.randomUUID()
+    setEditorTabs((tabs) => [...tabs, { id, title: `历史 ${tabs.length + 1}`, sql }])
+    setActiveEditorId(id)
+    pushToast('success', '已打开历史语句')
+  }
+
+  const rerunHistory = async (sql: string) => {
+    if (!activeConnection) {
+      pushToast('info', '先选择一个连接')
+      return
+    }
+    if (isKvDialect(activeConnection.dialect)) {
+      pushToast('info', 'Redis 请使用键浏览器，而不是 SQL 运行')
+      return
+    }
+    const id = crypto.randomUUID()
+    setEditorTabs((tabs) => [...tabs, { id, title: `历史 ${tabs.length + 1}`, sql }])
+    setActiveEditorId(id)
+    setRunning(true)
+    try {
+      const statements = await api.sql.execute({ connectionId: activeConnection.id, sql })
+      const next = resultsFrom(statements)
+      setResultMap((current) => ({ ...current, [id]: next }))
+      const failed = statements.find((statement) => !statement.ok)
+      if (failed) {
+        pushToast('error', failed.error ?? '执行失败')
+        void repairAi(failed.statement || sql, failed.error ?? '执行失败')
+      } else {
+        pushToast('success', '已重新运行')
+        if (statements.some((statement) => statement.ok && changesSchema(statement.statement))) {
+          const rows = await api.connections.list()
+          setConnections(rows)
+          await refreshSchema(rows, activeConnection.id)
+        }
+      }
+    } catch (error) {
+      pushToast('error', error instanceof Error ? error.message : '执行失败')
+    } finally {
+      setRunning(false)
+    }
+  }
+
   const saveConnection = async (input: ConnectionInput) => {
     const saved = await api.connections.save(input)
     const rows = await api.connections.list()
@@ -601,6 +662,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     },
     running,
     run,
+    loadHistory,
+    clearHistory,
+    removeHistory,
+    openHistorySql,
+    rerunHistory,
     cursor,
     setCursor,
     aiTurns,

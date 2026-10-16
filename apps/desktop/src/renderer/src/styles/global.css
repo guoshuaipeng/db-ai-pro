@@ -961,3 +961,142 @@ button:disabled { cursor: default; opacity: 0.45; }
 .grid.is-virtual .virtual-pad td {
   background: transparent !important;
 }
+
+
+.editor-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.editor-body > .editor-wrap {
+  flex: 1;
+  min-height: 0;
+}
+.history-panel {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  bottom: 10px;
+  width: min(420px, 46%);
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 10px 12px;
+  border-radius: 12px;
+  background: rgba(16, 20, 30, 0.96);
+  border: 1px solid rgba(158, 180, 255, 0.18);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(10px);
+}
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.history-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #e8edf7;
+  font-weight: 600;
+}
+.history-conn {
+  color: #8b93a7;
+  font-weight: 400;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.history-empty {
+  margin: 18px 8px;
+  color: #8b93a7;
+  font-size: 12px;
+}
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+.history-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.history-item.is-bad {
+  border-color: rgba(240, 120, 110, 0.28);
+  background: rgba(240, 120, 110, 0.06);
+}
+.history-main {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  min-width: 0;
+  cursor: pointer;
+}
+.history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  color: #8b93a7;
+}
+.history-badge {
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 11px;
+}
+.history-badge.is-ok {
+  color: #8fd0a8;
+  background: rgba(143, 208, 168, 0.12);
+}
+.history-badge.is-fail {
+  color: #f0a0a8;
+  background: rgba(240, 160, 168, 0.12);
+}
+.history-sql {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: #dce4f5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-error {
+  font-size: 11px;
+  color: #f0a0a8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+}

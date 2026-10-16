@@ -105,6 +105,15 @@ export function IconMore() {
   )
 }
 
+export function IconClock() {
+  return (
+    <Svg>
+      <circle cx="8" cy="8" r="5.25" {...stroke} />
+      <path d="M8 5.2v3.2l2.2 1.4" {...stroke} />
+    </Svg>
+  )
+}
+
 export function IconSend() {
   return (
     <Svg size={15}>

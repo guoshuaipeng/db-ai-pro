@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — virtual results, SQL Server, Excel export",
+  "description": "DataAI TypeScript desktop — tip package, OS secrets, query history",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",
@@ -19,9 +19,11 @@
     "smoke": "electron-vite build && electron . --smoke",
     "smoke:servers": "vitest run src/main/live-drivers.test.ts",
     "dist:linux": "npm run build && electron-builder --linux tar.gz --publish never",
-    "dist:win": "npm run build && electron-builder --win nsis --publish never",
-    "pack:tip": "npm run dist:linux",
-    "postinstall": "electron-rebuild -f -w better-sqlite3"
+    "dist:win": "npm run build && electron-builder --win portable nsis --publish never",
+    "pack:tip": "npm run dist:win:portable",
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "dist:win:portable": "npm run build && electron-builder --win portable --publish never",
+    "pack:tip:linux": "npm run dist:linux"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

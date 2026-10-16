@@ -154,6 +154,16 @@ export type WorkspaceState = {
   aiOpen: boolean
 }
 
+export type QueryHistoryEntry = {
+  id: string
+  connectionId: string
+  sql: string
+  ok: boolean
+  error?: string
+  elapsedMs?: number
+  createdAt: string
+}
+
 export type RedisKeyInfo = {
   key: string
   type: string

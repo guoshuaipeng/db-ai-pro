@@ -10,6 +10,7 @@ import type {
   AiSettingsPublic,
   ConnectionInput,
   ConnectionPublic,
+  QueryHistoryEntry,
   SchemaNode,
   StatementResult,
   WorkspaceState,
@@ -17,6 +18,7 @@ import type {
 
 const memory = {
   connections: [] as ConnectionPublic[],
+  history: {} as Record<string, QueryHistoryEntry[]>,
   workspace: null as WorkspaceState | null,
   settings: {
     baseUrl: 'https://api.openai.com/v1',
@@ -185,7 +187,7 @@ export function createPreviewApi(): DesktopApi {
   }
 
   return {
-    meta: async () => ({ version: '0.2.0', encryption: 'unavailable', mode: 'preview' }),
+    meta: async () => ({ version: '0.6.0', encryption: 'unavailable', mode: 'preview' }),
     connections: {
       list: async () => memory.connections,
       save: async (input: ConnectionInput) => {
@@ -243,9 +245,35 @@ export function createPreviewApi(): DesktopApi {
       pickFile: async () => null,
     },
     sql: {
-      execute: async ({ sql }) => splitSql(sql).map((statement) => previewRows(statement)),
+      execute: async ({ connectionId, sql }) => {
+        const results = splitSql(sql).map((statement) => previewRows(statement))
+        const failed = results.find((item) => !item.ok)
+        const entry: QueryHistoryEntry = {
+          id: crypto.randomUUID(),
+          connectionId,
+          sql: sql.trim(),
+          ok: !failed,
+          error: failed?.error,
+          elapsedMs: results.reduce((sum, item) => sum + (item.elapsedMs || 0), 0),
+          createdAt: new Date().toISOString(),
+        }
+        if (entry.sql) {
+          const existing = memory.history[connectionId] ?? []
+          memory.history[connectionId] = [entry, ...existing.filter((row) => !(row.sql === entry.sql && row.ok === entry.ok))].slice(0, 80)
+        }
+        return results
+      },
       updateSqliteCell: async () => {
         throw new Error('预览模式不支持改单元格')
+      },
+    },
+    history: {
+      list: async (connectionId: string) => memory.history[connectionId] ?? [],
+      clear: async (connectionId: string) => {
+        delete memory.history[connectionId]
+      },
+      remove: async (connectionId: string, entryId: string) => {
+        memory.history[connectionId] = (memory.history[connectionId] ?? []).filter((row) => row.id !== entryId)
       },
     },
     redis: {

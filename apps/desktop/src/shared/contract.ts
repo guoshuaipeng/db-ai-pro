@@ -6,6 +6,7 @@ import type {
   AppMeta,
   ConnectionInput,
   ConnectionPublic,
+  QueryHistoryEntry,
   RedisKeyInfo,
   RedisValueView,
   SchemaNode,
@@ -33,6 +34,11 @@ export type DesktopApi = {
       column: string
       value: string | number | null
     }) => Promise<StatementResult[]>
+  }
+  history: {
+    list: (connectionId: string) => Promise<QueryHistoryEntry[]>
+    clear: (connectionId: string) => Promise<void>
+    remove: (connectionId: string, entryId: string) => Promise<void>
   }
   redis: {
     scan: (payload: { connectionId: string; pattern?: string; count?: number }) => Promise<RedisKeyInfo[]>
