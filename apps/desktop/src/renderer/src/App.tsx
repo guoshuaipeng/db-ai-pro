@@ -581,6 +581,8 @@ export function App() {
         selectionLabel={selectionLabel}
         readOnlyActive={ws.readOnlyActive}
         globalReadOnly={ws.globalReadOnly}
+        connectionReadOnly={Boolean(ws.activeConnection?.readOnly)}
+        onToggleGlobalReadOnly={() => void ws.setGlobalReadOnly(!ws.globalReadOnly)}
         txnOpen={ws.txnOpen}
         running={ws.running}
         runningSince={ws.runningSince}

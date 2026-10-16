@@ -6,6 +6,7 @@ import { statusBarConnectionTitle } from '@shared/revealConnection'
 import { statusBarRerunTitle } from '@shared/statusBarRerun'
 import { editorSelectionStatusTitle } from '@shared/editorSelection'
 import { statusBarWordWrapLabel, statusBarWordWrapTitle } from '@shared/statusBarWordWrap'
+import { statusBarReadOnlyLabel, statusBarReadOnlyTitle } from '@shared/statusBarReadOnly'
 import type { ConnHealth } from '@shared/connHealth'
 import type { ConnectionPublic } from '@shared/types'
 
@@ -22,6 +23,7 @@ type StatusBarProps = {
   selectionLabel?: string | null
   readOnlyActive: boolean
   globalReadOnly: boolean
+  connectionReadOnly?: boolean
   txnOpen: boolean
   running: boolean
   runningSince: number | null
@@ -42,6 +44,7 @@ type StatusBarProps = {
   lastRunKind?: 'run' | 'explain' | null
   onZoomReset: () => void
   onToggleWordWrap: () => void
+  onToggleGlobalReadOnly: () => void
 }
 
 export function StatusBar({
@@ -55,6 +58,7 @@ export function StatusBar({
   selectionLabel,
   readOnlyActive,
   globalReadOnly,
+  connectionReadOnly = false,
   txnOpen,
   running,
   runningSince,
@@ -75,6 +79,7 @@ export function StatusBar({
   lastRunKind,
   onZoomReset,
   onToggleWordWrap,
+  onToggleGlobalReadOnly,
 }: StatusBarProps) {
   const healthView = statusHealthView(health)
 
@@ -151,15 +156,24 @@ export function StatusBar({
           {selectionLabel}
         </span>
       ) : null}
-      {readOnlyActive ? (
-        <span
-          className="status-item is-readonly"
-          aria-live="polite"
-          title={globalReadOnly ? '全局只读已开启' : '当前连接为只读'}
-        >
-          只读
-        </span>
-      ) : null}
+      <button
+        type="button"
+        className={
+          readOnlyActive
+            ? 'status-item status-btn is-readonly'
+            : 'status-item status-muted status-btn'
+        }
+        title={statusBarReadOnlyTitle({
+          readOnlyActive,
+          globalReadOnly,
+          connectionReadOnly,
+        })}
+        aria-pressed={globalReadOnly}
+        aria-label={statusBarReadOnlyLabel(readOnlyActive)}
+        onClick={onToggleGlobalReadOnly}
+      >
+        {statusBarReadOnlyLabel(readOnlyActive)}
+      </button>
       {txnOpen ? (
         <span className="status-item is-txn" aria-live="polite" title="当前连接处于手动事务中">
           事务中

@@ -329,6 +329,7 @@ export const COMMAND_CATALOG: CommandDef[] = [
     title: '切换全局只读',
     subtitle: '拦截写入 / DDL；SELECT 仍可用',
     keywords: 'readonly safe 只读 安全',
+    shortcut: '状态栏「只读/可写」',
     category: 'connection',
   },
   {
@@ -491,7 +492,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '收藏片段变量 {{table}} / {{limit}}', keys: '插入时填写' },
   { action: '最近表 / 最近查询', keys: '标题栏「最近」· Ctrl+K' },
   { action: '全局搜索表 / 列 / 收藏', keys: 'Ctrl+K · Ctrl+P 输入关键字' },
-  { action: '只读 / 安全模式', keys: '设置 · Ctrl+K「只读」' },
+  { action: '只读 / 安全模式', keys: '状态栏「只读/可写」· 设置 · Ctrl+K「只读」' },
   { action: '窗口置顶', keys: '标题栏「置顶」· Ctrl+K' },
   { action: '放大 / 缩小 / 重置缩放', keys: 'Ctrl+= · Ctrl+- · Ctrl+0' },
   { action: '编辑器小地图', keys: '设置 · Ctrl+K「小地图」' },
