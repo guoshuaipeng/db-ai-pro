@@ -28,6 +28,16 @@ import {
 } from '@shared/rowSelection'
 import { collectResultFindHits, stepFindIndex } from '@shared/resultFind'
 import { estimateAllColumnWidths, estimateColumnWidthPx } from '@shared/resultColumnAutofit'
+import {
+  applyColumnFilters,
+  COLUMN_FILTER_MODE_LABELS,
+  countActiveColumnFilters,
+  isColumnFilterActive,
+  setColumnFilter,
+  type ColumnFilter,
+  type ColumnFilterMode,
+  type ColumnFilters,
+} from '@shared/resultColumnFilter'
 import { emitDataai, onDataai } from '../appEvents'
 
 const ROW_HEIGHT = 32
@@ -345,6 +355,10 @@ export function ResultGrid({
   const [findIndex, setFindIndex] = useState(0)
   /** One-shot autofit widths; null = CSS defaults. */
   const [colWidths, setColWidths] = useState<Record<string, number> | null>(null)
+  const [columnFilters, setColumnFilters] = useState<ColumnFilters>({})
+  const [filterMenuColumn, setFilterMenuColumn] = useState<string | null>(null)
+  const [filterDraft, setFilterDraft] = useState<ColumnFilter>({ mode: 'contains', value: '' })
+  const filterMenuRef = useRef<HTMLDivElement>(null)
 
   const visibleColumns = useMemo(() => columns.filter((column) => column !== '__rowid__'), [columns])
   const displayColumns = useMemo(() => {
@@ -354,7 +368,18 @@ export function ResultGrid({
     return [...head, ...rest]
   }, [visibleColumns, pinned])
 
-  const displayRows = useMemo(() => sortResultRows(rows, sort), [rows, sort])
+  const columnFilteredRows = useMemo(
+    () => applyColumnFilters(rows, columnFilters),
+    [rows, columnFilters],
+  )
+  const displayRows = useMemo(
+    () => sortResultRows(columnFilteredRows, sort),
+    [columnFilteredRows, sort],
+  )
+  const activeColumnFilterCount = useMemo(
+    () => countActiveColumnFilters(columnFilters),
+    [columnFilters],
+  )
   const findHits = useMemo(
     () =>
       collectResultFindHits(displayRows, displayColumns, findQuery, {
@@ -411,6 +436,8 @@ export function ResultGrid({
     setFindQuery('')
     setFindIndex(0)
     setColWidths(null)
+    setColumnFilters({})
+    setFilterMenuColumn(null)
     setNote(rows.length > 500 ? `已虚拟滚动渲染 ${rows.length.toLocaleString('zh-CN')} 行` : '')
   }, [columns, rows])
 
@@ -420,6 +447,19 @@ export function ResultGrid({
     window.addEventListener('mousedown', close)
     return () => window.removeEventListener('mousedown', close)
   }, [contextMenu])
+
+  useEffect(() => {
+    if (!filterMenuColumn) return
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node | null
+      if (filterMenuRef.current?.contains(target)) return
+      if (target instanceof Element && target.closest('.grid-col-filter-btn')) return
+      setFilterMenuColumn(null)
+    }
+    window.addEventListener('mousedown', onDown)
+    return () => window.removeEventListener('mousedown', onDown)
+  }, [filterMenuColumn])
+
 
   useEffect(() => {
     return onDataai('dataai:result-find', () => {
@@ -616,6 +656,35 @@ export function ResultGrid({
     setContextMenu(null)
   }
 
+
+  const openColumnFilter = (column: string) => {
+    const existing = columnFilters[column]
+    setFilterDraft(
+      existing
+        ? { mode: existing.mode, value: existing.value }
+        : { mode: 'contains', value: '' },
+    )
+    setFilterMenuColumn((current) => (current === column ? null : column))
+    setContextMenu(null)
+  }
+
+  const applyColumnFilterDraft = () => {
+    if (!filterMenuColumn) return
+    setColumnFilters((current) => setColumnFilter(current, filterMenuColumn, filterDraft))
+    setFilterMenuColumn(null)
+  }
+
+  const clearOneColumnFilter = (column: string) => {
+    setColumnFilters((current) => setColumnFilter(current, column, null))
+    if (filterMenuColumn === column) setFilterMenuColumn(null)
+  }
+
+  const clearAllColumnFilters = () => {
+    setColumnFilters({})
+    setFilterMenuColumn(null)
+    setNote('已清除全部列筛选')
+  }
+
   const commitEdit = async () => {
     if (!editing || !ws.activeConnection) return
     const column = displayColumns[editing.col]
@@ -723,6 +792,84 @@ export function ResultGrid({
           </button>
         </div>
       )}
+      {activeColumnFilterCount > 0 && (
+        <div className="result-col-filter-bar" role="status">
+          <span>
+            列筛选 {activeColumnFilterCount} 项 · 显示 {displayRows.length.toLocaleString('zh-CN')} /{' '}
+            {rows.length.toLocaleString('zh-CN')} 行
+          </span>
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            title="清除全部列筛选（不影响上方「筛选」框）"
+            onClick={clearAllColumnFilters}
+          >
+            清除列筛选
+          </button>
+        </div>
+      )}
+      {filterMenuColumn && (
+        <div
+          ref={filterMenuRef}
+          className="grid-col-filter-pop"
+          role="dialog"
+          aria-label={`列筛选：${filterMenuColumn}`}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div className="grid-col-filter-pop-title">筛选 · {filterMenuColumn}</div>
+          <label className="grid-col-filter-field">
+            <span>条件</span>
+            <select
+              value={filterDraft.mode}
+              onChange={(event) =>
+                setFilterDraft((current) => ({
+                  ...current,
+                  mode: event.target.value as ColumnFilterMode,
+                }))
+              }
+              aria-label="筛选条件"
+            >
+              {(Object.keys(COLUMN_FILTER_MODE_LABELS) as ColumnFilterMode[]).map((mode) => (
+                <option key={mode} value={mode}>
+                  {COLUMN_FILTER_MODE_LABELS[mode]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {(filterDraft.mode === 'contains' || filterDraft.mode === 'equals') && (
+            <label className="grid-col-filter-field">
+              <span>值</span>
+              <input
+                className="grid-col-filter-input"
+                value={filterDraft.value}
+                placeholder={filterDraft.mode === 'equals' ? '完全匹配…' : '包含…'}
+                aria-label="筛选值"
+                autoFocus
+                onChange={(event) =>
+                  setFilterDraft((current) => ({ ...current, value: event.target.value }))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    applyColumnFilterDraft()
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault()
+                    setFilterMenuColumn(null)
+                  }
+                }}
+              />
+            </label>
+          )}
+          <div className="grid-col-filter-actions">
+            <button type="button" className="btn btn-ghost tiny-btn" onClick={() => clearOneColumnFilter(filterMenuColumn)}>
+              清除
+            </button>
+            <button type="button" className="btn btn-primary tiny-btn" onClick={applyColumnFilterDraft}>
+              应用
+            </button>
+          </div>
+        </div>
+      )}
     <div
       className="grid-wrap"
       ref={parentRef}
@@ -827,6 +974,7 @@ export function ResultGrid({
                     pinnedAt >= 0 ? `is-pinned is-pinned-${pinnedAt}` : '',
                     sort?.column === column ? 'is-sorted' : '',
                     colWidths?.[column] != null ? 'has-autofit' : '',
+                    isColumnFilterActive(columnFilters[column]) ? 'is-col-filtered' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
@@ -987,6 +1135,13 @@ export function ResultGrid({
           <button
             type="button"
             role="menuitem"
+            onClick={() => openColumnFilter(contextMenu.column)}
+          >
+            列筛选…
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             onClick={() => autofitOneColumn(contextMenu.column)}
           >
             列宽适应（本列）
@@ -1042,7 +1197,7 @@ export function ResultGrid({
       )}
       {note && <p className="result-footnote">{note}</p>}
       <p className="result-footnote">
-        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；「列宽适应」或表头分隔线双击估算列宽。
+        表头点击排序；单击行号/单元格选择，Ctrl 多选、Shift 范围；右键可复制选中行 TSV/CSV/IN/VALUES；「钉」固定最多 2 列；「列宽适应」或表头分隔线双击估算列宽；表头「筛」可按列筛选（与上方筛选框叠加）。
         {sort ? ` 当前排序：${sort.column} ${sort.direction === 'asc' ? '升序' : '降序'}。` : ''}
       </p>
       {canEditSqlite && <p className="result-footnote">SQLite：双击单元格可编辑（需确认）。隐藏列 __rowid__ 用于定位行。</p>}

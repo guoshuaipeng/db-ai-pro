@@ -777,6 +777,86 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   cursor: col-resize;
   z-index: 5;
 }
+
+.grid-col-filter-btn {
+  flex: 0 0 auto;
+  margin-left: 2px;
+  padding: 0 5px;
+  height: 20px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-tertiary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.grid-col-filter-btn:hover,
+.grid-col-filter-btn.is-on {
+  color: var(--accent, #9eb4ff);
+  background: rgba(158, 180, 255, 0.12);
+}
+.grid th.is-col-filtered .grid-sort-btn {
+  color: var(--accent, #9eb4ff);
+}
+.result-col-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--ink-secondary);
+  background: rgba(158, 180, 255, 0.06);
+  border-bottom: 1px solid var(--line);
+}
+.grid-col-filter-pop {
+  position: absolute;
+  z-index: 30;
+  top: 36px;
+  left: 12px;
+  width: min(280px, calc(100% - 24px));
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #161b26;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.grid-col-filter-pop-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.grid-col-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+.grid-col-filter-field select,
+.grid-col-filter-input {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: #0f131a;
+  color: var(--ink);
+  font-size: 12px;
+}
+.grid-col-filter-field select:focus,
+.grid-col-filter-input:focus {
+  outline: none;
+  border-color: var(--accent, #9eb4ff);
+}
+.grid-col-filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
+}
 .grid td.is-number, .grid th.is-number { text-align: right; font-family: var(--mono); font-size: 12px; }
 .grid td.is-null { color: var(--ink-tertiary); }
 .grid tbody tr:hover td { background: rgba(255, 255, 255, 0.025); }
@@ -2410,6 +2490,7 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   font-variant-numeric: tabular-nums;
 }
 .result-grid-root {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
