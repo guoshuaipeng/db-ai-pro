@@ -19,6 +19,11 @@ import {
 import { inferSqliteTable } from '@shared/sql'
 import { formatCell, isNumericColumn } from '../format'
 import { cellClipboardText, cellDisplayHint, cellDisplayKind } from '@shared/cellDisplay'
+import {
+  columnHeadersCopiedToast,
+  formatColumnHeaders,
+  visibleResultColumns as headerNameColumns,
+} from '@shared/resultColumnHeaders'
 import { useWorkspace } from '../state/workspace'
 import { nextSortState, sortResultRows, type ResultSort } from '@shared/resultSort'
 import {
@@ -160,6 +165,26 @@ export function ResultToolbar({
         : `已复制 VALUES（${count} 行 · ${cols.length} 列）${selectionActive ? ' · 选中行' : ''}`,
     )
   }
+
+
+  const headerColumns = headerNameColumns(exportColumns)
+
+  const copyHeaders = async () => {
+    if (headerColumns.length === 0) return
+    await navigator.clipboard.writeText(formatColumnHeaders(headerColumns, 'tsv'))
+    setCopyNote(columnHeadersCopiedToast(headerColumns.length))
+  }
+
+  useEffect(() => {
+    return onDataai('dataai:result-copy-headers', () => {
+      void (async () => {
+        const cols = headerNameColumns(exportColumns)
+        if (cols.length === 0) return
+        await navigator.clipboard.writeText(formatColumnHeaders(cols, 'tsv'))
+        setCopyNote(columnHeadersCopiedToast(cols.length))
+      })()
+    })
+  }, [exportColumns])
 
   const exportCapped = (kind: 'markdown' | 'html' | 'excel', sourceRows: Record<string, unknown>[]) => {
     const { rows: capped, truncated, total } = capExportRows(sourceRows)
@@ -328,6 +353,15 @@ export function ResultToolbar({
           {selectionLabel}
         </span>
       )}
+      <button
+        type="button"
+        className="btn btn-ghost tiny-btn"
+        disabled={headerColumns.length === 0}
+        title="复制列名（制表符分隔，可粘贴到 Excel）"
+        onClick={() => void copyHeaders()}
+      >
+        复制列名
+      </button>
       <button
         type="button"
         className="btn btn-ghost tiny-btn"

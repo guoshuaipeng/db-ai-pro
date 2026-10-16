@@ -66,6 +66,10 @@ describe('filterCommands', () => {
     expect(filterCommands('对象树').some((item) => item.id === 'connection.revealInTree')).toBe(true)
   })
 
+  it('finds copy result headers command', () => {
+    expect(filterCommands('列名').some((item) => item.id === 'result.copyHeaders')).toBe(true)
+  })
+
   it('finds query templates', () => {
     expect(filterCommands('模板').some((item) => item.id === 'query.templates')).toBe(true)
     expect(filterCommands('COUNT').some((item) => item.id === 'query.tpl.selectCount')).toBe(true)

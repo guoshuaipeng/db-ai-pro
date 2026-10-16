@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "3.49.0",
+  "version": "3.50.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — reveal connection in tree",
+  "description": "DataAI TypeScript desktop — copy result column headers",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

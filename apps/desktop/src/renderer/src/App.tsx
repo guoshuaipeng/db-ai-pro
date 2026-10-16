@@ -192,6 +192,9 @@ export function App() {
         case 'result.autofitColumns':
           emitDataai('dataai:result-autofit-columns')
           break
+        case 'result.copyHeaders':
+          emitDataai('dataai:result-copy-headers')
+          break
         case 'editor.replace':
           emitDataai('dataai:replace')
           break

@@ -21,6 +21,7 @@ export type DataaiEventMap = {
   'dataai:goto-line': { line: number; column: number }
   'dataai:result-find': undefined
   'dataai:result-autofit-columns': undefined
+  'dataai:result-copy-headers': undefined
   'dataai:result-column-visibility': undefined
   'dataai:result-cell-preview': undefined
   'dataai:replace': undefined

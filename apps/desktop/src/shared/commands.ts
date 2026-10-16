@@ -182,6 +182,14 @@ export const COMMAND_CATALOG: CommandDef[] = [
     category: 'query',
   },
   {
+    id: 'result.copyHeaders',
+    title: '复制结果列名',
+    subtitle: '表头写入剪贴板（制表符分隔）',
+    keywords: 'headers columns copy 列名 表头 复制 结果',
+    shortcut: '结果工具栏「复制列名」',
+    category: 'query',
+  },
+  {
     id: 'editor.replace',
     title: '在编辑器中替换',
     subtitle: 'Monaco 查找替换',
@@ -483,6 +491,7 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '重新打开已关闭标签', keys: 'Ctrl+Shift+T' },
   { action: '拖拽调整标签顺序', keys: '标签栏拖拽（固定组内/未固定组内）' },
   { action: '在结果中查找', keys: '结果区 Ctrl+F · 工具栏「查找」' },
+  { action: '复制结果列名', keys: '结果工具栏「复制列名」· Ctrl+K' },
   { action: '列宽适应', keys: '工具栏「列宽适应」· Ctrl+K · 表头分隔线双击' },
   { action: '结果列筛选', keys: '表头「筛」· 右键「列筛选…」' },
   { action: '导出列选择', keys: '导出 CSV/JSON/MD/HTML/Excel 前勾选列' },
