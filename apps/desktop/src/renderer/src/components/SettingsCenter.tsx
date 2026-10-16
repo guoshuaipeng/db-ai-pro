@@ -68,6 +68,12 @@ import {
   sessionRestoreSettingOnLabel,
   sessionRestoreSettingTitle,
 } from '@shared/sessionRestoreUi'
+import {
+  slowQueryNotifySettingBody,
+  slowQueryNotifySettingTitle,
+  slowQueryThresholdSettingHint,
+  slowQueryThresholdSettingLabel,
+} from '@shared/slowQueryUi'
 import { useWorkspace } from '../state/workspace'
 import { getApi } from '../bridge'
 import {
@@ -527,7 +533,7 @@ function QueryPanel({
       {showSlow ? (
         <>
           <label className="field" style={{ marginTop: showTimeout ? 16 : 0 }}>
-            <span>慢查询阈值（毫秒）</span>
+            <span>{slowQueryThresholdSettingLabel()}</span>
             <input
               type="number"
               min={50}
@@ -537,7 +543,7 @@ function QueryPanel({
               onChange={(event) => setSlowMs(event.target.value)}
             />
           </label>
-          <p className="field-hint">超过该耗时在结果区与历史标记「慢」。默认 1000 ms。</p>
+          <p className="field-hint">{slowQueryThresholdSettingHint()}</p>
         </>
       ) : null}
       <div className="dialog-actions">
@@ -949,8 +955,8 @@ function AppearancePanel({
       {show('notifyOnSlowQuery') ? (
         <div className="contrast-block">
           <div className="contrast-copy">
-            <strong>通知：慢查询</strong>
-            <span>运行超过慢查询阈值时写入通知中心（默认关闭）。</span>
+            <strong>{slowQueryNotifySettingTitle()}</strong>
+            <span>{slowQueryNotifySettingBody()}</span>
           </div>
           <button
             type="button"

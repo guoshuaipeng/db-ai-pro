@@ -125,6 +125,14 @@ import { analyzeReadOnlySql, isReadOnlyEffective } from '@shared/readOnlySql'
 import { resolveReadOnlyBlockSource } from '@shared/readOnlySqlUi'
 import { DEFAULT_SLOW_QUERY_MS, isSlowQuery } from '@shared/slowQuery'
 import {
+  slowQueryNotifDetail,
+  slowQueryNotifTitle,
+  slowQueryNotifyDisabledToast,
+  slowQueryNotifyEnabledToast,
+  slowQueryThresholdSavedToast,
+  slowQueryToast,
+} from '@shared/slowQueryUi'
+import {
   DEFAULT_EDITOR_FONT_SIZE,
   clampEditorFontSize,
 } from '@shared/prefs'
@@ -618,7 +626,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     async (value: boolean) => {
       const next = await api.prefs.save({ notifyOnSlowQuery: value })
       setNotifyOnSlowQueryState(next.notifyOnSlowQuery === true)
-      pushToast('success', next.notifyOnSlowQuery ? '已开启慢查询通知' : '已关闭慢查询通知')
+      pushToast(
+        'success',
+        next.notifyOnSlowQuery ? slowQueryNotifyEnabledToast() : slowQueryNotifyDisabledToast(),
+      )
     },
     [api, pushToast],
   )
@@ -1650,7 +1661,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     async (ms: number) => {
       const next = await api.prefs.save({ slowQueryMs: ms })
       setSlowQueryMsState(next.slowQueryMs)
-      pushToast('success', `慢查询阈值已设为 ${next.slowQueryMs} ms`)
+      pushToast('success', slowQueryThresholdSavedToast(next.slowQueryMs))
     },
     [api, pushToast],
   )
@@ -1813,11 +1824,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           })
         }
         if (!quiet && isSlowQuery(elapsedMs, slowQueryMs)) {
+          pushToast('info', slowQueryToast(elapsedMs, slowQueryMs, connection.name))
           pushNotification({
             kind: 'slow',
             tone: 'warn',
-            title: '慢查询',
-            detail: `${elapsedMs} ms（阈值 ${slowQueryMs} ms）· ${connection.name}`,
+            title: slowQueryNotifTitle(),
+            detail: slowQueryNotifDetail(elapsedMs, slowQueryMs, connection.name),
           })
         }
         void recordQueryRecent(sql, connection.id)

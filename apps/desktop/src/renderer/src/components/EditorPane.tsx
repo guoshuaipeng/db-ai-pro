@@ -66,6 +66,11 @@ import { getApi } from '../bridge'
 import { useWorkspace } from '../state/workspace'
 import { pickFocusResultTarget } from '@shared/focusResult'
 import { isSlowQuery } from '@shared/slowQuery'
+import {
+  slowQueryBannerBody,
+  slowQueryBannerOpenHistoryLabel,
+  slowQueryBannerTitle,
+} from '@shared/slowQueryUi'
 import { QUERY_TEMPLATES, getQueryTemplate, type QueryTemplate } from '@shared/queryTemplates'
 import {
   snippetEmptyTemplatesBody,
@@ -1104,6 +1109,22 @@ export function ResultPane() {
               复制输出
             </button>
           )}
+        </div>
+      ) : null}
+
+      {results && slow && lastRun ? (
+        <div className="slow-query-banner" role="status">
+          <div className="slow-query-banner-copy">
+            <strong>{slowQueryBannerTitle()}</strong>
+            <span>{slowQueryBannerBody(lastRun.elapsedMs, ws.slowQueryMs)}</span>
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            onClick={() => emitDataai('dataai:open-history-slow')}
+          >
+            {slowQueryBannerOpenHistoryLabel()}
+          </button>
         </div>
       ) : null}
 
