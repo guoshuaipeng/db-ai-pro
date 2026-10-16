@@ -7,6 +7,10 @@ TypeScript 桌面端（当前主力迭代）见：[`apps/desktop/CHANGELOG.md`](
 
 TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭代里程碑；**1.0.0 为本地 RC**，尚未发布到 GitHub Releases。
 
+## 2.2.0 — M31 窗格布局持久化
+
+- 分隔比例持久化 + 钳制
+
 ## 2.1.0 — M30 全局对象搜索
 
 - Ctrl+K/P 搜索表/列/收藏

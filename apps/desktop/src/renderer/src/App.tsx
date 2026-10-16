@@ -18,6 +18,7 @@ import type { SqlFavorite } from '@shared/types'
 import { ShortcutsHelp } from './components/ShortcutsHelp'
 import { SettingsCenter, type SettingsTab } from './components/SettingsCenter'
 import { DEFAULT_PREFS, type AppPrefs } from '@shared/prefs'
+import { LAYOUT } from '@shared/layoutBounds'
 import { getApi } from './bridge'
 import { useWorkspace } from './state/workspace'
 
@@ -277,7 +278,7 @@ export function App() {
         {ws.sidebarOpen && (
           <Splitter
             label="调整连接栏宽度"
-            onDelta={(delta) => ws.setSidebarWidth(Math.min(420, Math.max(220, ws.sidebarWidth + delta)))}
+            onDelta={(delta) => ws.setSidebarWidth(ws.sidebarWidth + delta)}
           />
         )}
         <main
@@ -285,7 +286,9 @@ export function App() {
           style={
             ws.activeConnection && isKvDialect(ws.activeConnection.dialect)
               ? { gridTemplateRows: 'minmax(0, 1fr)' }
-              : { gridTemplateRows: `minmax(180px, ${ws.editorRatio}fr) 5px minmax(160px, 1fr)` }
+              : {
+                  gridTemplateRows: `minmax(${LAYOUT.editorMinPx}px, ${ws.editorRatio}fr) 5px minmax(${LAYOUT.resultsMinPx}px, 1fr)`,
+                }
           }
         >
           {ws.activeConnection && isKvDialect(ws.activeConnection.dialect) ? (
@@ -296,7 +299,7 @@ export function App() {
               <Splitter
                 label="调整编辑器高度"
                 orientation="horizontal"
-                onDelta={(delta) => ws.setEditorRatio(Math.min(3.2, Math.max(0.6, ws.editorRatio + delta / 280)))}
+                onDelta={(delta) => ws.setEditorRatio(ws.editorRatio + delta / 280)}
               />
               <ResultPane />
             </>
@@ -305,7 +308,7 @@ export function App() {
         {ws.aiOpen && (
           <Splitter
             label="调整助手宽度"
-            onDelta={(delta) => ws.setAiWidth(Math.min(520, Math.max(300, ws.aiWidth - delta)))}
+            onDelta={(delta) => ws.setAiWidth(ws.aiWidth - delta)}
           />
         )}
         {ws.aiOpen && <AiPane />}
@@ -358,7 +361,7 @@ export function App() {
         {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '2.1.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '2.2.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (
@@ -412,25 +415,67 @@ function Splitter({
   orientation?: 'vertical' | 'horizontal'
 }) {
   const last = useRef(0)
+  const dragging = useRef(false)
+  const [active, setActive] = useState(false)
+  const raf = useRef(0)
+  const pending = useRef(0)
+
+  const flush = () => {
+    raf.current = 0
+    const delta = pending.current
+    pending.current = 0
+    if (delta !== 0) onDelta(delta)
+  }
+
   const down = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    dragging.current = true
+    setActive(true)
     last.current = orientation === 'vertical' ? event.clientX : event.clientY
     event.currentTarget.setPointerCapture(event.pointerId)
+    document.body.classList.add(orientation === 'vertical' ? 'is-col-resizing' : 'is-row-resizing')
   }
   const move = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+    if (!dragging.current || !event.currentTarget.hasPointerCapture(event.pointerId)) return
     const point = orientation === 'vertical' ? event.clientX : event.clientY
     const delta = point - last.current
     last.current = point
-    if (delta !== 0) onDelta(delta)
+    if (delta === 0) return
+    pending.current += delta
+    if (!raf.current) raf.current = window.requestAnimationFrame(flush)
+  }
+  const up = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragging.current) return
+    dragging.current = false
+    setActive(false)
+    if (raf.current) {
+      window.cancelAnimationFrame(raf.current)
+      raf.current = 0
+    }
+    if (pending.current !== 0) flush()
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    document.body.classList.remove('is-col-resizing', 'is-row-resizing')
   }
   return (
     <div
-      className={orientation === 'vertical' ? 'splitter is-vertical' : 'splitter is-horizontal'}
+      className={
+        active
+          ? orientation === 'vertical'
+            ? 'splitter is-vertical is-dragging'
+            : 'splitter is-horizontal is-dragging'
+          : orientation === 'vertical'
+            ? 'splitter is-vertical'
+            : 'splitter is-horizontal'
+      }
       role="separator"
       aria-orientation={orientation}
       aria-label={label}
       onPointerDown={down}
       onPointerMove={move}
+      onPointerUp={up}
+      onPointerCancel={up}
     />
   )
 }

@@ -17,6 +17,7 @@ import { QUERY_HISTORY_LIMIT, pushQueryHistory } from '@shared/queryHistory'
 import { upsertFavorite, upsertFolder } from '@shared/favorites'
 import { DEFAULT_PREFS, normalizePrefs, type AppPrefs } from '@shared/prefs'
 import { normalizeSessionTabs, pickActiveEditorId, SESSION_TAB_CAP } from '@shared/sessionRestore'
+import { normalizeLayout } from '@shared/layoutBounds'
 import {
   EMPTY_RECENT,
   normalizeRecentItems,
@@ -261,12 +262,17 @@ export function loadWorkspace(): WorkspaceState | null {
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as WorkspaceState
     if (parsed.version !== 1 || !Array.isArray(parsed.editorTabs)) return null
     const editorTabs = normalizeSessionTabs(parsed.editorTabs, SESSION_TAB_CAP)
-    if (editorTabs.length === 0) return { ...parsed, editorTabs: [], activeEditorId: parsed.activeEditorId }
-    return {
+    const layout = normalizeLayout(parsed)
+    const base = {
       ...parsed,
+      ...layout,
       editorTabs,
-      activeEditorId: pickActiveEditorId(editorTabs, parsed.activeEditorId),
+      activeEditorId:
+        editorTabs.length === 0
+          ? parsed.activeEditorId
+          : pickActiveEditorId(editorTabs, parsed.activeEditorId),
     }
+    return base
   } catch {
     return null
   }
@@ -274,8 +280,10 @@ export function loadWorkspace(): WorkspaceState | null {
 
 export function saveWorkspace(state: WorkspaceState): void {
   const editorTabs = normalizeSessionTabs(state.editorTabs, SESSION_TAB_CAP)
+  const layout = normalizeLayout(state)
   writeJson('workspace.json', {
     ...state,
+    ...layout,
     version: 1,
     editorTabs,
     activeEditorId: pickActiveEditorId(editorTabs, state.activeEditorId),

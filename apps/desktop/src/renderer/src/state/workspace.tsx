@@ -26,6 +26,13 @@ import {
   pickActiveEditorId,
   SESSION_TAB_CAP,
 } from '@shared/sessionRestore'
+import {
+  clampAiWidth,
+  clampEditorRatio,
+  clampSidebarWidth,
+  LAYOUT,
+  normalizeLayout,
+} from '@shared/layoutBounds'
 import { formatExplainText } from '@shared/explain'
 import { analyzeDestructiveSql } from '@shared/destructiveSql'
 import type { TableStructure } from '@shared/tableStructure'
@@ -316,9 +323,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [importTarget, setImportTarget] = useState<ImportTarget | null>(null)
   const [schemaDiffOpen, setSchemaDiffOpen] = useState(false)
   const [schemaDiffSeed, setSchemaDiffSeed] = useState<SchemaDiffSeed | null>(null)
-  const [sidebarWidth, setSidebarWidth] = useState(252)
-  const [aiWidth, setAiWidth] = useState(360)
-  const [editorRatio, setEditorRatio] = useState(1.35)
+  const [sidebarWidth, setSidebarWidthState] = useState<number>(LAYOUT.sidebarDefault)
+  const [aiWidth, setAiWidthState] = useState<number>(LAYOUT.aiDefault)
+  const [editorRatio, setEditorRatioState] = useState<number>(LAYOUT.editorRatioDefault)
+  const setSidebarWidth = useCallback((value: number) => {
+    setSidebarWidthState(clampSidebarWidth(value))
+  }, [])
+  const setAiWidth = useCallback((value: number) => {
+    setAiWidthState(clampAiWidth(value))
+  }, [])
+  const setEditorRatio = useCallback((value: number) => {
+    setEditorRatioState(clampEditorRatio(value))
+  }, [])
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [aiOpen, setAiOpen] = useState(true)
   const requestRef = useRef<string | null>(null)
@@ -386,11 +402,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         let restoreConnectionId = workspace?.activeConnectionId ?? rows[0]?.id ?? null
         if (workspace) {
           setAiTurns(trimAiTurns(workspace.aiTurns ?? []))
-          setSidebarWidth(workspace.sidebarWidth || 252)
-          setAiWidth(workspace.aiWidth || 360)
-          setEditorRatio(workspace.editorRatio || 1.35)
-          setSidebarOpen(workspace.sidebarOpen)
-          setAiOpen(workspace.aiOpen)
+          {
+            const layout = normalizeLayout(workspace)
+            setSidebarWidthState(layout.sidebarWidth)
+            setAiWidthState(layout.aiWidth)
+            setEditorRatioState(layout.editorRatio)
+            setSidebarOpen(layout.sidebarOpen)
+            setAiOpen(layout.aiOpen)
+          }
           if (prefs.restoreTabsOnLaunch !== false && workspace.editorTabs.length > 0) {
             const tabs = normalizeSessionTabs(workspace.editorTabs, SESSION_TAB_CAP)
             setEditorTabs(tabs.length ? tabs : seedTabs())

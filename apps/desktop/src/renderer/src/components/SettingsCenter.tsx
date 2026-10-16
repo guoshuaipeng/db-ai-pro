@@ -84,7 +84,7 @@ export function SettingsCenter({ open, tab, onTab, onClose, prefs, onPrefs }: Se
             {tab === 'model' && <ModelPanel onClose={onClose} />}
             {tab === 'appearance' && <AppearancePanel prefs={prefs} onPrefs={onPrefs} />}
             {tab === 'query' && <QueryPanel prefs={prefs} onPrefs={onPrefs} />}
-            {tab === 'about' && <AboutPanel version={ws.meta?.version ?? '2.1.0'} encryption={ws.meta?.encryption} />}
+            {tab === 'about' && <AboutPanel version={ws.meta?.version ?? '2.2.0'} encryption={ws.meta?.encryption} />}
           </div>
         </section>
       </div>
@@ -243,7 +243,7 @@ function AppearancePanel({ prefs, onPrefs }: { prefs: AppPrefs; onPrefs: (prefs:
 
   return (
     <div className="settings-card">
-      <p className="settings-lead">界面保持深色一体壳。可调节信息密度与对比度，适配 1366×768 与更宽屏。</p>
+      <p className="settings-lead">界面保持深色一体壳。可调节信息密度与对比度，适配 1366×768 与更宽屏。侧栏 / 编辑器 / 助手分隔比例会自动记住。</p>
       <div className="density-grid" role="radiogroup" aria-label="界面密度">
         {(
           [

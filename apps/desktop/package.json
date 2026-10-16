@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — global object search",
+  "description": "DataAI TypeScript desktop — pane layout persistence",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",
