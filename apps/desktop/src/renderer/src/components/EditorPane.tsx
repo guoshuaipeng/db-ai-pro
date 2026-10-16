@@ -34,6 +34,12 @@ import { HistoryPanel } from './HistoryPanel'
 import { EmptyState } from './EmptyState'
 import { cancelRunButtonTitle } from '@shared/queryRunStatus'
 import {
+  multiRunEmptyMessagesBody,
+  runBufferStatementCount,
+  runSqlButtonLabel,
+  runSqlButtonTitle,
+} from '@shared/multiStatementRun'
+import {
   txnBeginButtonLabel,
   txnBeginButtonTitle,
   txnCommitButtonLabel,
@@ -299,6 +305,8 @@ export function EditorPane() {
     [ws.schema, ws.activeConnection?.id],
   )
 
+  const runStatementCount = runBufferStatementCount(ws.activeEditor?.sql)
+
   return (
     <section className="editor-pane" aria-label="SQL 编辑器">
       <ScrollTabs
@@ -515,9 +523,14 @@ export function EditorPane() {
               取消
             </button>
           ) : (
-            <button type="button" className="btn btn-primary run-btn" title="运行（有选区时只跑选中语句）" onClick={() => requestRun()}>
+            <button
+              type="button"
+              className="btn btn-primary run-btn"
+              title={runSqlButtonTitle(runStatementCount)}
+              onClick={() => requestRun()}
+            >
               <IconPlay />
-              运行
+              {runSqlButtonLabel(runStatementCount)}
             </button>
           )
         }
@@ -1027,6 +1040,13 @@ export function ResultPane() {
             sql={ws.activeEditor?.sql ?? ''}
             onToast={ws.pushToast}
             onRepair={(sql, error) => void ws.repairAi(sql, error)}
+          />
+        ) : !(active.message ?? '').trim() ? (
+          <EmptyState
+            compact
+            kicker="消息"
+            title="没有文本消息"
+            body={multiRunEmptyMessagesBody(runBufferStatementCount(ws.activeEditor?.sql))}
           />
         ) : (
           <pre className="message-log">{active.message}</pre>

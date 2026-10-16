@@ -30,6 +30,14 @@ import {
 } from '@shared/resultTabs'
 import { changesSchema, quoteIdentIfNeeded, statementTitle } from '@shared/sql'
 import {
+  multiRunFailureToast,
+  multiRunMessagesTabTitle,
+  multiRunNotificationDetail,
+  multiRunNotificationTitle,
+  multiRunSuccessToast,
+  summarizeMultiRun,
+} from '@shared/multiStatementRun'
+import {
   DEFAULT_PAGE_SIZE,
   buildBrowseSql,
   buildCountSql,
@@ -428,7 +436,7 @@ function resultsFrom(statements: StatementResult[]): ResultState {
       lines.push(`【${index + 1}】${base} · ${result.error ?? '执行失败'}`)
     }
   })
-  const messageTitle = gridTotal > 1 ? `消息 · ${gridTotal} 个结果集` : '消息'
+  const messageTitle = multiRunMessagesTabTitle(statements.length, gridTotal)
   tabs.push({
     id: 'messages',
     title: messageTitle,
@@ -1661,23 +1669,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           .reduce((sum, item) => sum + (item.rowsAffected ?? 0), 0),
       })
       if (editorId) setResultMap((current) => ({ ...current, [editorId]: next }))
+      const multiStats = summarizeMultiRun(statements)
       const failed = statements.find((statement) => !statement.ok)
       if (failed) {
-        pushToast('error', failed.error ?? '执行失败')
+        pushToast('error', multiRunFailureToast(multiStats, failed.error ?? '执行失败'))
         pushNotification({
           kind: 'query',
           tone: 'error',
-          title: '查询失败',
-          detail: failed.error ?? '执行失败',
+          title: multiRunNotificationTitle(multiStats, false),
+          detail: multiRunNotificationDetail(multiStats, connection.name),
         })
       } else {
         if (!quiet) {
-          pushToast('success', '执行完成')
+          pushToast('success', multiRunSuccessToast(multiStats))
           pushNotification({
             kind: 'query',
             tone: 'success',
-            title: '查询完成',
-            detail: `${rowCount} 行 · ${elapsedMs} ms · ${connection.name}`,
+            title: multiRunNotificationTitle(multiStats, true),
+            detail: multiRunNotificationDetail(multiStats, connection.name),
           })
         }
         if (!quiet && isSlowQuery(elapsedMs, slowQueryMs)) {
