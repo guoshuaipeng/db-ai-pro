@@ -326,6 +326,7 @@ type WorkspaceValue = {
   toasts: Toast[]
   pushToast: (tone: Toast['tone'], text: string) => void
   dismissToast: (id: string) => void
+  dismissAllToasts: () => void
   notifications: AppNotification[]
   unreadNotificationCount: number
   clearNotifications: () => void
@@ -2591,6 +2592,7 @@ ${sql.trim()}
     toasts,
     pushToast,
     dismissToast: (id) => setToasts((current) => current.filter((toast) => toast.id !== id)),
+    dismissAllToasts: () => setToasts([]),
     notifications,
     unreadNotificationCount: unreadNotificationCount(notifications),
     clearNotifications,

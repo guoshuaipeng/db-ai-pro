@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   NOTIF_CAP,
   createNotification,
+  filterNotifications,
   formatNotifTime,
+  formatNotificationClipboard,
   markAllNotificationsRead,
+  notifFilterEmptyBody,
+  notificationCopiedToast,
   prependNotification,
   shouldRecordNotification,
   unreadNotificationCount,
@@ -52,5 +56,29 @@ describe('notifications', () => {
     expect(unreadNotificationCount([a, b])).toBe(1)
     expect(markAllNotificationsRead([a, b]).every((row) => row.read)).toBe(true)
     expect(formatNotifTime(Date.now() - 10_000)).toBe('刚刚')
+  })
+})
+
+
+describe('notification filter / copy', () => {
+  const rows = [
+    createNotification({ kind: 'query', tone: 'error', title: 'SELECT 失败', detail: 'syntax near FROM', id: '1' }),
+    createNotification({ kind: 'import', tone: 'success', title: '导入完成', detail: '120 行', id: '2' }),
+    createNotification({ kind: 'slow', tone: 'warn', title: '慢查询', detail: '2100 ms', id: '3' }),
+  ]
+
+  it('filters by kind and query', () => {
+    expect(filterNotifications(rows, 'import')).toHaveLength(1)
+    expect(filterNotifications(rows, 'all', 'syntax')[0].id).toBe('1')
+    expect(filterNotifications(rows, 'query', '导入')).toHaveLength(0)
+  })
+
+  it('clipboard and empty body', () => {
+    const clip = formatNotificationClipboard(rows[0])
+    expect(clip).toContain('查询')
+    expect(clip).toContain('syntax')
+    expect(notificationCopiedToast(rows[0])).toContain('SELECT')
+    expect(notifFilterEmptyBody('slow', false)).toContain('慢查询')
+    expect(notifFilterEmptyBody('all', true)).toContain('没有匹配')
   })
 })

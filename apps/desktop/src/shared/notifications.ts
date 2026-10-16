@@ -94,3 +94,54 @@ export function notifKindLabel(kind: NotifKind): string {
       return '通知'
   }
 }
+
+
+export type NotifKindFilter = NotifKind | 'all'
+
+export const NOTIF_KIND_FILTERS: readonly { id: NotifKindFilter; label: string }[] = [
+  { id: 'all', label: '全部' },
+  { id: 'query', label: '查询' },
+  { id: 'import', label: '导入' },
+  { id: 'health', label: '探测' },
+  { id: 'slow', label: '慢查询' },
+]
+
+/** Filter by kind chip and optional title/detail keyword. */
+export function filterNotifications(
+  items: readonly AppNotification[],
+  kind: NotifKindFilter,
+  query = '',
+): AppNotification[] {
+  const q = query.trim().toLowerCase()
+  return items.filter((item) => {
+    if (kind !== 'all' && item.kind !== kind) return false
+    if (!q) return true
+    const hay = `${item.title} ${item.detail ?? ''} ${notifKindLabel(item.kind)}`.toLowerCase()
+    return hay.includes(q)
+  })
+}
+
+export function formatNotificationClipboard(item: AppNotification): string {
+  const title = item.title.trim() || '通知'
+  const detail = (item.detail ?? '').trim()
+  const head = `[${notifKindLabel(item.kind)}] ${title}`
+  return detail ? `${head}\n${detail}` : head
+}
+
+export function notificationCopiedToast(item: AppNotification): string {
+  const name = item.title.trim() || '通知'
+  const clipped = name.length > 24 ? `${name.slice(0, 23)}…` : name
+  return `已复制「${clipped}」`
+}
+
+export function notifFilterEmptyBody(kind: NotifKindFilter, hasQuery: boolean): string {
+  if (hasQuery && kind !== 'all') {
+    return '没有匹配的通知。试试更短的关键字，或切换到「全部」。'
+  }
+  if (hasQuery) return '没有匹配的通知。试试标题或详情中的关键字。'
+  if (kind !== 'all') {
+    const label = NOTIF_KIND_FILTERS.find((row) => row.id === kind)?.label ?? ''
+    return `暂无「${label}」类通知。查询失败、导入与探测会出现在这里。`
+  }
+  return '暂无通知。查询、导入与探测失败会出现在这里。'
+}

@@ -682,6 +682,7 @@ export function App() {
           ws.clearNotifications()
         }}
         onDismiss={ws.dismissNotification}
+        onToast={ws.pushToast}
       />
       {showWelcome ? (
         <WelcomePanel
@@ -791,9 +792,25 @@ export function App() {
         onZoomReset={zoomReset}
       />
       <div className="toast-viewport" aria-live="polite">
+        {ws.toasts.length > 1 ? (
+          <button
+            type="button"
+            className="toast-dismiss-all"
+            onClick={() => ws.dismissAllToasts()}
+          >
+            全部关闭
+          </button>
+        ) : null}
         {ws.toasts.map((toast) => (
-          <button key={toast.id} type="button" className={`toast is-${toast.tone}`} onClick={() => ws.dismissToast(toast.id)}>
-            {toast.text}
+          <button
+            key={toast.id}
+            type="button"
+            className={`toast is-${toast.tone}`}
+            title="点击关闭"
+            aria-label={`关闭通知：${toast.text}`}
+            onClick={() => ws.dismissToast(toast.id)}
+          >
+            <span className="toast-text">{toast.text}</span>
           </button>
         ))}
       </div>
