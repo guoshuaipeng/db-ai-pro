@@ -430,7 +430,18 @@ export function SqlEditor({
         const instance = instanceRef.current
         if (!instance) return
         instance.focus()
+        const sel = instance.getSelection()
+        const model = instance.getModel()
+        let charCount = 0
+        let lineCount = 0
+        if (sel && model && !sel.isEmpty()) {
+          charCount = model.getValueInRange(sel).length
+          lineCount = Math.max(1, sel.endLineNumber - sel.startLineNumber + 1)
+        }
         void instance.getAction('actions.find')?.run()
+        if (charCount > 0) {
+          emitDataai('dataai:editor-find-opened', { mode: 'find', charCount, lineCount })
+        }
       }),
     [],
   )
@@ -441,7 +452,18 @@ export function SqlEditor({
         const instance = instanceRef.current
         if (!instance) return
         instance.focus()
+        const sel = instance.getSelection()
+        const model = instance.getModel()
+        let charCount = 0
+        let lineCount = 0
+        if (sel && model && !sel.isEmpty()) {
+          charCount = model.getValueInRange(sel).length
+          lineCount = Math.max(1, sel.endLineNumber - sel.startLineNumber + 1)
+        }
         void instance.getAction('editor.action.startFindReplaceAction')?.run()
+        if (charCount > 0) {
+          emitDataai('dataai:editor-find-opened', { mode: 'replace', charCount, lineCount })
+        }
       }),
     [],
   )

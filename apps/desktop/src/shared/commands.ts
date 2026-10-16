@@ -152,7 +152,7 @@ export const COMMAND_CATALOG: CommandDef[] = [
   {
     id: 'editor.find',
     title: '在编辑器中查找',
-    subtitle: 'Monaco 查找',
+    subtitle: 'Ctrl+F · 有选区则填入；多行选区优先在选区内',
     keywords: 'find search 查找',
     shortcut: 'Ctrl+F',
     category: 'query',
@@ -248,7 +248,7 @@ export const COMMAND_CATALOG: CommandDef[] = [
   {
     id: 'editor.replace',
     title: '在编辑器中替换',
-    subtitle: 'Monaco 查找替换',
+    subtitle: 'Ctrl+H · 工具栏「替换」· 有选区则填入查找内容',
     keywords: 'replace 替换',
     shortcut: 'Ctrl+H',
     category: 'query',

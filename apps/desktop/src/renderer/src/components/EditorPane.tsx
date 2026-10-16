@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { emitDataai, onDataai } from '../appEvents'
 import { sqlFormatDoneToast, sqlFormatDoneTone } from '@shared/sqlFormatFeedback'
+import {
+  editorFindButtonTitle,
+  editorFindOpenedToast,
+} from '@shared/editorFindFeedback'
 import { pickRunSql, type RunSqlPick } from '@shared/runSqlPick'
 import { suggestionsFromSchema } from '@shared/schemaSuggest'
 import { IconClock, IconPlay, IconPlus, IconStar, IconStop } from './icons'
@@ -85,6 +89,17 @@ export function EditorPane() {
     return onDataai('dataai:sql-format-done', (detail) => {
       if (!detail) return
       ws.pushToast(sqlFormatDoneTone(detail.changed), sqlFormatDoneToast(detail))
+    })
+  }, [ws])
+
+  useEffect(() => {
+    return onDataai('dataai:editor-find-opened', (detail) => {
+      if (!detail) return
+      const message = editorFindOpenedToast(detail.mode, {
+        charCount: detail.charCount,
+        lineCount: detail.lineCount,
+      })
+      if (message) ws.pushToast('info', message)
     })
   }, [ws])
 
@@ -377,6 +392,24 @@ export function EditorPane() {
               title="切换行注释（Ctrl+/）"
             >
               注释
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost run-btn"
+              onClick={() => emitDataai('dataai:find')}
+              disabled={ws.running}
+              title={editorFindButtonTitle('find', ws.editorSelection)}
+            >
+              查找
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost run-btn"
+              onClick={() => emitDataai('dataai:replace')}
+              disabled={ws.running}
+              title={editorFindButtonTitle('replace', ws.editorSelection)}
+            >
+              替换
             </button>
             <button
               type="button"

@@ -12,6 +12,11 @@ export type DataaiEventMap = {
   'dataai:focus-ai-composer': undefined
   'dataai:format-sql': undefined
   'dataai:sql-format-done': { changed: boolean; fromSelection: boolean }
+  'dataai:editor-find-opened': {
+    mode: 'find' | 'replace'
+    charCount: number
+    lineCount: number
+  }
   'dataai:request-run': undefined
   /** SqlEditor responds with selected-or-full SQL for Run. */
   'dataai:peek-run-sql': {
