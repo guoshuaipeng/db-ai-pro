@@ -32,6 +32,11 @@ import {
 import { LAYOUT } from '@shared/layoutBounds'
 import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
 import { statusBarRerunAction } from '@shared/statusBarRerun'
+import {
+  countSqlStatements,
+  sqlStatementCountLabel,
+  sqlStatementCountTitle,
+} from '@shared/sqlStatementCount'
 import { shouldCancelRunOnEscape } from '@shared/escCancelRun'
 import { isUiModalOpen } from './uiModal'
 import { getApi } from './bridge'
@@ -448,6 +453,10 @@ export function App() {
     ws.meta?.encryption === 'os' ? '密钥：系统' : ws.meta?.encryption === 'unavailable' ? '密钥：不可用' : null
 
   const lastRunSlow = ws.lastRun ? isSlowQuery(ws.lastRun.elapsedMs, ws.slowQueryMs) : false
+  const statementCount = countSqlStatements(ws.activeEditor?.sql)
+  const statementCountLabel = sqlStatementCountLabel(statementCount)
+  const statementCountTitle =
+    statementCountLabel != null ? sqlStatementCountTitle(statementCount) : undefined
   const lastRunLabel = ws.lastRun
     ? `${ws.lastRun.kind === 'explain' ? '计划' : '结果'} ${ws.lastRun.rows} 行 · ${formatElapsedMs(ws.lastRun.elapsedMs)}${
         lastRunSlow ? ' · 慢' : ''
@@ -557,6 +566,8 @@ export function App() {
         health={ws.activeConnection ? ws.healthById[ws.activeConnection.id] : undefined}
         cursorLine={ws.cursor.line}
         cursorColumn={ws.cursor.column}
+        statementCountLabel={statementCountLabel}
+        statementCountTitle={statementCountTitle}
         readOnlyActive={ws.readOnlyActive}
         globalReadOnly={ws.globalReadOnly}
         txnOpen={ws.txnOpen}

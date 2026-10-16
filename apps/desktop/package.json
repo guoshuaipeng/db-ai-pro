@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "3.51.0",
+  "version": "3.52.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — double-click tab strip new tab",
+  "description": "DataAI TypeScript desktop — multi-statement count",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",

@@ -13,6 +13,9 @@ type StatusBarProps = {
   health: ConnHealth | undefined
   cursorLine: number
   cursorColumn: number
+  /** e.g. 「3 条语句」 when editor has 2+ statements. */
+  statementCountLabel?: string | null
+  statementCountTitle?: string
   readOnlyActive: boolean
   globalReadOnly: boolean
   txnOpen: boolean
@@ -41,6 +44,8 @@ export function StatusBar({
   health,
   cursorLine,
   cursorColumn,
+  statementCountLabel,
+  statementCountTitle,
   readOnlyActive,
   globalReadOnly,
   txnOpen,
@@ -119,6 +124,15 @@ export function StatusBar({
       >
         行 {cursorLine} · 列 {cursorColumn}
       </button>
+      {statementCountLabel ? (
+        <span
+          className="status-item status-muted"
+          title={statementCountTitle || statementCountLabel}
+          aria-label={statementCountTitle || statementCountLabel}
+        >
+          {statementCountLabel}
+        </span>
+      ) : null}
       {readOnlyActive ? (
         <span
           className="status-item is-readonly"
