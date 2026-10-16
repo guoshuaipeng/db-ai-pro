@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { buildExplainSql, formatExplainText, primaryStatement } from './explain'
+import {
+  buildExplainSql,
+  detectExplainWarnings,
+  formatExplainText,
+  primaryStatement,
+  summarizeExplainText,
+} from './explain'
 
 describe('buildExplainSql', () => {
   it('wraps sqlite with EXPLAIN QUERY PLAN', () => {
@@ -41,5 +47,23 @@ describe('helpers', () => {
     const text = formatExplainText(['id', 'detail'], [{ id: 1, detail: 'SCAN' }])
     expect(text).toContain('SCAN')
     expect(text.split('\n')[0]).toContain('id')
+  })
+})
+
+
+describe('summarizeExplainText', () => {
+  it('flags empty plan marker', () => {
+    const empty = summarizeExplainText('（没有返回执行计划行）')
+    expect(empty.isEmpty).toBe(true)
+    expect(empty.lineCount).toBe(0)
+  })
+
+  it('detects sequential scan warnings', () => {
+    const text = 'Seq Scan on orders  (cost=0.00..12.00)'
+    expect(detectExplainWarnings(text)).toContain('顺序扫描')
+    const summary = summarizeExplainText(text)
+    expect(summary.isEmpty).toBe(false)
+    expect(summary.warnings).toContain('顺序扫描')
+    expect(summary.statusLabel).toContain('需关注')
   })
 })

@@ -1937,6 +1937,67 @@ body.is-col-resizing .grid-col-resizer {
 }
 
 
+
+.explain-plan-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 10px 12px 14px;
+  min-height: 0;
+}
+.explain-plan-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.explain-plan-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+}
+.explain-plan-kicker {
+  font-size: 11px;
+  color: var(--accent, #5b8def);
+  font-weight: 600;
+}
+.explain-plan-status {
+  font-size: 12px;
+  color: var(--ink);
+}
+.explain-plan-elapsed {
+  font-size: 11px;
+  color: var(--muted, #8b95a8);
+}
+.explain-plan-warnings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.explain-plan-warn-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(230, 195, 92, 0.45);
+  color: #e6c35c;
+  background: rgba(230, 195, 92, 0.1);
+}
+.explain-plan-ok-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted, #8b95a8);
+}
+.explain-plan-body {
+  margin: 0;
+  max-height: min(50vh, 420px);
+  overflow: auto;
+}
+.explain-plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .plan-log {
   font-family: var(--mono);
   font-size: 12px;

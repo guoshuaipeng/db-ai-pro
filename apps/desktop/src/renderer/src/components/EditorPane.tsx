@@ -15,6 +15,7 @@ import { SqlEditor } from './SqlEditor'
 import { ResultGrid, ResultToolbar } from './ResultGrid'
 import { ResultSummaryBar } from './ResultSummaryBar'
 import { QueryErrorPanel } from './QueryErrorPanel'
+import { ExplainPlanPanel } from './ExplainPlanPanel'
 import { resultGridEmptyBody, resultGridEmptyTitle } from '@shared/resultSummary'
 import { looksLikeQueryError } from '@shared/queryError'
 import {
@@ -849,7 +850,14 @@ export function ResultPane() {
           body="编写 SQL 后按 F5 或 Ctrl+Enter 运行。可用 Ctrl+Shift+E 查看执行计划，Ctrl+Space 补全表与列。"
         />
       )}
-      {active?.kind === 'plan' && <pre className="message-log plan-log">{active.message}</pre>}
+      {active?.kind === 'plan' && (
+        <ExplainPlanPanel
+          message={active.message ?? ''}
+          elapsedMs={lastRun?.kind === 'explain' ? lastRun.elapsedMs : undefined}
+          onToast={ws.pushToast}
+          onReexplain={() => void ws.explain()}
+        />
+      )}
       {active?.kind === 'message' &&
         (looksLikeQueryError(active.message) || lastRun?.ok === false ? (
           <QueryErrorPanel
