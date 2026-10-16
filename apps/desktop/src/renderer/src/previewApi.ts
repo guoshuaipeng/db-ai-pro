@@ -1,6 +1,8 @@
 import type { DesktopApi } from '@shared/contract'
+import { connectionErrorNode } from '@shared/schema'
 import { draftLocalAnswer, SAMPLE_CONNECTION_ID, SAMPLE_CONNECTION_NAME } from '@shared/session'
 import { splitSql } from '@shared/sql'
+import { dialectInfo } from '@shared/types'
 import type {
   AiEvent,
   AiSettingsInput,
@@ -46,13 +48,21 @@ function sampleSchema(): SchemaNode {
         name: 'retail.db',
         displayName: 'retail.db',
         connectionId: SAMPLE_CONNECTION_ID,
-        children: tables.map(([name, label]) => ({
+          children: tables.map(([name, label]) => ({
           id: `${SAMPLE_CONNECTION_ID}:table:${name}`,
           kind: 'table' as const,
           name,
           displayName: label,
+          dialect: 'sqlite' as const,
           connectionId: SAMPLE_CONNECTION_ID,
           tableName: name,
+          children:
+            name === 'customers'
+              ? [
+                  { id: `${SAMPLE_CONNECTION_ID}:column:customers:name`, kind: 'column' as const, name: 'name', displayName: 'name', dataType: 'TEXT', connectionId: SAMPLE_CONNECTION_ID, tableName: name },
+                  { id: `${SAMPLE_CONNECTION_ID}:column:customers:region`, kind: 'column' as const, name: 'region', displayName: 'region', dataType: 'TEXT', connectionId: SAMPLE_CONNECTION_ID, tableName: name },
+                ]
+              : undefined,
         })),
       },
     ],
@@ -130,6 +140,14 @@ function previewRows(sql: string): StatementResult {
 
 function schemaFor(connection: ConnectionPublic): SchemaNode {
   if (connection.id === SAMPLE_CONNECTION_ID || connection.dialect === 'sqlite') return sampleSchema()
+  if (dialectInfo(connection.dialect).executable) {
+    return connectionErrorNode(
+      connection.id,
+      connection.name,
+      connection.dialect,
+      '界面预览不能打开网络数据库。请在桌面应用里测试连接并查询。',
+    )
+  }
   return {
     id: connection.id,
     kind: 'connection',
@@ -166,7 +184,7 @@ export function createPreviewApi(): DesktopApi {
   }
 
   return {
-    meta: async () => ({ version: '0.1.0', encryption: 'unavailable', mode: 'preview' }),
+    meta: async () => ({ version: '0.2.0', encryption: 'unavailable', mode: 'preview' }),
     connections: {
       list: async () => memory.connections,
       save: async (input: ConnectionInput) => {
@@ -210,6 +228,16 @@ export function createPreviewApi(): DesktopApi {
         }
         memory.connections = [...memory.connections, created]
         return created
+      },
+      test: async (input: ConnectionInput) => {
+        if (input.dialect === 'sqlite') {
+          if (!input.filePath?.trim()) return { ok: false, error: '请选择 SQLite 文件' }
+          return { ok: true }
+        }
+        if (dialectInfo(input.dialect).executable) {
+          return { ok: false, error: '界面预览不能打开网络数据库。请在桌面应用里测试。' }
+        }
+        return { ok: false, error: '这个类型还不能查询。' }
       },
       pickFile: async () => null,
     },

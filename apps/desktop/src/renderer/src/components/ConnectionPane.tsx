@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { dialectInfo } from '@shared/types'
-import type { SchemaNode } from '@shared/types'
-import { IconDatabase, IconMore, IconPlus, IconSearch, IconTable } from './icons'
+import type { Dialect, SchemaNode } from '@shared/types'
+import { IconColumn, IconDatabase, IconMore, IconPlus, IconSearch, IconTable } from './icons'
 import { useWorkspace } from '../state/workspace'
 
 export function ConnectionPane() {
@@ -38,7 +38,7 @@ export function ConnectionPane() {
         <div className="empty">
           <IconDatabase />
           <p className="empty-title">还没有连接</p>
-          <p className="empty-copy">添加 SQLite 文件即可浏览对象并查询。其他数据库可以先保存。</p>
+          <p className="empty-copy">SQLite、MySQL、MariaDB 和 PostgreSQL 可以直接查询。其他类型可以先保存。</p>
           <button type="button" className="btn btn-primary" onClick={ws.openCreate}>
             新建连接
           </button>
@@ -86,10 +86,12 @@ function TreeNode({
   const hasChildren = (node.children?.length ?? 0) > 0
   const selected = ws.selectedId === node.id || (node.kind === 'connection' && ws.activeConnection?.id === node.id && !ws.selectedId)
   const connection = ws.connections.find((item) => item.id === node.id)
+  const failed = node.status === 'error'
+  const rowClass = ['tree-row', selected ? 'is-selected' : '', failed ? 'is-error' : ''].filter(Boolean).join(' ')
 
   return (
     <div className="tree-branch">
-      <div className={selected ? 'tree-row is-selected' : 'tree-row'} style={{ paddingLeft: 8 + depth * 14 }} role="treeitem" aria-expanded={hasChildren ? expanded : undefined}>
+      <div className={rowClass} style={{ paddingLeft: 8 + depth * 14 }} role="treeitem" aria-expanded={hasChildren ? expanded : undefined}>
         {hasChildren ? (
           <button
             type="button"
@@ -103,10 +105,13 @@ function TreeNode({
           <span className="twist-spacer" />
         )}
         <button type="button" className="tree-hit" onClick={() => ws.selectNode(node)}>
-          <span className="tree-icon">{node.kind === 'table' ? <IconTable /> : <IconDatabase />}</span>
+          <span className="tree-icon">
+            {node.kind === 'table' ? <IconTable /> : node.kind === 'column' ? <IconColumn /> : <IconDatabase />}
+          </span>
           <span className="tree-label">{node.displayName}</span>
           {node.kind === 'table' && node.displayName !== node.name && <span className="tree-meta">{node.name}</span>}
-          {node.kind === 'connection' && node.dialect && <span className="tree-meta">{dialectInfo(node.dialect).label}</span>}
+          {node.kind === 'column' && node.dataType && <span className="col-type">{node.dataType}</span>}
+          {node.kind === 'connection' && node.dialect && <DialectBadge dialect={node.dialect} />}
         </button>
         {node.kind === 'connection' && connection && (
           <button
@@ -130,13 +135,26 @@ function TreeNode({
           </div>
         )}
       </div>
-      {node.note && <p className="tree-note">{node.note}</p>}
+      {node.note && node.name !== 'connect-error' && <p className="tree-note">{node.note}</p>}
       {expanded &&
-        node.children?.map((child) => (
-          <TreeNode key={child.id} node={child} depth={depth + 1} menuId={menuId} onMenu={onMenu} />
-        ))}
+        node.children?.map((child) =>
+          child.kind === 'note' && child.name === 'connect-error' ? (
+            <div key={child.id} className="connect-error" role="alert">
+              <strong>{child.displayName}</strong>
+              <p>{child.note}</p>
+            </div>
+          ) : (
+            <TreeNode key={child.id} node={child} depth={depth + 1} menuId={menuId} onMenu={onMenu} />
+          ),
+        )}
     </div>
   )
+}
+
+function DialectBadge({ dialect }: { dialect: Dialect }) {
+  const info = dialectInfo(dialect)
+  const pending = info.executable ? '' : ' badge-pending'
+  return <span className={`badge badge-${dialect}${pending}`}>{info.label}</span>
 }
 
 function Caret() {

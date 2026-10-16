@@ -17,9 +17,9 @@ export type DialectInfo = {
 
 export const DIALECTS: DialectInfo[] = [
   { id: 'sqlite', label: 'SQLite', executable: true },
-  { id: 'mysql', label: 'MySQL', defaultPort: 3306, executable: false },
-  { id: 'mariadb', label: 'MariaDB', defaultPort: 3306, executable: false },
-  { id: 'postgresql', label: 'PostgreSQL', defaultPort: 5432, executable: false },
+  { id: 'mysql', label: 'MySQL', defaultPort: 3306, executable: true },
+  { id: 'mariadb', label: 'MariaDB', defaultPort: 3306, executable: true },
+  { id: 'postgresql', label: 'PostgreSQL', defaultPort: 5432, executable: true },
   { id: 'oracle', label: 'Oracle', defaultPort: 1521, executable: false },
   { id: 'sqlserver', label: 'SQL Server', defaultPort: 1433, executable: false },
   { id: 'hive', label: 'Hive', defaultPort: 10000, executable: false },
@@ -28,6 +28,10 @@ export const DIALECTS: DialectInfo[] = [
 
 export function dialectInfo(id: Dialect): DialectInfo {
   return DIALECTS.find((item) => item.id === id) ?? DIALECTS[0]
+}
+
+export function needsServerDatabase(dialect: Dialect): boolean {
+  return dialect === 'mysql' || dialect === 'mariadb' || dialect === 'postgresql'
 }
 
 export type ConnectionInput = {
@@ -59,12 +63,14 @@ export type ConnectionPublic = {
 
 export type SchemaNode = {
   id: string
-  kind: 'connection' | 'database' | 'table' | 'note'
+  kind: 'connection' | 'database' | 'table' | 'column' | 'note'
   name: string
   displayName: string
   dialect?: Dialect
   connectionId?: string
   tableName?: string
+  dataType?: string
+  status?: 'ok' | 'error'
   note?: string
   children?: SchemaNode[]
 }

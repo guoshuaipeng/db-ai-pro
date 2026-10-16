@@ -4,6 +4,7 @@ import { ConnectionPane } from './components/ConnectionPane'
 import { EditorPane, ResultPane } from './components/EditorPane'
 import { AiPane } from './components/AiPane'
 import { Dialogs } from './components/Dialogs'
+import { dialectInfo } from '@shared/types'
 import { useWorkspace } from './state/workspace'
 
 export function App() {
@@ -111,10 +112,25 @@ export function App() {
       </div>
       <footer className="statusbar">
         <span className="status-item">
-          <span className={ws.activeConnection ? 'status-dot is-on' : 'status-dot'} />
-          {ws.activeConnection
-            ? `${ws.activeConnection.dialect === 'sqlite' ? 'SQLite' : ws.activeConnection.dialect} · ${ws.activeConnection.name}`
-            : '未连接'}
+          <span
+            className={
+              ws.schema.some((node) => node.id === ws.activeConnection?.id && node.status === 'error')
+                ? 'status-dot is-bad'
+                : ws.activeConnection
+                  ? 'status-dot is-on'
+                  : 'status-dot'
+            }
+          />
+          {ws.activeConnection ? (
+            <>
+              <span className={`badge badge-${ws.activeConnection.dialect}${dialectInfo(ws.activeConnection.dialect).executable ? '' : ' badge-pending'}`}>
+                {dialectInfo(ws.activeConnection.dialect).label}
+              </span>
+              {ws.activeConnection.name}
+            </>
+          ) : (
+            '未连接'
+          )}
         </span>
         <span className="status-item">
           行 {ws.cursor.line} · 列 {ws.cursor.column}
@@ -122,7 +138,7 @@ export function App() {
         <span className="status-spacer" />
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item">F5 运行</span>
-        <span className="status-item">{ws.meta?.version ?? '0.1.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '0.2.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (

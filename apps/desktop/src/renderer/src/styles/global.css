@@ -224,6 +224,37 @@ button:disabled { cursor: default; opacity: 0.45; }
 .twist svg { transition: transform var(--motion) ease; }
 .twist.is-open svg { transform: rotate(90deg); }
 .tree-note { margin: 2px 12px 8px 36px; color: var(--ink-tertiary); font-size: 12px; }
+.tree-row.is-error .tree-icon { color: var(--danger); }
+.col-type { margin-left: auto; color: var(--ink-tertiary); font-size: 11px; font-family: var(--mono); padding-right: 4px; }
+.badge {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  letter-spacing: 0.01em;
+}
+.badge-sqlite { color: #c9ceda; background: rgba(201, 206, 218, 0.08); border-color: rgba(201, 206, 218, 0.2); }
+.badge-mysql, .badge-mariadb { color: #e7c27a; background: rgba(231, 194, 122, 0.1); border-color: rgba(231, 194, 122, 0.28); }
+.badge-postgresql { color: #9ec4e8; background: rgba(120, 168, 214, 0.12); border-color: rgba(120, 168, 214, 0.32); }
+.badge-oracle, .badge-sqlserver, .badge-hive, .badge-redis, .badge-pending {
+  color: var(--ink-tertiary);
+  background: transparent;
+  border-color: var(--line);
+}
+.connect-error {
+  margin: 4px 10px 10px 34px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(240, 160, 168, 0.38);
+  background: rgba(240, 160, 168, 0.08);
+}
+.connect-error strong { display: block; color: #ffc1c6; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.connect-error p { margin: 0; color: var(--ink-secondary); font-size: 12px; line-height: 1.45; }
+.status-item .badge { margin-left: 0; }
+.status-dot.is-bad { background: var(--danger); }
 .menu {
   position: absolute;
   right: 8px;
@@ -605,6 +636,7 @@ button:disabled { cursor: default; opacity: 0.45; }
 .field-span { grid-column: 1 / -1; }
 .field-hint { margin: 0 0 8px; color: var(--ink-tertiary); font-size: 12px; }
 .field-error { margin: 0 0 8px; color: var(--danger); }
+.field-ok { margin: 0 0 8px; color: var(--good); }
 .file-row { display: flex; gap: 8px; }
 .file-row input { flex: 1; }
 .checkline { display: flex; align-items: center; gap: 8px; margin: -2px 0 10px; color: var(--ink-secondary); }

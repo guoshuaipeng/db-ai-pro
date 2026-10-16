@@ -195,9 +195,9 @@
 
 **注意**: 语言设置会保存在 Windows 注册表（Windows）或配置文件（其他平台）中。
 
-## TypeScript 桌面端（Milestone 1）
+## TypeScript 桌面端（Milestone 2）
 
-PyQt6 应用仍是当前完整产品，运行方式不变：`python src/main.py`。新的桌面壳在 `apps/desktop`，使用 Electron + Vite + React + TypeScript，这一版接通 SQLite 查询和流式自然语言转 SQL。界面是深色 IDE 布局：连接树、Monaco、可横向滚动的标签、深色助手卡片。
+PyQt6 应用仍是当前完整产品，运行方式不变：`python src/main.py`。新的桌面壳在 `apps/desktop`，使用 Electron + Vite + React + TypeScript。SQLite、MySQL / MariaDB 和 PostgreSQL 可以在主进程里查表、看列、跑 SQL。界面是深色 IDE 布局：连接树、方言色标、Monaco、可横向滚动的标签、深色助手卡片。Linux tip 包用 `npm run pack:tip`，不替换现有的 PyInstaller 安装包。
 
 ```bash
 cd apps/desktop

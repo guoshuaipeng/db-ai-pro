@@ -9,8 +9,8 @@ import {
   type ReactNode,
 } from 'react'
 import { getApi } from '../bridge'
-import { statementTitle } from '@shared/sql'
-import { selectAll } from '@shared/sql'
+import { connectionErrorNode } from '@shared/schema'
+import { changesSchema, identStyle, selectAll, statementTitle } from '@shared/sql'
 import { INITIAL_TABS } from '@shared/session'
 import { filterNodes } from '@shared/tree'
 import type {
@@ -83,6 +83,7 @@ type WorkspaceValue = {
   askDelete: (connection: ConnectionPublic) => void
   closeDialog: () => void
   saveConnection: (input: ConnectionInput) => Promise<void>
+  testConnection: (input: ConnectionInput) => Promise<{ ok: boolean; error?: string }>
   deleteConnection: (id: string) => Promise<void>
   restoreSample: () => Promise<void>
   pickFile: (mode: 'open' | 'save') => Promise<string | null>
@@ -189,23 +190,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             return await api.connections.schema(connection.id)
           } catch (error) {
             const message = error instanceof Error ? error.message : '无法读取对象'
-            return {
-              id: connection.id,
-              kind: 'connection' as const,
-              name: connection.name,
-              displayName: connection.name,
-              dialect: connection.dialect,
-              connectionId: connection.id,
-              children: [
-                {
-                  id: `${connection.id}:error`,
-                  kind: 'note' as const,
-                  name: 'error',
-                  displayName: message,
-                  connectionId: connection.id,
-                },
-              ],
-            }
+            return connectionErrorNode(connection.id, connection.name, connection.dialect, message)
           }
         }),
       )
@@ -213,7 +198,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setExpanded((current) => {
         const next = { ...current }
         const walk = (node: SchemaNode) => {
-          if (next[node.id] === undefined) next[node.id] = true
+          if (next[node.id] === undefined) next[node.id] = node.kind !== 'table'
           node.children?.forEach(walk)
         }
         nodes.forEach(walk)
@@ -335,8 +320,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setActiveEditorId(existing.id)
       return
     }
+    const dialect = node.dialect ?? connections.find((item) => item.id === node.connectionId)?.dialect ?? 'sqlite'
     const id = crypto.randomUUID()
-    setEditorTabs((tabs) => [...tabs, { id, title, sql: selectAll(node.tableName!) }])
+    setEditorTabs((tabs) => [...tabs, { id, title, sql: selectAll(node.tableName!, identStyle(dialect)) }])
     setActiveEditorId(id)
   }
 
@@ -384,6 +370,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const failed = statements.find((statement) => !statement.ok)
       if (failed) pushToast('error', failed.error ?? '执行失败')
       else pushToast('success', '执行完成')
+      if (statements.some((statement) => statement.ok && changesSchema(statement.statement))) {
+        const rows = await api.connections.list()
+        setConnections(rows)
+        await refreshSchema(rows, activeConnection.id)
+      }
     } catch (error) {
       pushToast('error', error instanceof Error ? error.message : '执行失败')
     } finally {
@@ -451,9 +442,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   const selected = findNode(schema, selectedId)
-  const breadcrumb = [activeConnection?.name, selected?.kind === 'table' ? selected.displayName : null]
-    .filter(Boolean)
-    .join('  /  ')
+  const tableCrumb =
+    selected?.kind === 'table' && selected.connectionId === activeConnection?.id ? selected.displayName : null
+  const breadcrumb = [activeConnection?.name, tableCrumb].filter(Boolean).join('  /  ')
 
   const value: WorkspaceValue = {
     ready,
@@ -506,6 +497,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     askDelete: (connection) => setDialog({ type: 'delete', connection }),
     closeDialog: () => setDialog(null),
     saveConnection,
+    testConnection: (input) => api.connections.test(input),
     deleteConnection,
     restoreSample,
     pickFile: (mode) => api.connections.pickFile(mode),
