@@ -143,7 +143,17 @@ function TreeNode({
         ) : (
           <span className="twist-spacer" />
         )}
-        <button type="button" className="tree-hit" onClick={() => ws.selectNode(node)}>
+        <button
+          type="button"
+          className="tree-hit"
+          onClick={() => ws.selectNode(node)}
+          onDoubleClick={() => {
+            if (node.kind === 'table' && node.connectionId && node.tableName) {
+              ws.openTableStructure(node.connectionId, node.tableName)
+            }
+          }}
+          title={node.kind === 'table' ? '单击打开查询 · 双击查看结构' : undefined}
+        >
           <span className="tree-icon">
             {node.kind === 'table' ? <IconTable /> : node.kind === 'column' ? <IconColumn /> : node.kind === 'key' ? <IconColumn /> : <IconDatabase />}
           </span>
@@ -164,6 +174,17 @@ function TreeNode({
             <IconMore />
           </button>
         )}
+        {node.kind === 'table' && node.connectionId && node.tableName && (
+          <button
+            type="button"
+            className="icon-btn tiny"
+            aria-label={`${node.displayName}的操作`}
+            aria-expanded={menuId === node.id}
+            onClick={() => onMenu(menuId === node.id ? null : node.id)}
+          >
+            <IconMore />
+          </button>
+        )}
         {menuId === node.id && connection && (
           <div className="menu" role="menu">
             <button type="button" role="menuitem" onClick={() => { onMenu(null); ws.openEdit(connection) }}>
@@ -171,6 +192,30 @@ function TreeNode({
             </button>
             <button type="button" role="menuitem" className="danger" onClick={() => { onMenu(null); ws.askDelete(connection) }}>
               删除
+            </button>
+          </div>
+        )}
+        {menuId === node.id && node.kind === 'table' && node.connectionId && node.tableName && (
+          <div className="menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onMenu(null)
+                ws.openTableStructure(node.connectionId!, node.tableName!)
+              }}
+            >
+              查看结构
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onMenu(null)
+                ws.openTableQuery(node.connectionId!, node.tableName!)
+              }}
+            >
+              打开查询
             </button>
           </div>
         )}

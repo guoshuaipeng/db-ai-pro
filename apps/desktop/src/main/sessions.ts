@@ -8,6 +8,13 @@ import { describeMssql, executeMssql, listMssqlSchema, openMssql } from './mssql
 import { describePostgres, executePostgres, listPostgresSchema, openPostgres } from './postgres'
 import { closeRedis, listRedisSchema, probeRedis, scanRedisKeys } from './redis'
 import { databaseExists, describeSchema, executeScript, listSchema, openDatabase } from './sqlite'
+import {
+  inspectMssqlTable,
+  inspectMysqlTable,
+  inspectPostgresTable,
+  inspectSqliteTable,
+} from './tableStructure'
+import type { TableStructure } from '@shared/tableStructure'
 
 export type { SqlTarget } from './target'
 
@@ -286,4 +293,16 @@ export async function describeSession(target: SqlTarget): Promise<string> {
   if (session.kind === 'mysql') return describeMysql(session.conn)
   if (session.kind === 'postgres') return describePostgres(session.client)
   return describeMssql(session.pool)
+}
+
+
+export async function inspectTableSession(target: SqlTarget, tableName: string): Promise<TableStructure> {
+  if (target.dialect === 'redis') throw new Error('Redis 没有表结构')
+  const name = tableName.trim()
+  if (!name) throw new Error('请指定表名')
+  const session = await openSession(target)
+  if (session.kind === 'sqlite') return inspectSqliteTable(session.db, target, name)
+  if (session.kind === 'mysql') return inspectMysqlTable(session.conn, target, name)
+  if (session.kind === 'postgres') return inspectPostgresTable(session.client, target, name)
+  return inspectMssqlTable(session.pool, target, name)
 }

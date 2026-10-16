@@ -59,6 +59,11 @@ const api: DesktopApi = {
       return result.results
     },
     cancel: (requestId: string) => ipcRenderer.invoke('sql:cancel', requestId),
+    tableStructure: async (payload) => {
+      const result = await ipcRenderer.invoke('sql:tableStructure', payload)
+      if (result?.error) throw new Error(result.error)
+      return result.structure
+    },
     updateSqliteCell: async (payload) => {
       const result = await ipcRenderer.invoke('sql:updateSqliteCell', payload)
       if (result?.error) throw new Error(result.error)

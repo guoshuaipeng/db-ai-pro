@@ -16,6 +16,7 @@ import type {
 } from './types'
 import type { ConnectionBundle, ImportPlanItem } from './connectionTransfer'
 import type { AppPrefs } from './prefs'
+import type { TableStructure } from './tableStructure'
 
 export type DesktopApi = {
   meta: () => Promise<AppMeta>
@@ -61,6 +62,7 @@ export type DesktopApi = {
       timeoutMs?: number
     }) => Promise<StatementResult[]>
     cancel: (requestId: string) => Promise<{ ok: boolean }>
+    tableStructure: (payload: { connectionId: string; table: string }) => Promise<TableStructure>
     updateSqliteCell: (payload: {
       connectionId: string
       table: string

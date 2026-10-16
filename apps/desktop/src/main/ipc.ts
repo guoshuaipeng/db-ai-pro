@@ -25,6 +25,7 @@ import {
   executeSession,
   probeTarget,
   schemaForSession,
+  inspectTableSession,
 } from './sessions'
 import type { SqlTarget } from './target'
 import { readRedisValue, scanRedisKeys } from './redis'
@@ -331,7 +332,22 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     }
   })
 
-  ipcMain.handle('sql:cancel', async (_event, requestId: string) => {
+  ipcMain.handle(
+    'sql:tableStructure',
+    async (_event, payload: { connectionId: string; table: string }) => {
+      const row = getConnection(payload.connectionId)
+      if (!row) return { error: '连接不存在' }
+      if (!dialectInfo(row.dialect).executable) return { error: '这个类型还不能查看表结构' }
+      try {
+        const structure = await inspectTableSession(targetFromStored(row), payload.table)
+        return { structure }
+      } catch (error) {
+        return { error: explainDbError(error) }
+      }
+    },
+  )
+
+    ipcMain.handle('sql:cancel', async (_event, requestId: string) => {
     if (!requestId || typeof requestId !== 'string') return { ok: false }
     return cancelQuery(requestId)
   })

@@ -17,6 +17,7 @@ import { isKvDialect } from '@shared/types'
 import { trimAiTurns } from '@shared/aiMemory'
 import { formatExplainText } from '@shared/explain'
 import { analyzeDestructiveSql } from '@shared/destructiveSql'
+import type { TableStructure } from '@shared/tableStructure'
 import type { ImportPlanItem } from '@shared/connectionTransfer'
 import type { AiIntent } from '@shared/types'
 import type {
@@ -144,6 +145,11 @@ type WorkspaceValue = {
   deleteConnection: (id: string) => Promise<void>
   restoreSample: () => Promise<void>
   pickFile: (mode: 'open' | 'save') => Promise<string | null>
+  structureTarget: { connectionId: string; tableName: string } | null
+  openTableStructure: (connectionId: string, tableName: string) => void
+  closeTableStructure: () => void
+  openTableQuery: (connectionId: string, tableName: string) => void
+  loadTableStructure: (connectionId: string, tableName: string) => Promise<TableStructure>
   sidebarWidth: number
   aiWidth: number
   editorRatio: number
@@ -236,6 +242,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AiSettingsPublic | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [dialog, setDialog] = useState<DialogState>(null)
+  const [structureTarget, setStructureTarget] = useState<{ connectionId: string; tableName: string } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(252)
   const [aiWidth, setAiWidth] = useState(360)
   const [editorRatio, setEditorRatio] = useState(1.35)
@@ -406,6 +413,34 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [schema, search, connections],
   )
   const searchStats = useMemo(() => countTreeNodes(filteredSchema), [filteredSchema])
+
+  const openTableStructure = (connectionId: string, tableName: string) => {
+    setActiveConnectionId(connectionId)
+    setStructureTarget({ connectionId, tableName })
+  }
+
+  const closeTableStructure = () => setStructureTarget(null)
+
+  const openTableQuery = (connectionId: string, tableName: string) => {
+    setActiveConnectionId(connectionId)
+    const connection = connections.find((item) => item.id === connectionId)
+    const dialect = connection?.dialect ?? 'sqlite'
+    if (dialect === 'redis') return
+    const title = tableName
+    const existing = editorTabs.find((tab) => tab.title === title)
+    if (existing) {
+      setActiveEditorId(existing.id)
+      return
+    }
+    const id = crypto.randomUUID()
+    const sql = dialect === 'sqlite' ? selectAllWithRowid(tableName) : selectAll(tableName, identStyle(dialect))
+    setEditorTabs((tabs) => [...tabs, { id, title, sql }])
+    setActiveEditorId(id)
+    setTargetTable(tableName)
+  }
+
+  const loadTableStructure = async (connectionId: string, tableName: string) =>
+    api.sql.tableStructure({ connectionId, table: tableName })
 
   const selectNode = (node: SchemaNode) => {
     setSelectedId(node.id)
@@ -1000,6 +1035,11 @@ ${sql.trim()}
     deleteConnection,
     restoreSample,
     pickFile: (mode) => api.connections.pickFile(mode),
+    structureTarget,
+    openTableStructure,
+    closeTableStructure,
+    openTableQuery,
+    loadTableStructure,
     sidebarWidth,
     aiWidth,
     editorRatio,
@@ -1031,3 +1071,4 @@ export function useWorkspace(): WorkspaceValue {
   if (!value) throw new Error('Workspace 尚未就绪')
   return value
 }
+

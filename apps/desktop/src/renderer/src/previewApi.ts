@@ -271,6 +271,18 @@ export function createPreviewApi(): DesktopApi {
     },
     sql: {
       cancel: async (_requestId: string) => ({ ok: true as const }),
+      tableStructure: async ({ table }) => ({
+        connectionId: 'preview',
+        tableName: table,
+        dialect: 'sqlite' as const,
+        columns: [
+          { name: 'id', dataType: 'INTEGER', nullable: false, defaultValue: null, primaryKey: true, ordinal: 0 },
+          { name: 'name', dataType: 'TEXT', nullable: true, defaultValue: null, primaryKey: false, ordinal: 1 },
+        ],
+        indexes: [{ name: 'sqlite_autoindex_' + table + '_1', unique: true, primary: true, columns: ['id'] }],
+        ddl: 'CREATE TABLE "' + table + '" (\n  "id" INTEGER PRIMARY KEY,\n  "name" TEXT\n);',
+        ddlLabel: 'sqlite_master',
+      }),
       execute: async ({ connectionId, sql }) => {
         const results = splitSql(sql).map((statement) => previewRows(statement))
         const failed = results.find((item) => !item.ok)

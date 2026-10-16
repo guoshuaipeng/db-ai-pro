@@ -9,6 +9,7 @@ import { EditorPane, ResultPane } from './components/EditorPane'
 import { AiPane } from './components/AiPane'
 import { RedisPane } from './components/RedisPane'
 import { Dialogs } from './components/Dialogs'
+import { TableStructurePanel } from './components/TableStructurePanel'
 import { CommandPalette } from './components/CommandPalette'
 import { ShortcutsHelp } from './components/ShortcutsHelp'
 import { SettingsCenter, type SettingsTab } from './components/SettingsCenter'
@@ -297,7 +298,7 @@ export function App() {
         {encryptionLabel && <span className="status-item status-muted">{encryptionLabel}</span>}
         <span className="status-item">{ws.meta?.mode === 'preview' ? '界面预览' : '本机'}</span>
         <span className="status-item status-muted">Ctrl+K</span>
-        <span className="status-item">{ws.meta?.version ?? '0.12.0'}</span>
+        <span className="status-item">{ws.meta?.version ?? '0.13.0'}</span>
       </footer>
       <div className="toast-viewport" aria-live="polite">
         {ws.toasts.map((toast) => (
@@ -307,6 +308,7 @@ export function App() {
         ))}
       </div>
       <Dialogs />
+      <TableStructurePanel />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onRun={runCommand} />
       <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <SettingsCenter
