@@ -694,6 +694,8 @@ export function App() {
           onImportConnections={() => void ws.importConnections()}
           onOpenRecentTable={ws.openRecentTable}
           onOpenRecentQuery={ws.openRecentQuery}
+          onOpenPalette={() => setPaletteOpen(true)}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
           onDismiss={() => void dismissWelcome()}
         />
       ) : (

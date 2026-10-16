@@ -85,6 +85,12 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     keywords: '缩放 zoom 放大 缩小 百分比 Ctrl+0',
   },
   {
+    id: 'welcomeDismissed',
+    tab: 'appearance',
+    title: '无连接时显示欢迎页',
+    keywords: '欢迎 引导 onboarding welcome 示例库',
+  },
+  {
     id: 'queryTimeoutSec',
     tab: 'query',
     title: '软超时',

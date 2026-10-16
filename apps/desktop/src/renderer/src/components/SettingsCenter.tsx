@@ -521,6 +521,16 @@ function AppearancePanel({
     }
   }
 
+  const setWelcomeVisible = async (showWelcome: boolean) => {
+    setBusy(true)
+    try {
+      const next = await api.prefs.save({ welcomeDismissed: !showWelcome })
+      onPrefs(next)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const show = (id: string) => visibleIds.has(id)
 
   return (
@@ -775,6 +785,26 @@ function AppearancePanel({
               onChange={(event) => void setEditorFontSize(Number(event.target.value))}
             />
           </label>
+        </div>
+      ) : null}
+      {show('welcomeDismissed') ? (
+        <div className="contrast-block">
+          <div className="contrast-copy">
+            <strong>无连接时显示欢迎页</strong>
+            <span>
+              尚无数据库连接时展示引导（示例库 / 新建 / 导入与上手提示）。关闭后可在此重新打开。
+            </span>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!prefs.welcomeDismissed}
+            className={!prefs.welcomeDismissed ? 'contrast-switch is-on' : 'contrast-switch'}
+            disabled={busy}
+            onClick={() => void setWelcomeVisible(prefs.welcomeDismissed)}
+          >
+            {!prefs.welcomeDismissed ? '已开启' : '已关闭'}
+          </button>
         </div>
       ) : null}
     </div>

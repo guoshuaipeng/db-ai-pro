@@ -1,5 +1,12 @@
 import { Mark, IconDatabase, IconPlus, IconClock } from './icons'
+import { EmptyState } from './EmptyState'
 import { recentQueryTitle, type RecentQueryItem, type RecentTableItem } from '@shared/recentItems'
+import {
+  WELCOME_TIPS,
+  welcomeRecentEmptyBody,
+  welcomeTipsHeading,
+  type WelcomeTipAction,
+} from '@shared/welcomeTips'
 
 type WelcomePanelProps = {
   version?: string
@@ -10,6 +17,8 @@ type WelcomePanelProps = {
   onImportConnections: () => void
   onOpenRecentTable: (item: RecentTableItem) => void
   onOpenRecentQuery: (item: RecentQueryItem) => void
+  onOpenPalette: () => void
+  onOpenShortcuts: () => void
   onDismiss: () => void
 }
 
@@ -22,9 +31,17 @@ export function WelcomePanel({
   onImportConnections,
   onOpenRecentTable,
   onOpenRecentQuery,
+  onOpenPalette,
+  onOpenShortcuts,
   onDismiss,
 }: WelcomePanelProps) {
   const hasRecent = recentTables.length > 0 || recentQueries.length > 0
+
+  const runTip = (action: WelcomeTipAction) => {
+    if (action === 'palette') onOpenPalette()
+    else if (action === 'shortcuts') onOpenShortcuts()
+    else onRestoreSample()
+  }
 
   return (
     <section className="welcome-panel" aria-label="欢迎使用 DataAI">
@@ -51,6 +68,7 @@ export function WelcomePanel({
               <strong>打开示例 SQLite</strong>
               <span>一键恢复零售示例库，立刻可跑查询</span>
             </span>
+            <kbd className="welcome-action-kbd">推荐</kbd>
           </button>
           <button type="button" className="welcome-action" onClick={onNewConnection}>
             <span className="welcome-action-icon" aria-hidden="true">
@@ -72,9 +90,30 @@ export function WelcomePanel({
           </button>
         </div>
 
-        {hasRecent && (
-          <div className="welcome-recent">
-            <div className="welcome-recent-head">最近</div>
+        <div className="welcome-tips" aria-label={welcomeTipsHeading()}>
+          <div className="welcome-tips-head">{welcomeTipsHeading()}</div>
+          <div className="welcome-tips-grid">
+            {WELCOME_TIPS.map((tip) => (
+              <button
+                key={tip.id}
+                type="button"
+                className="welcome-tip"
+                onClick={() => runTip(tip.action)}
+              >
+                <div className="welcome-tip-top">
+                  <strong>{tip.title}</strong>
+                  {tip.shortcut ? <kbd className="welcome-tip-kbd">{tip.shortcut}</kbd> : null}
+                </div>
+                <p className="welcome-tip-body">{tip.body}</p>
+                <span className="welcome-tip-cta">{tip.actionLabel}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="welcome-recent">
+          <div className="welcome-recent-head">最近</div>
+          {hasRecent ? (
             <div className="welcome-recent-cols">
               {recentTables.length > 0 && (
                 <div className="welcome-recent-block">
@@ -109,11 +148,24 @@ export function WelcomePanel({
                 </div>
               )}
             </div>
-          </div>
-        )}
+          ) : (
+            <EmptyState
+              compact
+              title="还没有最近表或查询"
+              body={welcomeRecentEmptyBody()}
+              actions={
+                <button type="button" className="btn btn-primary" onClick={onRestoreSample}>
+                  打开示例库
+                </button>
+              }
+            />
+          )}
+        </div>
 
         <div className="welcome-foot">
-          <p className="welcome-hint">有连接后将自动进入工作区。也可随时在侧栏新建连接。</p>
+          <p className="welcome-hint">
+            有连接后将自动进入工作区。若关闭欢迎页，可在 设置 → 外观 重新开启。
+          </p>
           <button type="button" className="btn btn-ghost tiny-btn" onClick={onDismiss}>
             不再显示欢迎页
           </button>
@@ -122,4 +174,3 @@ export function WelcomePanel({
     </section>
   )
 }
-
