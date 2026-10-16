@@ -3,6 +3,7 @@ import type { AppPrefs, UiDensity } from '@shared/prefs'
 import { Mark } from './icons'
 import { useWorkspace } from '../state/workspace'
 import { getApi } from '../bridge'
+import { RELEASE_NOTES_SNIPPET } from '@shared/releaseNotes'
 
 export type SettingsTab = 'model' | 'appearance' | 'query' | 'about'
 
@@ -83,7 +84,7 @@ export function SettingsCenter({ open, tab, onTab, onClose, prefs, onPrefs }: Se
             {tab === 'model' && <ModelPanel onClose={onClose} />}
             {tab === 'appearance' && <AppearancePanel prefs={prefs} onPrefs={onPrefs} />}
             {tab === 'query' && <QueryPanel prefs={prefs} onPrefs={onPrefs} />}
-            {tab === 'about' && <AboutPanel version={ws.meta?.version ?? '0.15.0'} encryption={ws.meta?.encryption} />}
+            {tab === 'about' && <AboutPanel version={ws.meta?.version ?? '1.0.0'} encryption={ws.meta?.encryption} />}
           </div>
         </section>
       </div>
@@ -304,6 +305,15 @@ function AboutPanel({
           </button>
         </div>
         {note && <p className="field-hint">{note}</p>}
+      </article>
+      <article className="settings-card about-card about-changelog">
+        <h4 className="about-changelog-title">{RELEASE_NOTES_SNIPPET.title}</h4>
+        <ul className="about-changelog-list">
+          {RELEASE_NOTES_SNIPPET.items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+        <p className="field-hint">完整日志：仓库内 apps/desktop/CHANGELOG.md</p>
       </article>
     </div>
   )

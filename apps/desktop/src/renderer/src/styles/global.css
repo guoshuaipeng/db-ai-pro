@@ -1623,6 +1623,21 @@ button:disabled { cursor: default; opacity: 0.45; }
 }
 .about-meta strong { color: var(--ink); font-weight: 600; }
 .about-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.about-changelog-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.about-changelog-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: var(--ink-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.about-changelog-list li + li { margin-top: 4px; }
+
 
 .app[data-density="compact"] .side-head,
 .app[data-density="compact"] .ai-head {

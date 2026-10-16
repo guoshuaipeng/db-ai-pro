@@ -7,6 +7,21 @@
 
 > 📖 **English**: See [README_en.md](README_en.md) for English documentation.
 
+## TypeScript 桌面端（1.0 RC）
+
+当前主力本机迭代在 [`apps/desktop`](apps/desktop)（Electron + React + Monaco），版本 **1.0.0 本地 RC**。
+
+```bash
+cd apps/desktop
+npm install --ignore-scripts
+npm test && npm run typecheck && npm run smoke
+npm run dev
+```
+
+更新说明见 [`apps/desktop/CHANGELOG.md`](apps/desktop/CHANGELOG.md) 与根目录 [`CHANGELOG.md`](CHANGELOG.md)。便携 tip 包需 Visual Studio Build Tools，详见桌面端 README。
+
+---
+
 ## 功能特性
 
 - ✅ **多数据库支持**

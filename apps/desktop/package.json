@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "0.18.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — FK / relations glance",
+  "description": "DataAI TypeScript desktop — 1.0.0 local RC",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",
