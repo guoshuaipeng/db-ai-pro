@@ -3584,3 +3584,16 @@ body.is-col-resizing *, body.is-row-resizing * { cursor: inherit !important; }
   font-size: 12px;
   color: var(--accent, #9eb4ff);
 }
+
+.query-param-writeback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--ink-secondary);
+  cursor: pointer;
+}
+.query-param-writeback input {
+  accent-color: var(--accent, #9eb4ff);
+}

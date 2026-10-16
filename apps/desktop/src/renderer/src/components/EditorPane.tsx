@@ -21,6 +21,12 @@ import {
   hasSnippetVars,
 } from '@shared/snippetVars'
 import {
+  buildQueryParamDefaults,
+  rememberQueryParamValues,
+  sqlNeedsQueryParams,
+} from '@shared/queryParams'
+import { QueryParamDialog } from './QueryParamDialog'
+import {
   PAGE_SIZES,
   canNextPage,
   canPrevPage,
@@ -36,6 +42,9 @@ export function EditorPane() {
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [pendingTemplate, setPendingTemplate] = useState<QueryTemplate | null>(null)
   const [varValues, setVarValues] = useState<Record<string, string>>({})
+  const [sessionParamValues, setSessionParamValues] = useState<Record<string, string>>({})
+  const [paramDialog, setParamDialog] = useState<'run' | 'fill' | null>(null)
+  const [paramValues, setParamValues] = useState<Record<string, string>>({})
   const templatesRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => onDataai('dataai:open-favorites', () => {
@@ -82,6 +91,37 @@ export function EditorPane() {
     ws.insertFavoriteSql(expanded)
   }
 
+  const openParamDialog = (mode: 'run' | 'fill') => {
+    const sql = ws.activeEditor?.sql ?? ''
+    if (!sqlNeedsQueryParams(sql)) {
+      if (mode === 'run') void ws.run()
+      else window.alert('当前 SQL 没有 {{name}} 占位符')
+      return
+    }
+    setParamValues(
+      buildQueryParamDefaults(sql, sessionParamValues, {
+        table: ws.targetTable || null,
+        limit: '100',
+      }),
+    )
+    setParamDialog(mode)
+  }
+
+  const requestRun = () => {
+    openParamDialog('run')
+  }
+
+  const confirmParams = (values: Record<string, string>, writeBack: boolean) => {
+    const sql = ws.activeEditor?.sql ?? ''
+    const mode = paramDialog
+    setParamDialog(null)
+    if (!mode) return
+    const expanded = expandSnippet(sql, values)
+    setSessionParamValues((prev) => rememberQueryParamValues(prev, values))
+    if (writeBack) ws.updateSql(expanded)
+    if (mode === 'run') void ws.runSqlText(expanded)
+  }
+
   useEffect(
     () =>
       onDataai('dataai:insert-template', (detail) => {
@@ -101,6 +141,44 @@ export function EditorPane() {
         )
       }),
     [ws],
+  )
+
+  useEffect(
+    () =>
+      onDataai('dataai:request-run', () => {
+        const sql = ws.activeEditor?.sql ?? ''
+        if (!sqlNeedsQueryParams(sql)) {
+          void ws.run()
+          return
+        }
+        setParamValues(
+          buildQueryParamDefaults(sql, sessionParamValues, {
+            table: ws.targetTable || null,
+            limit: '100',
+          }),
+        )
+        setParamDialog('run')
+      }),
+    [ws, sessionParamValues],
+  )
+
+  useEffect(
+    () =>
+      onDataai('dataai:fill-query-params', () => {
+        const sql = ws.activeEditor?.sql ?? ''
+        if (!sqlNeedsQueryParams(sql)) {
+          window.alert('当前 SQL 没有 {{name}} 占位符')
+          return
+        }
+        setParamValues(
+          buildQueryParamDefaults(sql, sessionParamValues, {
+            table: ws.targetTable || null,
+            limit: '100',
+          }),
+        )
+        setParamDialog('fill')
+      }),
+    [ws, sessionParamValues],
   )
 
   const suggestions = useMemo(
@@ -249,6 +327,15 @@ export function EditorPane() {
             <button
               type="button"
               className="btn btn-ghost run-btn"
+              disabled={ws.running || !ws.activeEditor}
+              title="填写 {{name}} 参数（运行前也可自动弹出）"
+              onClick={() => openParamDialog('fill')}
+            >
+              填写参数
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost run-btn"
               onClick={() => void ws.explain()}
               disabled={ws.running}
               title="EXPLAIN / 执行计划"
@@ -266,7 +353,7 @@ export function EditorPane() {
                 取消
               </button>
             ) : (
-              <button type="button" className="btn btn-primary run-btn" onClick={() => void ws.run()}>
+              <button type="button" className="btn btn-primary run-btn" onClick={() => requestRun()}>
                 <IconPlay />
                 运行
               </button>
@@ -340,6 +427,17 @@ export function EditorPane() {
             </div>
           </div>
         )}
+
+        <QueryParamDialog
+          open={paramDialog != null && Boolean(ws.activeEditor)}
+          sql={ws.activeEditor?.sql ?? ''}
+          title={paramDialog === 'run' ? '填写参数并运行' : '填写查询参数'}
+          initialValues={paramValues}
+          primaryLabel={paramDialog === 'run' ? '运行' : '完成'}
+          onCancel={() => setParamDialog(null)}
+          onConfirm={confirmParams}
+        />
+
       </div>
     </section>
   )

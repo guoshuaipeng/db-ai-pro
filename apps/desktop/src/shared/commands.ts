@@ -38,9 +38,17 @@ export const COMMAND_CATALOG: CommandDef[] = [
   {
     id: 'query.run',
     title: '运行当前 SQL',
-    subtitle: '执行编辑器中的语句',
+    subtitle: '执行编辑器中的语句（含 {{name}} 时先填参数）',
     keywords: 'run execute f5',
     shortcut: 'Ctrl+Enter',
+    category: 'query',
+  },
+  {
+    id: 'query.fillParams',
+    title: '填写查询参数',
+    subtitle: '为当前 SQL 的 {{name}} 占位符赋值',
+    keywords: 'params variables 参数 占位符 填写',
+    shortcut: '工具栏「填写参数」',
     category: 'query',
   },
   {
@@ -395,4 +403,5 @@ export const SHORTCUT_HELP: { action: string; keys: string }[] = [
   { action: '导出列选择', keys: '导出 CSV/JSON/MD/HTML/Excel 前勾选列' },
   { action: '显示 / 隐藏结果列', keys: '工具栏「显示列」· 右键「隐藏此列」' },
   { action: '单元格全文预览', keys: '双击单元格 · 工具栏「查看单元格」' },
+  { action: '填写查询参数', keys: '工具栏「填写参数」· Ctrl+K · 运行时自动' },
 ]

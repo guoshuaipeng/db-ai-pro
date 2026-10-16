@@ -5,6 +5,8 @@ export type DataaiEventMap = {
   'dataai:focus-tree-search': undefined
   'dataai:focus-editor': undefined
   'dataai:format-sql': undefined
+  'dataai:request-run': undefined
+  'dataai:fill-query-params': undefined
   'dataai:toggle-comment': undefined
   'dataai:find': undefined
   'dataai:result-find': undefined

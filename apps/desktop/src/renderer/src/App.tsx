@@ -125,7 +125,10 @@ export function App() {
           ws.reopenClosedTab()
           break
         case 'query.run':
-          void ws.run()
+          emitDataai('dataai:request-run')
+          break
+        case 'query.fillParams':
+          emitDataai('dataai:fill-query-params')
           break
         case 'query.explain':
           void ws.explain()
@@ -276,7 +279,7 @@ export function App() {
       }
       if (event.key === 'F5' || (meta && event.key === 'Enter')) {
         event.preventDefault()
-        void ws.run()
+        emitDataai('dataai:request-run')
         return
       }
       if (meta && event.shiftKey && key === 'e') {
