@@ -6,6 +6,7 @@ import { rowsToCsv, rowsToJson } from '@shared/exportTable'
 import { inferSqliteTable } from '@shared/sql'
 import { formatCell, isNumericColumn } from '../format'
 import { useWorkspace } from '../state/workspace'
+import { nextSortState, sortResultRows, type ResultSort } from '@shared/resultSort'
 
 const ROW_HEIGHT = 32
 
@@ -149,12 +150,23 @@ export function ResultGrid({
 }) {
   const ws = useWorkspace()
   const parentRef = useRef<HTMLDivElement>(null)
-  const numeric = Object.fromEntries(columns.map((column) => [column, isNumericColumn(rows, column)]))
   const [focus, setFocus] = useState({ row: 0, col: 0 })
   const [editing, setEditing] = useState<{ row: number; col: number; draft: string } | null>(null)
   const [note, setNote] = useState('')
+  const [sort, setSort] = useState<ResultSort | null>(null)
+  const [pinned, setPinned] = useState<string[]>([])
 
   const visibleColumns = useMemo(() => columns.filter((column) => column !== '__rowid__'), [columns])
+  const displayColumns = useMemo(() => {
+    const pinnedSet = new Set(pinned.filter((name) => visibleColumns.includes(name)))
+    const head = pinned.filter((name) => pinnedSet.has(name)).slice(0, 2)
+    const rest = visibleColumns.filter((name) => !head.includes(name))
+    return [...head, ...rest]
+  }, [visibleColumns, pinned])
+
+  const displayRows = useMemo(() => sortResultRows(rows, sort), [rows, sort])
+  const numeric = Object.fromEntries(displayColumns.map((column) => [column, isNumericColumn(displayRows, column)]))
+
   const canEditSqlite = useMemo(() => {
     const dialect = ws.activeConnection?.dialect
     const sql = ws.activeEditor?.sql ?? ''
@@ -162,7 +174,7 @@ export function ResultGrid({
   }, [columns, ws.activeConnection?.dialect, ws.activeEditor?.sql])
 
   const virtualizer = useVirtualizer({
-    count: rows.length,
+    count: displayRows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => ROW_HEIGHT,
     overscan: 16,
@@ -171,12 +183,14 @@ export function ResultGrid({
   useEffect(() => {
     setFocus({ row: 0, col: 0 })
     setEditing(null)
+    setSort(null)
+    setPinned((current) => current.filter((name) => columns.includes(name)))
     setNote(rows.length > 500 ? `已虚拟滚动渲染 ${rows.length.toLocaleString('zh-CN')} 行` : '')
   }, [columns, rows])
 
   useEffect(() => {
-    onFocusColumn?.(visibleColumns[focus.col] ?? null)
-  }, [focus.col, visibleColumns, onFocusColumn])
+    onFocusColumn?.(displayColumns[focus.col] ?? null)
+  }, [focus.col, displayColumns, onFocusColumn])
 
   useEffect(() => {
     if (editing) return
@@ -185,32 +199,52 @@ export function ResultGrid({
 
   const move = (rowDelta: number, colDelta: number) => {
     setFocus((current) => ({
-      row: Math.min(Math.max(0, current.row + rowDelta), Math.max(0, rows.length - 1)),
-      col: Math.min(Math.max(0, current.col + colDelta), Math.max(0, visibleColumns.length - 1)),
+      row: Math.min(Math.max(0, current.row + rowDelta), Math.max(0, displayRows.length - 1)),
+      col: Math.min(Math.max(0, current.col + colDelta), Math.max(0, displayColumns.length - 1)),
     }))
   }
 
   const copyFocused = async () => {
-    const column = visibleColumns[focus.col]
+    const column = displayColumns[focus.col]
     if (!column) return
-    const text = formatCell(rows[focus.row]?.[column])
+    const text = formatCell(displayRows[focus.row]?.[column])
     await navigator.clipboard.writeText(text === '—' ? '' : text)
     setNote('已复制单元格')
   }
 
   const beginEdit = (rowIndex: number, colIndex: number) => {
     if (!canEditSqlite) return
-    const column = visibleColumns[colIndex]
+    const column = displayColumns[colIndex]
     if (!column) return
-    const raw = rows[rowIndex]?.[column]
+    const raw = displayRows[rowIndex]?.[column]
     setEditing({ row: rowIndex, col: colIndex, draft: raw == null ? '' : String(raw) })
+  }
+
+  const togglePin = (column: string) => {
+    setPinned((current) => {
+      if (current.includes(column)) return current.filter((name) => name !== column)
+      if (current.length >= 2) return [...current.slice(1), column]
+      return [...current, column]
+    })
+  }
+
+  const pinIndex = (column: string) => {
+    const idx = pinned.filter((name) => displayColumns.includes(name)).indexOf(column)
+    return idx >= 0 && idx < 2 ? idx : -1
+  }
+
+  const pinLeft = (column: string) => {
+    const idx = pinIndex(column)
+    if (idx < 0) return undefined
+    // row gutter 48px + prior pinned ~140px
+    return 48 + idx * 140
   }
 
   const commitEdit = async () => {
     if (!editing || !ws.activeConnection) return
-    const column = visibleColumns[editing.col]
+    const column = displayColumns[editing.col]
     const table = inferSqliteTable(ws.activeEditor?.sql ?? '')
-    const rowid = Number(rows[editing.row]?.__rowid__)
+    const rowid = Number(displayRows[editing.row]?.__rowid__)
     if (!column || !table || !Number.isFinite(rowid)) {
       setEditing(null)
       return
@@ -254,8 +288,8 @@ export function ResultGrid({
       tabIndex={0}
       role="grid"
       aria-label="结果表格"
-      aria-rowcount={rows.length}
-      aria-colcount={visibleColumns.length + 1}
+      aria-rowcount={displayRows.length}
+      aria-colcount={displayColumns.length + 1}
       onKeyDown={(event: KeyboardEvent) => {
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && !editing) {
           event.preventDefault()
@@ -280,7 +314,7 @@ export function ResultGrid({
           setFocus((current) => ({ ...current, col: 0 }))
         } else if (event.key === 'End') {
           event.preventDefault()
-          setFocus((current) => ({ ...current, col: visibleColumns.length - 1 }))
+          setFocus((current) => ({ ...current, col: displayColumns.length - 1 }))
         } else if (event.key === 'Enter' && canEditSqlite) {
           event.preventDefault()
           beginEdit(focus.row, focus.col)
@@ -290,23 +324,68 @@ export function ResultGrid({
       <table className="grid is-virtual">
         <thead>
           <tr role="row">
-            <th className="row-index" scope="col" />
-            {visibleColumns.map((column) => (
-              <th key={column} scope="col" role="columnheader" className={numeric[column] ? 'is-number' : undefined}>
-                {column}
-              </th>
-            ))}
+            <th className="row-index" scope="col" title="行号">
+              #
+            </th>
+            {displayColumns.map((column) => {
+              const pinnedAt = pinIndex(column)
+              const sortMark =
+                sort?.column === column ? (sort.direction === 'asc' ? ' ▲' : ' ▼') : ''
+              return (
+                <th
+                  key={column}
+                  scope="col"
+                  role="columnheader"
+                  aria-sort={
+                    sort?.column === column
+                      ? sort.direction === 'asc'
+                        ? 'ascending'
+                        : 'descending'
+                      : 'none'
+                  }
+                  className={[
+                    numeric[column] ? 'is-number' : '',
+                    pinnedAt >= 0 ? `is-pinned is-pinned-${pinnedAt}` : '',
+                    sort?.column === column ? 'is-sorted' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  style={pinnedAt >= 0 ? { left: pinLeft(column) } : undefined}
+                >
+                  <button
+                    type="button"
+                    className="grid-sort-btn"
+                    onClick={() => setSort((current) => nextSortState(current, column))}
+                    title="点击排序：升序 → 降序 → 取消"
+                  >
+                    {column}
+                    {sortMark}
+                  </button>
+                  <button
+                    type="button"
+                    className={pinnedAt >= 0 ? 'grid-pin-btn is-on' : 'grid-pin-btn'}
+                    title={pinnedAt >= 0 ? '取消固定列' : '固定到左侧（最多 2 列）'}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      togglePin(column)
+                    }}
+                  >
+                    钉
+                  </button>
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>
           {paddingTop > 0 && (
             <tr aria-hidden="true" className="virtual-pad">
-              <td colSpan={visibleColumns.length + 1} style={{ height: paddingTop, padding: 0, border: 'none' }} />
+              <td colSpan={displayColumns.length + 1} style={{ height: paddingTop, padding: 0, border: 'none' }} />
             </tr>
           )}
           {virtualRows.map((item) => {
             const rowIndex = item.index
-            const row = rows[rowIndex] ?? {}
+            const row = displayRows[rowIndex] ?? {}
             return (
               <tr
                 key={item.key}
@@ -318,11 +397,12 @@ export function ResultGrid({
                 <th className="row-index" scope="row">
                   {rowIndex + 1}
                 </th>
-                {visibleColumns.map((column, colIndex) => {
+                {displayColumns.map((column, colIndex) => {
                   const value = row[column]
                   const text = formatCell(value)
                   const focused = focus.row === rowIndex && focus.col === colIndex
                   const isEditing = editing?.row === rowIndex && editing.col === colIndex
+                  const pinnedAt = pinIndex(column)
                   return (
                     <td
                       key={column}
@@ -332,9 +412,11 @@ export function ResultGrid({
                         numeric[column] ? 'is-number' : '',
                         value == null ? 'is-null' : '',
                         focused ? 'is-focused' : '',
+                        pinnedAt >= 0 ? `is-pinned is-pinned-${pinnedAt}` : '',
                       ]
                         .filter(Boolean)
                         .join(' ')}
+                      style={pinnedAt >= 0 ? { left: pinLeft(column) } : undefined}
                       onClick={() => setFocus({ row: rowIndex, col: colIndex })}
                       onDoubleClick={() => beginEdit(rowIndex, colIndex)}
                     >
@@ -366,12 +448,16 @@ export function ResultGrid({
           })}
           {paddingBottom > 0 && (
             <tr aria-hidden="true" className="virtual-pad">
-              <td colSpan={visibleColumns.length + 1} style={{ height: paddingBottom, padding: 0, border: 'none' }} />
+              <td colSpan={displayColumns.length + 1} style={{ height: paddingBottom, padding: 0, border: 'none' }} />
             </tr>
           )}
         </tbody>
       </table>
       {note && <p className="result-footnote">{note}</p>}
+      <p className="result-footnote">
+        表头点击排序；「钉」固定最多 2 列横向滚动时保持可见；左侧 # 为行号。
+        {sort ? ` 当前排序：${sort.column} ${sort.direction === 'asc' ? '升序' : '降序'}。` : ''}
+      </p>
       {canEditSqlite && <p className="result-footnote">SQLite：双击单元格可编辑（需确认）。隐藏列 __rowid__ 用于定位行。</p>}
     </div>
   )

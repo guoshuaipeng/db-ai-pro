@@ -600,7 +600,48 @@ button:disabled { cursor: default; opacity: 0.45; }
   left: 0;
   background: var(--editor);
 }
-.grid thead .row-index { z-index: 2; background: #141924; }
+.grid thead .row-index { z-index: 4; background: #141924; }
+.grid .row-index { z-index: 3; width: 48px; min-width: 48px; box-shadow: 1px 0 0 var(--line); }
+.grid th.is-pinned,
+.grid td.is-pinned {
+  position: sticky;
+  z-index: 2;
+  background: #141924;
+  box-shadow: 1px 0 0 var(--line);
+}
+.grid td.is-pinned { background: var(--editor); z-index: 1; }
+.grid tbody tr.is-active td.is-pinned,
+.grid tbody tr:hover td.is-pinned { background: #1a2230; }
+.grid th.is-sorted { color: var(--accent, #9eb4ff); }
+.grid-sort-btn {
+  all: unset;
+  cursor: pointer;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.grid-sort-btn:hover { color: var(--ink); }
+.grid th {
+  display: table-cell;
+}
+.grid thead th {
+  white-space: nowrap;
+}
+.grid-pin-btn {
+  all: unset;
+  margin-left: 6px;
+  padding: 0 4px;
+  font-size: 10px;
+  border-radius: 4px;
+  color: #64748b;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.grid-pin-btn:hover,
+.grid-pin-btn.is-on {
+  color: #93c5fd;
+  background: #1e293b;
+}
 .grid td.is-number, .grid th.is-number { text-align: right; font-family: var(--mono); font-size: 12px; }
 .grid td.is-null { color: var(--ink-tertiary); }
 .grid tbody tr:hover td { background: rgba(255, 255, 255, 0.025); }

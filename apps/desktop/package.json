@@ -1,9 +1,9 @@
 {
   "name": "dataai-desktop",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "type": "module",
-  "description": "DataAI TypeScript desktop — bookmark folders + result filter",
+  "description": "DataAI TypeScript desktop — grid sort / pin / row numbers",
   "author": "codeyG",
   "license": "MIT",
   "main": "out/main/index.js",
