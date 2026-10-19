@@ -1,6 +1,6 @@
 {
   "name": "dataai-desktop",
-  "version": "3.136.7",
+  "version": "3.136.8",
   "private": true,
   "type": "module",
   "description": "DataAI TypeScript desktop — multi-statement count",
@@ -17,6 +17,7 @@
     "check": "npm run typecheck && npm test",
     "rebuild:native": "electron-rebuild -f -w better-sqlite3",
     "smoke": "electron-vite build && electron . --smoke",
+    "verify:full": "node scripts/verify-full.cjs",
     "smoke:servers": "vitest run src/main/live-drivers.test.ts",
     "dist:linux": "npm run build && electron-builder --linux tar.gz --publish never",
     "dist:win": "npm run build && electron-builder --win portable nsis --publish never",

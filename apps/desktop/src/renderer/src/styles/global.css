@@ -5477,6 +5477,10 @@ button.health-badge:disabled {
   flex-wrap: nowrap;
   overflow: hidden;
 }
+.toolbar-overflow-secondary > * {
+  flex: 0 0 auto;
+  min-width: max-content;
+}
 .toolbar-overflow-primary {
   display: flex;
   align-items: center;

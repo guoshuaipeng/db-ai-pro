@@ -1,5 +1,6 @@
 import {
   Children,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -20,7 +21,11 @@ import {
 import { EmptyState } from './EmptyState'
 
 function countToolbarActions(root: ParentNode | null | undefined): number {
-  if (!root) return 0
+  if (!root || !(root instanceof HTMLElement)) return 0
+  // A bare <button> does not match querySelectorAll on itself — count it first.
+  if (root.matches('button, [role="button"], a[href]')) {
+    return root.hasAttribute('disabled') ? 0 : 1
+  }
   const nodes = root.querySelectorAll('button, [role="button"], a[href]')
   let count = 0
   nodes.forEach((node) => {
@@ -32,7 +37,25 @@ function countToolbarActions(root: ParentNode | null | undefined): number {
 }
 
 function flattenSecondary(secondary: ReactNode): ReactNode[] {
-  return Children.toArray(secondary)
+  // Children.toArray alone can leave a single Fragment wrapper (length 1) while
+  // the fragment's children expand into many DOM nodes under the measure strip —
+  // then items.length stays 1, overflowed never trips, and 「更多」never appears.
+  const out: ReactNode[] = []
+  const walk = (node: ReactNode): void => {
+    Children.forEach(node, (child) => {
+      if (child == null || typeof child === 'boolean') return
+      if (typeof child === 'object' && 'type' in child) {
+        const type = (child as { type?: unknown }).type
+        if (type === Symbol.for('react.fragment')) {
+          walk((child as { props?: { children?: ReactNode } }).props?.children)
+          return
+        }
+      }
+      out.push(child)
+    })
+  }
+  walk(secondary)
+  return out
 }
 
 function measureChildWidths(measure: HTMLElement): number[] {
@@ -62,29 +85,38 @@ export function ToolbarOverflow({ primary, secondary, className }: Props) {
   const measureRef = useRef<HTMLDivElement>(null)
   const primaryRef = useRef<HTMLDivElement>(null)
   const moreBtnRef = useRef<HTMLButtonElement>(null)
+  const secondaryRef = useRef<HTMLDivElement>(null)
   const [visibleCount, setVisibleCount] = useState<number | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [overflowActionCount, setOverflowActionCount] = useState(0)
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
+  /** Root content width — RO writes here so layout effect always re-packs. */
+  const [rootWidth, setRootWidth] = useState(0)
 
   const items = flattenSecondary(secondary)
 
-  const recompute = () => {
+  const readRootWidth = useCallback(() => {
+    const root = rootRef.current
+    if (!root) return 0
+    return Math.max(Math.floor(root.getBoundingClientRect().width), root.clientWidth, 0)
+  }, [])
+
+  const recompute = useCallback(() => {
     const root = rootRef.current
     const measure = measureRef.current
     if (!root || !measure) return
 
     const gap = 6
-    const safety = 8
+    const safety = 12
     const primaryW = primaryRef.current
       ? Math.max(
           Math.ceil(primaryRef.current.getBoundingClientRect().width),
           primaryRef.current.scrollWidth,
         )
       : 0
-    // Use the toolbar root's content box; never trust a zero/stale width.
     const rootW = Math.max(Math.floor(root.getBoundingClientRect().width), root.clientWidth)
     const available = Math.max(0, rootW - primaryW - (primaryW > 0 ? gap : 0) - safety)
+    // +2px pad per item absorbs sub-pixel / border jitter.
     const widths = measureChildWidths(measure).map((w) => Math.max(Math.ceil(w), 1) + 2)
     const total = widths.length
     const kids = Array.from(measure.children)
@@ -98,7 +130,7 @@ export function ToolbarOverflow({ primary, secondary, className }: Props) {
     const moreWidthFor = (hiddenActions: number) => {
       if (hiddenActions <= 0) return 0
       const label = `更多 · ${Math.max(hiddenActions, 1)}`
-      return Math.ceil(36 + label.length * 10)
+      return Math.ceil(40 + label.length * 10)
     }
 
     if (total === 0) {
@@ -143,11 +175,12 @@ export function ToolbarOverflow({ primary, secondary, className }: Props) {
     const hiddenActions = actionsFrom(best)
     setVisibleCount(best)
     setOverflowActionCount(hiddenActions)
-  }
+  }, [])
 
+  // Re-pack whenever measured root width or item count changes.
   useLayoutEffect(() => {
     recompute()
-  })
+  }, [recompute, rootWidth, items.length])
 
   useEffect(() => {
     const root = rootRef.current
@@ -157,21 +190,28 @@ export function ToolbarOverflow({ primary, secondary, className }: Props) {
       if (raf) cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
         raf = 0
+        const next = readRootWidth()
+        setRootWidth((prev) => (prev === next ? prev : next))
+        // Always recompute even if width state bails — e.g. font/DPI settle.
         recompute()
       })
     }
     const ro = new ResizeObserver(schedule)
     ro.observe(root)
     if (primaryRef.current) ro.observe(primaryRef.current)
-    // Pane/window chrome often resizes ancestors first — watch parent too.
+    if (secondaryRef.current) ro.observe(secondaryRef.current)
     if (root.parentElement) ro.observe(root.parentElement)
     window.addEventListener('resize', schedule)
+    window.visualViewport?.addEventListener('resize', schedule)
+    // Initial measure after mount paint.
+    schedule()
     return () => {
       if (raf) cancelAnimationFrame(raf)
       ro.disconnect()
       window.removeEventListener('resize', schedule)
+      window.visualViewport?.removeEventListener('resize', schedule)
     }
-  }, [])
+  }, [readRootWidth, recompute])
 
   useEffect(() => {
     if (!menuOpen) {
@@ -221,11 +261,15 @@ export function ToolbarOverflow({ primary, secondary, className }: Props) {
     <div
       ref={rootRef}
       className={`${className ?? 'editor-toolbar'}${menuOpen ? ' is-menu-open' : ''}`}
+      data-toolbar-root-width={rootWidth || undefined}
+      data-toolbar-visible={visibleCount ?? undefined}
     >
       <div className="toolbar-overflow-measure" ref={measureRef} aria-hidden="true">
         {items}
       </div>
-      <div className="toolbar-overflow-secondary">{visibleItems}</div>
+      <div className="toolbar-overflow-secondary" ref={secondaryRef}>
+        {visibleItems}
+      </div>
       {overflowed ? (
         <div className="toolbar-overflow-more">
           <button
@@ -287,7 +331,11 @@ export function ToolbarOverflow({ primary, secondary, className }: Props) {
         </div>
       ) : null}
       <div
-        className={primary != null && primary !== false ? 'toolbar-overflow-primary' : 'toolbar-overflow-primary is-empty'}
+        className={
+          primary != null && primary !== false
+            ? 'toolbar-overflow-primary'
+            : 'toolbar-overflow-primary is-empty'
+        }
         ref={primaryRef}
         aria-hidden={primary == null || primary === false ? true : undefined}
       >
