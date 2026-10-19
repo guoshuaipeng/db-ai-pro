@@ -11,6 +11,7 @@ import {
 } from '@shared/schemaSuggest'
 import { emitDataai, onDataai } from '../appEvents'
 import { pickRunSql, selectionIsNonEmpty } from '@shared/runSqlPick'
+import { SELECTION_SETTLE_MS } from '@shared/selectionRun'
 import { isSqlDragEvent, readSqlDragText } from '@shared/sqlDragDrop'
 import { countRejectedDropFiles, isOsFileDrag } from '@shared/sqlFileDrop'
 import {
@@ -193,6 +194,9 @@ export function SqlEditor({
   const onChangeRef = useRef(onChange)
   const onCursorRef = useRef(onCursor)
   const onSelectionChangeRef = useRef(onSelectionChange)
+  /** True while primary button is down in the editor (drag-select in progress). */
+  const pointerSelectingRef = useRef(false)
+  const selectionSettleTimerRef = useRef<number | null>(null)
   onChangeRef.current = onChange
   onCursorRef.current = onCursor
   onSelectionChangeRef.current = onSelectionChange
@@ -269,7 +273,7 @@ export function SqlEditor({
       },
     })
 
-    const reportSelection = () => {
+    const publishSelection = () => {
       const cb = onSelectionChangeRef.current
       if (!cb) return
       const model = instance.getModel()
@@ -288,23 +292,73 @@ export function SqlEditor({
         lineCount: Math.max(1, Math.abs(sel.endLineNumber - sel.startLineNumber) + 1),
       })
     }
+    const clearSelectionSettleTimer = () => {
+      if (selectionSettleTimerRef.current != null) {
+        window.clearTimeout(selectionSettleTimerRef.current)
+        selectionSettleTimerRef.current = null
+      }
+    }
+    /**
+     * Defer chrome updates while the mouse button is down so the「将运行选区」banner
+     * (and run-btn label) cannot remount mid-drag and shift Monaco layout / steal the gesture.
+     * Keyboard selection publishes after a short idle.
+     */
+    const reportSelection = (mode: 'auto' | 'immediate' = 'auto') => {
+      clearSelectionSettleTimer()
+      if (mode === 'immediate') {
+        publishSelection()
+        return
+      }
+      if (pointerSelectingRef.current) {
+        return
+      }
+      selectionSettleTimerRef.current = window.setTimeout(() => {
+        selectionSettleTimerRef.current = null
+        if (!pointerSelectingRef.current) publishSelection()
+      }, SELECTION_SETTLE_MS)
+    }
+    const endPointerSelect = () => {
+      if (!pointerSelectingRef.current) return
+      pointerSelectingRef.current = false
+      window.removeEventListener('mouseup', endPointerSelect, true)
+      window.removeEventListener('blur', endPointerSelect)
+      reportSelection('immediate')
+    }
+    const beginPointerSelect = () => {
+      pointerSelectingRef.current = true
+      clearSelectionSettleTimer()
+      window.addEventListener('mouseup', endPointerSelect, true)
+      window.addEventListener('blur', endPointerSelect)
+    }
     const position = instance.getPosition()
     if (position) onCursorRef.current({ line: position.lineNumber, column: position.column })
-    reportSelection()
+    reportSelection('immediate')
     const cursorSub = instance.onDidChangeCursorPosition((event) => {
       onCursorRef.current({ line: event.position.lineNumber, column: event.position.column })
     })
     const selectionSub = instance.onDidChangeCursorSelection(() => {
-      reportSelection()
+      reportSelection('auto')
     })
     const changeSub = instance.onDidChangeModelContent(() => {
       onChangeRef.current(instance.getValue())
-      reportSelection()
+      reportSelection('auto')
+    })
+    const mouseDownSub = instance.onMouseDown((e) => {
+      // Primary button drag-select only; ignore context / middle.
+      if (e.event.leftButton) beginPointerSelect()
+    })
+    const mouseUpSub = instance.onMouseUp(() => {
+      endPointerSelect()
     })
     return () => {
+      clearSelectionSettleTimer()
+      window.removeEventListener('mouseup', endPointerSelect, true)
+      window.removeEventListener('blur', endPointerSelect)
       cursorSub.dispose()
       selectionSub.dispose()
       changeSub.dispose()
+      mouseDownSub.dispose()
+      mouseUpSub.dispose()
       instance.dispose()
       instanceRef.current = null
     }

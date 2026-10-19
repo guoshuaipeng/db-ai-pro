@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   hasEditorSelection,
   selectionRunBannerBody,
+  selectionRunBannerVisible,
   selectionRunButtonLabel,
   selectionRunButtonTitle,
   selectionRunDoneToast,
@@ -20,5 +21,11 @@ describe('selectionRun', () => {
   it('formats banner and done toast', () => {
     expect(selectionRunBannerBody({ charCount: 8, lineCount: 1 })).toContain('8')
     expect(selectionRunDoneToast()).toContain('选中')
+  })
+
+  it('hides banner while selection is not settled (mid-drag)', () => {
+    expect(selectionRunBannerVisible(true, false)).toBe(false)
+    expect(selectionRunBannerVisible(true, true)).toBe(true)
+    expect(selectionRunBannerVisible(false, true)).toBe(false)
   })
 })

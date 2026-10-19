@@ -38,6 +38,7 @@ import {
   hasEditorSelection,
   selectionRunBannerBody,
   selectionRunBannerTitle,
+  selectionRunBannerVisible,
   selectionRunButtonLabel,
   selectionRunButtonTitle,
   selectionRunDoneToast,
@@ -632,7 +633,7 @@ export function EditorPane() {
         </div>
       ) : null}
 
-      {selectionActive && ws.editorSelection ? (
+      {selectionRunBannerVisible(selectionActive, true) && ws.editorSelection ? (
         <div className="selection-run-banner" role="status" aria-live="polite">
           <div className="selection-run-banner-copy">
             <strong>{selectionRunBannerTitle()}</strong>

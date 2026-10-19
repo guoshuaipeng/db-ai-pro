@@ -51,3 +51,14 @@ export function selectionRunBannerBody(info: EditorSelectionInfo): string {
 export function selectionRunEmptyBody(): string {
   return '当前没有选中文本。在编辑器中拖选一段 SQL 后，运行将只执行选区。'
 }
+
+/** Banner must wait until drag/keyboard selection has settled — never mid-pointer-drag. */
+export function selectionRunBannerVisible(
+  hasSelection: boolean,
+  selectionSettled: boolean,
+): boolean {
+  return hasSelection && selectionSettled
+}
+
+/** Idle delay after keyboard/shift selection before chrome updates (ms). */
+export const SELECTION_SETTLE_MS = 140

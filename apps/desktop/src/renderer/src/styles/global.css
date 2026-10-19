@@ -5925,6 +5925,8 @@ button.health-badge:disabled {
   border: 1px solid rgba(56, 189, 248, 0.35);
   background: rgba(12, 74, 110, 0.35);
   color: #bae6fd;
+  /* Never capture pointer — selection chrome must not interrupt Monaco drag-select. */
+  pointer-events: none;
 }
 .selection-run-banner-copy {
   display: flex;
