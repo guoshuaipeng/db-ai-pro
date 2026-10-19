@@ -1169,6 +1169,15 @@ body.is-col-resizing .grid-col-resizer {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* Cards must not shrink-to-fit: overflow:hidden on .card zeroes auto min-size
+     in a column flex, so replies were clipped under the next bubble. */
+  align-items: stretch;
+}
+.ai-scroll > .card {
+  flex: 0 0 auto;
+  min-height: min-content;
+  width: 100%;
+  box-sizing: border-box;
 }
 .card {
   position: relative;
@@ -1204,6 +1213,7 @@ body.is-col-resizing .grid-col-resizer {
 .card-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 6px;
   min-height: 22px;
@@ -1303,6 +1313,9 @@ body.is-col-resizing .grid-col-resizer {
   background: #10141c;
   border: 1px solid var(--line);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 .sql-block-bar {
   height: 28px;
@@ -1313,6 +1326,7 @@ body.is-col-resizing .grid-col-resizer {
   color: var(--ink-tertiary);
   font-family: var(--mono);
   font-size: 11px;
+  flex: 0 0 auto;
 }
 .sql-block-bar button {
   border: 0;
@@ -1330,6 +1344,10 @@ body.is-col-resizing .grid-col-resizer {
   line-height: 1.6;
   white-space: pre-wrap;
   color: #d5dced;
+  /* Long SQL scrolls inside the card; chat list still scrolls for full replies. */
+  max-height: min(280px, 36vh);
+  overflow: auto;
+  min-height: 0;
 }
 .caret {
   display: inline-block;
