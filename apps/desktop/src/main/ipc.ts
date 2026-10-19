@@ -65,6 +65,8 @@ import {
   removeFavoriteFolder,
   listQueryHistory,
   loadWorkspace,
+  loadSchemaCache,
+  saveSchemaCache,
   previewConnectionImport,
   removeConnection,
   removeFavorite,
@@ -882,6 +884,10 @@ ipcMain.handle('sql:cancel', async (_event, requestId: string) => {
   })
 
   ipcMain.handle('workspace:load', () => loadWorkspace())
+  ipcMain.handle('workspace:loadSchemaCache', () => loadSchemaCache())
+  ipcMain.handle('workspace:saveSchemaCache', (_event, nodes: SchemaNode[]) => {
+    saveSchemaCache(nodes)
+  })
   ipcMain.handle('workspace:save', (_event, state: WorkspaceState) => {
     saveWorkspace(state)
   })

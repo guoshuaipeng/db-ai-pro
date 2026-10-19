@@ -396,7 +396,7 @@ export function ConnectionPane() {
             </>
           }
         />
-      ) : displaySchema.length === 0 && (ws.schemaRefreshing || ws.schema.length === 0) && !ws.search.trim() ? (
+      ) : displaySchema.length === 0 && ws.schema.length === 0 && !ws.search.trim() ? (
         <EmptyState
           compact
           kicker="对象树"

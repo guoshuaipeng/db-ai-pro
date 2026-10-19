@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { getApi } from '../bridge'
 import { emitDataai } from '../appEvents'
+import { alignSchemaCacheToConnections } from '@shared/schemaCache'
 import { connectionErrorNode } from '@shared/schema'
 import {
   collapseSchemaTreeExpanded,
@@ -721,7 +722,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             setExpanded((current) => seedExpanded([node], current))
             return
           }
-          setSchema((current) => replaceConnectionNode(current, connection.id, node))
+          setSchema((current) => {
+            const next = replaceConnectionNode(current, connection.id, node)
+            void api.workspace.saveSchemaCache(next).catch(() => {})
+            return next
+          })
           setExpanded((current) => seedExpanded([node], current))
           pushToast('success', `已刷新「${connection.name}」对象树`)
           return
@@ -751,9 +756,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           api.recent.list().catch(() => EMPTY_RECENT),
           api.prefs.get(),
           api.connections.listGroups().catch(() => []),
+          api.workspace.loadSchemaCache().catch(() => null),
         ])
         const BOOT_LOAD_TIMEOUT_MS = 20_000
-        const [info, rows, workspace, aiSettings, recent, prefs, groups] = await new Promise<
+        const [info, rows, workspace, aiSettings, recent, prefs, groups, schemaCache] = await new Promise<
           Awaited<typeof bootLoads>
         >((resolve, reject) => {
           const timer = window.setTimeout(() => {
@@ -841,15 +847,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           pushToast('info', expandRestoredToast(countOpenExpands(restoredExpand)))
         }
 
-        // Mark schema loading BEFORE ready so the tree never flashes「没有匹配的对象」.
-        setSchemaRefreshing(true)
-        // Dismiss splash before schema probes — slow/unreachable DB must not block main UI.
-        loaded.current = true
-        setReady(true)
-        if (cancelled) return
-        try {
-          const nodes = await refreshSchema(rows, restoreConnectionId)
-          if (cancelled) return
+        const cachedNodes = alignSchemaCacheToConnections(
+          schemaCache?.nodes,
+          rows.map((row) => row.id),
+        )
+        const paintExpand = (nodes: typeof cachedNodes) => {
           setExpanded((current) => {
             let next = seedExpanded(nodes, current)
             if (countOpenExpands(next) === 0) {
@@ -860,6 +862,43 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             }
             return compactExpanded(next)
           })
+        }
+        const revealSelection = (nodes: typeof cachedNodes) => {
+          if (!pendingSelectedId) return
+          const exists = (() => {
+            const walk = (list: typeof nodes): boolean => {
+              for (const n of list) {
+                if (n.id === pendingSelectedId) return true
+                if (n.children && walk(n.children)) return true
+              }
+              return false
+            }
+            return walk(nodes)
+          })()
+          if (exists) {
+            window.setTimeout(() => {
+              emitDataai('dataai:reveal-tree-node', { nodeId: pendingSelectedId })
+              pushToast('info', selectionRestoredToast())
+            }, 80)
+          }
+        }
+
+        // Instant paint from last successful tree (DB/table list) — no full-pane loading flash.
+        if (cachedNodes.length > 0) {
+          setSchema(cachedNodes)
+          paintExpand(cachedNodes)
+          revealSelection(cachedNodes)
+        }
+
+        // Background refresh; row-level spinner while schemaRefreshing (tree already visible if cached).
+        setSchemaRefreshing(true)
+        loaded.current = true
+        setReady(true)
+        if (cancelled) return
+        try {
+          const nodes = await refreshSchema(rows, restoreConnectionId)
+          if (cancelled) return
+          paintExpand(nodes)
           if (pendingSelectedId) {
             const exists = (() => {
               const walk = (list: typeof nodes): boolean => {
@@ -872,14 +911,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
               return walk(nodes)
             })()
             if (exists) {
-              window.setTimeout(() => {
-                emitDataai('dataai:reveal-tree-node', { nodeId: pendingSelectedId })
-                pushToast('info', selectionRestoredToast())
-              }, 80)
+              // Avoid duplicate toast when cache already revealed the same node.
+              if (cachedNodes.length === 0) {
+                window.setTimeout(() => {
+                  emitDataai('dataai:reveal-tree-node', { nodeId: pendingSelectedId })
+                  pushToast('info', selectionRestoredToast())
+                }, 80)
+              } else {
+                window.setTimeout(() => {
+                  emitDataai('dataai:reveal-tree-node', { nodeId: pendingSelectedId })
+                }, 80)
+              }
             } else {
               setSelectedId(null)
             }
           }
+          void api.workspace.saveSchemaCache(nodes).catch(() => {})
         } catch (schemaError) {
           if (!cancelled) {
             pushToast(

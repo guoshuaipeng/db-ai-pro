@@ -177,6 +177,8 @@ const api: DesktopApi = {
   workspace: {
     load: () => ipcRenderer.invoke('workspace:load'),
     save: (state: WorkspaceState) => ipcRenderer.invoke('workspace:save', state),
+    loadSchemaCache: () => ipcRenderer.invoke('workspace:loadSchemaCache'),
+    saveSchemaCache: (nodes) => ipcRenderer.invoke('workspace:saveSchemaCache', nodes),
   },
 }
 

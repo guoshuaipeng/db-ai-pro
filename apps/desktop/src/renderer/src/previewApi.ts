@@ -29,6 +29,7 @@ const memory = {
   prefs: { ...DEFAULT_PREFS } as AppPrefs,
   favoriteFolders: [] as import('@shared/types').FavoriteFolder[],
   workspace: null as WorkspaceState | null,
+  schemaCache: null as import('@shared/schemaCache').SchemaCacheFile | null,
   settings: {
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
@@ -610,6 +611,14 @@ export function createPreviewApi(): DesktopApi {
       load: async () => memory.workspace,
       save: async (state: WorkspaceState) => {
         memory.workspace = state
+      },
+      loadSchemaCache: async () => memory.schemaCache,
+      saveSchemaCache: async (nodes) => {
+        memory.schemaCache = {
+          version: 1,
+          updatedAt: new Date().toISOString(),
+          nodes,
+        }
       },
     },
   }

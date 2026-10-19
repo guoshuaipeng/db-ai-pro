@@ -180,6 +180,8 @@ export type DesktopApi = {
   workspace: {
     load: () => Promise<WorkspaceState | null>
     save: (state: WorkspaceState) => Promise<void>
+    loadSchemaCache: () => Promise<import('./schemaCache').SchemaCacheFile | null>
+    saveSchemaCache: (nodes: SchemaNode[]) => Promise<void>
   }
 }
 

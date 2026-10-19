@@ -13,6 +13,7 @@ import type {
   SqlFavorite,
   FavoriteFolder,
   WorkspaceState,
+  SchemaNode,
 } from '@shared/types'
 import { QUERY_HISTORY_LIMIT, pushQueryHistory } from '@shared/queryHistory'
 import { upsertFavorite, upsertFolder } from '@shared/favorites'
@@ -21,6 +22,11 @@ import { upsertConnGroup } from '@shared/connGroups'
 import { normalizeSessionTabs, pickActiveEditorId, SESSION_TAB_CAP } from '@shared/sessionRestore'
 import { normalizeLayout } from '@shared/layoutBounds'
 import { normalizeExpanded } from '@shared/schemaTreeRefresh'
+import {
+  compactSchemaForCache,
+  normalizeSchemaCache,
+  type SchemaCacheFile,
+} from '@shared/schemaCache'
 import {
   EMPTY_RECENT,
   normalizeRecentItems,
@@ -333,6 +339,25 @@ export function saveWorkspace(state: WorkspaceState): void {
     editorTabs,
     activeEditorId: pickActiveEditorId(editorTabs, state.activeEditorId),
   })
+}
+
+export function loadSchemaCache(): SchemaCacheFile | null {
+  const path = join(dir(), 'schema-cache.json')
+  if (!existsSync(path)) return null
+  try {
+    return normalizeSchemaCache(JSON.parse(readFileSync(path, 'utf8')))
+  } catch {
+    return null
+  }
+}
+
+export function saveSchemaCache(nodes: SchemaNode[]): void {
+  const payload: SchemaCacheFile = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    nodes: compactSchemaForCache(nodes),
+  }
+  writeJson('schema-cache.json', payload)
 }
 
 function readHistoryFile(): HistoryFile {

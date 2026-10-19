@@ -37,7 +37,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
     final &&
     final.hasTree &&
     final.treeRows > 0 &&
-    /3\.136\.14/.test(final.version)
+    /3\.136\.15/.test(final.version)
 
   console.log(JSON.stringify({
     pass,
@@ -52,3 +52,4 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
   await browser.disconnect()
   if (!pass) process.exit(2)
 })().catch((e)=>{console.error(e); process.exit(1)})
+
