@@ -237,8 +237,24 @@ button.crumb-btn .crumb-text {
   color: var(--accent-ink);
   font-weight: 600;
 }
-.btn-primary:hover { filter: brightness(1.05); }
+/* .btn:hover is (0,2,0) and would wipe primary fill to near-transparent,
+   leaving dark --accent-ink on dark chrome — 运行 button "disappears" on hover.
+   Re-assert fill + ink at equal-or-higher specificity. */
+.btn.btn-primary:hover,
+.btn-primary:hover {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+  filter: brightness(1.08);
+}
 .btn-danger { background: #3a2428; border-color: transparent; color: #ffd7dc; }
+.btn.btn-danger:hover,
+.btn-danger:hover {
+  background: #4a2e34;
+  border-color: transparent;
+  color: #ffd7dc;
+  filter: none;
+}
 .btn-ghost { background: transparent; }
 
 .workspace {
