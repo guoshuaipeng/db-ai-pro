@@ -350,10 +350,20 @@ export function SqlEditor({
     const mouseUpSub = instance.onMouseUp(() => {
       endPointerSelect()
     })
+    // DOM pointer capture covers CDP/puppeteer paths where Monaco mouse events may not fire.
+    const dom = instance.getDomNode()
+    const onDomPointerDown = (e: PointerEvent) => {
+      if (e.button === 0) beginPointerSelect()
+    }
+    const onDomPointerUp = () => endPointerSelect()
+    dom?.addEventListener('pointerdown', onDomPointerDown)
+    dom?.addEventListener('pointerup', onDomPointerUp)
     return () => {
       clearSelectionSettleTimer()
       window.removeEventListener('mouseup', endPointerSelect, true)
       window.removeEventListener('blur', endPointerSelect)
+      dom?.removeEventListener('pointerdown', onDomPointerDown)
+      dom?.removeEventListener('pointerup', onDomPointerUp)
       cursorSub.dispose()
       selectionSub.dispose()
       changeSub.dispose()

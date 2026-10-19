@@ -184,6 +184,8 @@ export type AiTurnState = {
   steps?: { step: string; detail?: string }[]
   /** settled status after stream ends or user stops */
   status?: 'streaming' | 'done' | 'cancelled' | 'error'
+  /** Connection id used for this AI request (tab bind); no secrets. */
+  connectionId?: string | null
 }
 
 export type WorkspaceState = {

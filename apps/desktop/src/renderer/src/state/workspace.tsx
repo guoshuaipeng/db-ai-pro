@@ -183,6 +183,12 @@ import {
   connColorSetToast,
 } from '@shared/connColorUi'
 import { resolveTabConnectionId } from '@shared/tabConnection'
+import {
+  resolveAiConnectionId,
+  resolveAiDatabaseName,
+  tableNamesForConnection,
+  aiConnectionHint,
+} from '@shared/aiConnection'
 import type { AiIntent } from '@shared/types'
 import type {
   AiSettingsPublic,
@@ -394,6 +400,10 @@ type WorkspaceValue = {
   targetTable: string
   setTargetTable: (table: string) => void
   tableNames: string[]
+  /** Connection the AI pane uses (active tab bind first). */
+  aiConnectionId: string | null
+  aiConnection: import('@shared/types').ConnectionPublic | null
+  aiConnectionHint: string
   sendAi: (text?: string) => Promise<void>
   executeAiSql: (sql: string) => Promise<void>
   repairAi: (sql: string, error: string) => Promise<void>
@@ -2332,17 +2342,28 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     pushToast('success', `已导入 ${result.imported} 个连接`)
   }
 
-  const tableNames = useMemo(() => {
-    const names: string[] = []
-    const walk = (nodes: SchemaNode[]) => {
-      for (const node of nodes) {
-        if (node.kind === 'table' && node.tableName) names.push(node.tableName)
-        if (node.children) walk(node.children)
-      }
-    }
-    walk(schema)
-    return names
-  }, [schema])
+  const aiConnectionId = useMemo(
+    () => resolveAiConnectionId(activeEditor, activeConnectionId),
+    [activeEditor, activeConnectionId],
+  )
+  const aiConnection = useMemo(
+    () => connections.find((row) => row.id === aiConnectionId) ?? null,
+    [connections, aiConnectionId],
+  )
+  const aiConnectionFromTab = Boolean(activeEditor?.connectionId?.trim())
+  const aiConnectionHintText = useMemo(
+    () =>
+      aiConnectionHint(aiConnection, {
+        fromTabBind: aiConnectionFromTab,
+        missing: !aiConnectionId,
+      }),
+    [aiConnection, aiConnectionFromTab, aiConnectionId],
+  )
+
+  const tableNames = useMemo(
+    () => tableNamesForConnection(schema, aiConnectionId),
+    [schema, aiConnectionId],
+  )
 
   const sendAi = async (text?: string) => {
     const prompt = (text ?? '').trim()
@@ -2355,15 +2376,29 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       .slice(-6)
       .map((turn) => `${turn.role === 'user' ? '用户' : '助手'}: ${turn.content.slice(0, 240)}`)
       .join('\n')
+    const connectionId = resolveAiConnectionId(activeEditor, activeConnectionId)
+    if (!connectionId) {
+      setAiStreaming(false)
+      pushToast('info', '当前标签未绑定连接，请先在工具栏选择数据库实例')
+      return
+    }
     setAiTurns((turns) => [
       ...turns,
-      { id: `${requestId}:user`, role: 'user', content: prompt },
-      { id: requestId, role: 'assistant', content: '', mode: settings?.hasKey ? 'model' : 'preview', steps: [], status: 'streaming' },
+      { id: `${requestId}:user`, role: 'user', content: prompt, connectionId },
+      {
+        id: requestId,
+        role: 'assistant',
+        content: '',
+        mode: settings?.hasKey ? 'model' : 'preview',
+        steps: [],
+        status: 'streaming',
+        connectionId,
+      },
     ])
     try {
       await api.ai.start({
         requestId,
-        connectionId: activeConnectionId,
+        connectionId,
         prompt,
         intent: aiIntent,
         referenceTable: referenceTable || undefined,
@@ -2377,14 +2412,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   const executeAiSql = async (sql: string) => {
-    if (!activeConnection) {
-      pushToast('info', '先选择一个连接')
+    const connectionId = resolveAiConnectionId(activeEditor, activeConnectionId)
+    const connection = connections.find((row) => row.id === connectionId) ?? null
+    if (!connectionId || !connection) {
+      pushToast('info', '当前标签未绑定连接，请先在工具栏选择数据库实例')
       return
     }
-    if (isKvDialect(activeConnection.dialect)) {
+    if (isKvDialect(connection.dialect)) {
       pushToast('info', 'Redis 不支持执行 SQL')
       return
     }
+    const database = resolveAiDatabaseName(activeEditor)
     const readOnlyHit = analyzeReadOnlySql(sql)
     if (readOnlyActive && readOnlyHit.blocked) {
       setDialog({
@@ -2392,7 +2430,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         verb: readOnlyHit.verb,
         statement: readOnlyHit.statement,
         reason: readOnlyHit.reason,
-        source: resolveReadOnlyBlockSource(globalReadOnly, Boolean(activeConnection?.readOnly)),
+        source: resolveReadOnlyBlockSource(globalReadOnly, Boolean(connection.readOnly)),
       })
       return
     }
@@ -2409,10 +2447,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const prefs = await api.prefs.get()
       const timeoutMs = prefs.queryTimeoutSec > 0 ? prefs.queryTimeoutSec * 1000 : 0
       const statements = await api.sql.execute({
-        connectionId: activeConnection.id,
+        connectionId: connection.id,
         sql,
         requestId,
         timeoutMs,
+        database,
       })
       const next = resultsFrom(statements)
       if (activeEditor) setResultMap((current) => ({ ...current, [activeEditor.id]: next }))
@@ -2425,7 +2464,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (statements.some((statement) => statement.ok && changesSchema(statement.statement))) {
           const rows = await api.connections.list()
           setConnections(rows)
-          await refreshSchema(rows, activeConnection.id)
+          await refreshSchema(rows, connection.id)
         }
       }
     } catch (error) {
@@ -2445,13 +2484,27 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     requestRef.current = requestId
     setAiOpen(true)
     setAiStreaming(true)
+    const connectionId = resolveAiConnectionId(activeEditor, activeConnectionId)
+    if (!connectionId) {
+      setAiStreaming(false)
+      pushToast('info', '当前标签未绑定连接，请先在工具栏选择数据库实例')
+      return
+    }
     setAiTurns((turns) => [
       ...turns,
-      { id: `${requestId}:user`, role: 'user', content: `修复失败 SQL：${error}` },
-      { id: requestId, role: 'assistant', content: '', mode: settings?.hasKey ? 'model' : 'preview', steps: [], status: 'streaming' },
+      { id: `${requestId}:user`, role: 'user', content: `修复失败 SQL：${error}`, connectionId },
+      {
+        id: requestId,
+        role: 'assistant',
+        content: '',
+        mode: settings?.hasKey ? 'model' : 'preview',
+        steps: [],
+        status: 'streaming',
+        connectionId,
+      },
     ])
     try {
-      await api.ai.repair({ requestId, connectionId: activeConnectionId, sql, error })
+      await api.ai.repair({ requestId, connectionId, sql, error })
     } catch (reason) {
       setAiStreaming(false)
       pushToast('error', reason instanceof Error ? reason.message : '助手没有完成修复')
@@ -2993,6 +3046,9 @@ ${sql.trim()}
     targetTable,
     setTargetTable,
     tableNames,
+    aiConnectionId,
+    aiConnection,
+    aiConnectionHint: aiConnectionHintText,
     sendAi,
     executeAiSql,
     repairAi,

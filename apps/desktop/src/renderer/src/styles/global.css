@@ -282,12 +282,23 @@ button.crumb-btn .crumb-text {
 }
 
 .side-head, .ai-head {
-  height: 48px;
+  min-height: 48px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px 0 14px;
+  gap: 8px;
+  padding: 6px 12px 6px 14px;
   flex: 0 0 auto;
+}
+.ai-conn-hint {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ink-tertiary);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .side-head h1, .ai-head h2 {
   margin: 0;

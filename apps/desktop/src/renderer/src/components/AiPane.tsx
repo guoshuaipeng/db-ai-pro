@@ -37,6 +37,7 @@ import {
   aiToolbarModelReadyTitle,
   aiToolbarTitle,
 } from '@shared/aiToolbarUi'
+
 import { useWorkspace } from '../state/workspace'
 
 async function copyText(text: string): Promise<boolean> {
@@ -72,6 +73,16 @@ export function AiPane() {
     })
   }, [])
 
+  // clear stale ai tables
+  useEffect(() => {
+    if (ws.referenceTable && !ws.tableNames.includes(ws.referenceTable)) {
+      ws.setReferenceTable('')
+    }
+    if (ws.targetTable && !ws.tableNames.includes(ws.targetTable)) {
+      ws.setTargetTable('')
+    }
+  }, [ws.tableNames, ws.referenceTable, ws.targetTable, ws])
+
   const prompts =
     ws.aiIntent === 'create' ? CREATE_PROMPTS : ws.aiIntent === 'alter' ? ALTER_PROMPTS : ASSISTANT_PROMPTS
 
@@ -93,6 +104,13 @@ export function AiPane() {
         <div>
           <p className="ai-kicker">{aiToolbarKicker()}</p>
           <h2>{aiToolbarTitle(ws.aiIntent)}</h2>
+          <p
+            className="ai-conn-hint"
+            data-ai-connection-id={ws.aiConnectionId ?? ''}
+            title="助手使用的数据库实例（优先当前查询标签工具栏连接）"
+          >
+            {ws.aiConnectionHint}
+          </p>
         </div>
         <div className="ai-head-actions">
           {ws.aiTurns.length > 0 && (
@@ -205,7 +223,7 @@ export function AiPane() {
           const streaming = turn.id === ws.aiTurns.at(-1)?.id && ws.aiStreaming
           if (turn.role === 'user') {
             return (
-              <article key={turn.id} className="card card-user">
+              <article key={turn.id} className="card card-user" data-ai-turn-connection={turn.connectionId ?? ""}>
                 <div className="card-head">
                   <p className="card-kicker">你</p>
                   <div className="card-actions">
@@ -246,6 +264,7 @@ export function AiPane() {
           return (
             <article
               key={turn.id}
+              data-ai-turn-connection={turn.connectionId ?? ''}
               className={[
                 'card',
                 'card-assistant',
