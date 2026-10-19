@@ -649,10 +649,27 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const refreshSchema = useCallback(
     async (rows: ConnectionPublic[], preferredId?: string | null) => {
+      const SCHEMA_TIMEOUT_MS = 12_000
       const nodes = await Promise.all(
         rows.map(async (connection) => {
           try {
-            return await api.connections.schema(connection.id)
+            const schemaPromise = api.connections.schema(connection.id)
+            const timed = await new Promise<Awaited<typeof schemaPromise>>((resolve, reject) => {
+              const timer = window.setTimeout(() => {
+                reject(new Error('对象树加载超时（连接无响应或库太多）'))
+              }, SCHEMA_TIMEOUT_MS)
+              schemaPromise.then(
+                (value) => {
+                  window.clearTimeout(timer)
+                  resolve(value)
+                },
+                (error) => {
+                  window.clearTimeout(timer)
+                  reject(error)
+                },
+              )
+            })
+            return timed
           } catch (error) {
             const message = error instanceof Error ? error.message : '无法读取对象'
             return connectionErrorNode(connection.id, connection.name, connection.dialect, message)
@@ -714,7 +731,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     void (async () => {
       try {
-        const [info, rows, workspace, aiSettings, recent, prefs, groups] = await Promise.all([
+        const bootLoads = Promise.all([
           api.meta(),
           api.connections.list(),
           api.workspace.load(),
@@ -723,6 +740,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           api.prefs.get(),
           api.connections.listGroups().catch(() => []),
         ])
+        const BOOT_LOAD_TIMEOUT_MS = 20_000
+        const [info, rows, workspace, aiSettings, recent, prefs, groups] = await new Promise<
+          Awaited<typeof bootLoads>
+        >((resolve, reject) => {
+          const timer = window.setTimeout(() => {
+            reject(new Error('启动超时：本地配置加载过慢，请重试或重置 workspace.json'))
+          }, BOOT_LOAD_TIMEOUT_MS)
+          bootLoads.then(
+            (value) => {
+              window.clearTimeout(timer)
+              resolve(value)
+            },
+            (error) => {
+              window.clearTimeout(timer)
+              reject(error)
+            },
+          )
+        })
         if (cancelled) return
         setMeta(info)
         setConnections(rows)
@@ -790,12 +825,27 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             pushToast('info', expandRestoredToast(openCount))
           }
         }
-        await refreshSchema(rows, restoreConnectionId)
+        // Dismiss splash before schema probes — slow/unreachable DB must not block main UI.
         loaded.current = true
         setReady(true)
+        if (cancelled) return
+        setSchemaRefreshing(true)
+        try {
+          await refreshSchema(rows, restoreConnectionId)
+        } catch (schemaError) {
+          if (!cancelled) {
+            pushToast(
+              'error',
+              schemaError instanceof Error ? schemaError.message : '对象树加载失败',
+            )
+          }
+        } finally {
+          if (!cancelled) setSchemaRefreshing(false)
+        }
       } catch (error) {
         if (cancelled) return
         pushToast('error', error instanceof Error ? error.message : '工作区没有打开')
+        loaded.current = true
         setReady(true)
       }
     })()

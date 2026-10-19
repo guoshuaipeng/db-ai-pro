@@ -1,5 +1,11 @@
 # DataAI Desktop 更新日志
 
+## 3.136.2 — Bugfix: splash 卡死（对象树阻塞启动）
+
+- 启动先进入主界面，对象树在后台加载；单连接 schema 12s 超时回退错误节点
+- 本地配置加载增加 20s 超时，避免 workspace/prefs 挂起导致一直停在 DataAI 启动页
+
+
 ## 3.136.1 — Bugfix: 查询工具栏/最近/未测徽章/表右键菜单
 
 - 修复查询区工具栏 overflow 缺少 flex，Monaco 编辑区被挤空
