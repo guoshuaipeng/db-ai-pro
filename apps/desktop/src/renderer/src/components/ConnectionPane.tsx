@@ -45,7 +45,7 @@ import {
 } from '@shared/treeIdentCopy'
 import { setSqlDragData } from '@shared/sqlDragDrop'
 import type { Dialect, SchemaNode } from '@shared/types'
-import { IconColumn, IconDatabase, IconMore, IconPlus, IconRefresh, IconSearch, IconTable } from './icons'
+import { IconCollapseTree, IconColumn, IconDatabase, IconExpandLevel, IconExport, IconImport, IconMore, IconPlus, IconRefresh, IconSearch, IconTable } from './icons'
 import { EmptyState } from './EmptyState'
 import { useWorkspace } from '../state/workspace'
 import {
@@ -62,11 +62,14 @@ export function ConnectionPane() {
   const ws = useWorkspace()
   const [menuId, setMenuId] = useState<string | null>(null)
   const [groupDraft, setGroupDraft] = useState('')
+  const [creatingGroup, setCreatingGroup] = useState(false)
+  const [chromeMenuOpen, setChromeMenuOpen] = useState(false)
   const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const root = useRef<HTMLElement>(null)
 
   const searchRef = useRef<HTMLInputElement>(null)
+  const groupInputRef = useRef<HTMLInputElement>(null)
   const [searchKind, setSearchKind] = useState<TreeSearchKind>('all')
 
   const displaySchema = useMemo(() => {
@@ -90,11 +93,22 @@ export function ConnectionPane() {
 
   useEffect(() => {
     const close = (event: globalThis.MouseEvent) => {
-      if (!root.current?.contains(event.target as Node)) setMenuId(null)
+      if (!root.current?.contains(event.target as Node)) {
+        setMenuId(null)
+        setChromeMenuOpen(false)
+      }
     }
     window.addEventListener('mousedown', close)
     return () => window.removeEventListener('mousedown', close)
   }, [])
+
+  useEffect(() => {
+    if (!creatingGroup) return
+    window.setTimeout(() => {
+      groupInputRef.current?.focus()
+      groupInputRef.current?.select()
+    }, 0)
+  }, [creatingGroup])
 
   useEffect(() => onDataai('dataai:focus-tree-search', () => {
     if (!ws.sidebarOpen) ws.toggleSidebar()
@@ -122,40 +136,6 @@ export function ConnectionPane() {
       <div className="side-head">
         <h1>连接</h1>
         <div className="side-head-actions">
-          <button type="button" className="tiny-btn btn btn-ghost" onClick={() => void ws.importConnections()}>
-            导入
-          </button>
-          <button type="button" className="tiny-btn btn btn-ghost" onClick={() => void ws.exportConnections()}>
-            导出
-          </button>
-          <button
-            type="button"
-            className="tiny-btn btn btn-ghost"
-            aria-label="展开下一级"
-            title="展开当前已打开节点的下一级（可多次点击）"
-            onClick={() => ws.expandObjectTreeOneLevel()}
-          >
-            展开
-          </button>
-          <button
-            type="button"
-            className="tiny-btn btn btn-ghost"
-            aria-label="折叠对象树"
-            title="折叠全部（保留连接根展开；有搜索时一并清除）"
-            onClick={() => ws.collapseObjectTree()}
-          >
-            折叠
-          </button>
-          <button
-            type="button"
-            className={ws.schemaRefreshing ? 'icon-btn is-spinning' : 'icon-btn'}
-            aria-label="刷新对象树"
-            title="刷新对象树"
-            disabled={ws.schemaRefreshing}
-            onClick={() => void ws.refreshSchemaTree()}
-          >
-            <IconRefresh />
-          </button>
           <button
             type="button"
             className="btn btn-primary tiny-btn btn-new-conn"
@@ -168,9 +148,7 @@ export function ConnectionPane() {
           </button>
         </div>
       </div>
-      <p className="expand-persist-status" title={expandPersistHint()} role="status">
-        {expandPersistStatus(expandOpenCount)}
-      </p>
+
       <label className="search">
         <IconSearch />
         <input
@@ -194,6 +172,85 @@ export function ConnectionPane() {
           </button>
         )}
       </label>
+
+      <div className="conn-chrome-tools" role="toolbar" aria-label="连接操作">
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="导入连接"
+          title="导入连接"
+          onClick={() => void ws.importConnections()}
+        >
+          <IconImport />
+        </button>
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="导出连接"
+          title="导出连接"
+          onClick={() => void ws.exportConnections()}
+        >
+          <IconExport />
+        </button>
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="展开下一级"
+          title="展开当前已打开节点的下一级（可多次点击）"
+          onClick={() => ws.expandObjectTreeOneLevel()}
+        >
+          <IconExpandLevel />
+        </button>
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="折叠对象树"
+          title="折叠全部（保留连接根展开；有搜索时一并清除）"
+          onClick={() => ws.collapseObjectTree()}
+        >
+          <IconCollapseTree />
+        </button>
+        <button
+          type="button"
+          className={ws.schemaRefreshing ? 'icon-btn is-spinning' : 'icon-btn'}
+          aria-label="刷新对象树"
+          title="刷新对象树"
+          disabled={ws.schemaRefreshing}
+          onClick={() => void ws.refreshSchemaTree()}
+        >
+          <IconRefresh />
+        </button>
+        <div className="conn-chrome-more">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="更多"
+            aria-expanded={chromeMenuOpen}
+            title="更多"
+            onClick={() => setChromeMenuOpen((open) => !open)}
+          >
+            <IconMore />
+          </button>
+          {chromeMenuOpen ? (
+            <div className="menu conn-chrome-menu" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setChromeMenuOpen(false)
+                  setCreatingGroup(true)
+                }}
+              >
+                新建分组
+              </button>
+              <p className="conn-chrome-menu-hint" title={expandPersistHint()} role="status">
+                {expandPersistStatus(expandOpenCount)}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
       {ws.search.trim() ? (
         <div className="tree-search-toolbar">
           <div className="tree-search-kinds" role="tablist" aria-label="搜索结果类型">
@@ -246,47 +303,61 @@ export function ConnectionPane() {
       ) : null}
 
       {/* Bugfix: 侧栏最近区块已移除 */}
-      <div className="conn-group-bar">
-        <input
-          className="fav-input"
-          value={groupDraft}
-          onChange={(e) => setGroupDraft(e.target.value)}
-          placeholder="新建连接分组"
-          aria-label="新建连接分组"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
+      {creatingGroup ? (
+        <div className="conn-group-bar">
+          <input
+            ref={groupInputRef}
+            className="fav-input"
+            value={groupDraft}
+            onChange={(e) => setGroupDraft(e.target.value)}
+            placeholder="新建连接分组"
+            aria-label="新建连接分组"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                setCreatingGroup(false)
+                setGroupDraft('')
+                return
+              }
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                const name = groupDraft.trim()
+                if (!name) return
+                void ws.saveConnectionGroup({ name }).then(() => {
+                  setGroupDraft('')
+                  setCreatingGroup(false)
+                })
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            disabled={!groupDraft.trim()}
+            onClick={() => {
               const name = groupDraft.trim()
               if (!name) return
-              void ws.saveConnectionGroup({ name }).then(() => setGroupDraft(''))
-            }
-          }}
-        />
-        <button
-          type="button"
-          className="btn btn-ghost tiny-btn"
-          disabled={!groupDraft.trim()}
-          onClick={() => {
-            const name = groupDraft.trim()
-            if (!name) return
-            void ws.saveConnectionGroup({ name }).then(() => setGroupDraft(''))
-          }}
-        >
-          新建分组
-        </button>
-      </div>
-
-      <div className="conn-create-bar">
-        <button
-          type="button"
-          className="btn btn-ghost tiny-btn btn-new-conn"
-          title="新建数据库连接"
-          onClick={ws.openCreate}
-        >
-          <IconPlus />
-          新建连接
-        </button>
-      </div>
+              void ws.saveConnectionGroup({ name }).then(() => {
+                setGroupDraft('')
+                setCreatingGroup(false)
+              })
+            }}
+          >
+            新建分组
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost tiny-btn"
+            aria-label="取消新建分组"
+            onClick={() => {
+              setCreatingGroup(false)
+              setGroupDraft('')
+            }}
+          >
+            取消
+          </button>
+        </div>
+      ) : null}
 
       {ws.connections.length === 0 ? (
         <EmptyState

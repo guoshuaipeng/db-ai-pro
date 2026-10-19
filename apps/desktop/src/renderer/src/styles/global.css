@@ -2123,13 +2123,10 @@ body.is-col-resizing .grid-col-resizer {
 .side-head-actions {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
-  max-width: 100%;
-}
-.side-head-actions .btn-new-conn {
   flex: 0 0 auto;
 }
 .ai-head-actions {
@@ -4275,8 +4272,10 @@ button.health-badge:disabled {
 
 .conn-group-bar {
   display: flex;
+  align-items: center;
   gap: 6px;
   padding: 0 10px 10px;
+  flex: 0 0 auto;
 }
 .conn-group-bar .fav-input { flex: 1; min-width: 0; }
 .conn-group { margin-bottom: 4px; }
@@ -6078,20 +6077,40 @@ button.health-badge:disabled {
 }
 
 
-.conn-create-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 12px 8px;
-  flex: 0 0 auto;
-}
-.conn-create-bar .btn-new-conn,
 .side-head-actions .btn-new-conn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex: 0 0 auto;
 }
-.conn-create-bar .btn-new-conn {
-  width: 100%;
-  justify-content: center;
+
+/* Connections chrome: slim icon toolbar (import/export/expand/collapse/refresh/more) */
+.conn-chrome-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 10px 8px;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.conn-chrome-tools .icon-btn {
+  flex: 0 0 auto;
+}
+.conn-chrome-more {
+  position: relative;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.conn-chrome-menu {
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 168px;
+}
+.conn-chrome-menu-hint {
+  margin: 4px 0 0;
+  padding: 6px 8px 4px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ink-tertiary);
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
 }

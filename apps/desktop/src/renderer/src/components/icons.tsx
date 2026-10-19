@@ -152,3 +152,41 @@ export function IconRefresh() {
   )
 }
 
+
+export function IconImport() {
+  return (
+    <Svg>
+      <path d="M8 2.5v7.2" {...stroke} />
+      <path d="M5.2 7.2 8 10l2.8-2.8" {...stroke} />
+      <path d="M3.2 12.8h9.6" {...stroke} />
+    </Svg>
+  )
+}
+
+export function IconExport() {
+  return (
+    <Svg>
+      <path d="M8 10V2.8" {...stroke} />
+      <path d="M5.2 5.6 8 2.8l2.8 2.8" {...stroke} />
+      <path d="M3.2 12.8h9.6" {...stroke} />
+    </Svg>
+  )
+}
+
+export function IconExpandLevel() {
+  return (
+    <Svg>
+      <rect x="2.6" y="2.6" width="10.8" height="10.8" rx="1.4" {...stroke} />
+      <path d="M8 5.2v5.6M5.2 8h5.6" {...stroke} />
+    </Svg>
+  )
+}
+
+export function IconCollapseTree() {
+  return (
+    <Svg>
+      <rect x="2.6" y="2.6" width="10.8" height="10.8" rx="1.4" {...stroke} />
+      <path d="M5.2 8h5.6" {...stroke} />
+    </Svg>
+  )
+}
