@@ -72,13 +72,32 @@ export function ToolbarOverflow({ primary, secondary, className }: Props) {
     if (!root || !measure) return
 
     const gap = 6
-    const moreReserve = 96
+    /** Subpixel / border fudge so the last chip is never half-clipped. */
+    const safety = 4
     const primaryW = primaryRef.current
       ? Math.ceil(primaryRef.current.getBoundingClientRect().width)
       : 0
-    const available = Math.max(0, root.clientWidth - primaryW - (primaryW > 0 ? gap : 0))
-    const widths = measureChildWidths(measure)
+    const available = Math.max(
+      0,
+      Math.floor(root.clientWidth) - primaryW - (primaryW > 0 ? gap : 0) - safety,
+    )
+    const widths = measureChildWidths(measure).map((w) => Math.ceil(w) + 1)
     const total = widths.length
+    const kids = Array.from(measure.children)
+
+    const actionsFrom = (start: number) => {
+      let n = 0
+      for (let i = start; i < kids.length; i += 1) n += countToolbarActions(kids[i]!)
+      return n
+    }
+
+    /** Width of 「更多 · N」 trigger including padding (conservative). */
+    const moreWidthFor = (hiddenActions: number) => {
+      if (hiddenActions <= 0) return 0
+      const label = `更多 · ${hiddenActions}`
+      // CJK ~12px, digits/spaces ~8px, btn pad/border ~28px
+      return Math.ceil(28 + label.length * 9)
+    }
 
     if (total === 0) {
       setVisibleCount(0)
@@ -88,31 +107,29 @@ export function ToolbarOverflow({ primary, secondary, className }: Props) {
     }
 
     const fullNeed = widths.reduce((sum, w) => sum + w, 0) + gap * Math.max(0, total - 1)
-    if (fullNeed <= available + 0.5) {
+    if (fullNeed <= available) {
       setVisibleCount(total)
       setOverflowActionCount(0)
       setMenuOpen(false)
       return
     }
 
-    const budget = Math.max(0, available - moreReserve - gap)
+    // Pack leading items only while (items + 「更多」 for the rest) still fit.
     let used = 0
     let fit = 0
     for (let i = 0; i < total; i += 1) {
-      const next = used + widths[i]! + (fit > 0 ? gap : 0)
-      if (next > budget + 0.5) break
-      used = next
+      const nextUsed = used + widths[i]! + (fit > 0 ? gap : 0)
+      const hiddenIfTake = actionsFrom(i + 1)
+      const moreW = moreWidthFor(hiddenIfTake)
+      const totalNeed = hiddenIfTake > 0 ? nextUsed + gap + moreW : nextUsed
+      if (totalNeed > available) break
+      used = nextUsed
       fit += 1
     }
 
+    // If nothing fit, still show 「更多」 with everything (fit=0).
+    const hiddenActions = actionsFrom(fit)
     setVisibleCount(fit)
-
-    // Count actionable controls in the overflowed slice of the measure tree.
-    let hiddenActions = 0
-    const kids = Array.from(measure.children)
-    for (let i = fit; i < kids.length; i += 1) {
-      hiddenActions += countToolbarActions(kids[i]!)
-    }
     setOverflowActionCount(hiddenActions)
   }
 

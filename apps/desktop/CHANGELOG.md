@@ -1,5 +1,11 @@
 # DataAI Desktop 更新日志
 
+## 3.136.5 — Bugfix: ToolbarOverflow 末按钮不再半截裁切
+
+- 打包用 floor(available) + 安全边距；放不下的整颗进「更多」
+- 有溢出时按「更多 · N」实估宽度预留；secondary 不再 flex-shrink 裁切末项
+
+
 ## 3.136.4 — Bugfix: ToolbarOverflow 填满一行 + 「更多」可打开
 
 - 改为按可用宽度尽量铺满动作，仅把放不下的收入「更多 · N」（不再整组折叠留下大片空白）
