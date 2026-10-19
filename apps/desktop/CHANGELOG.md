@@ -1,3 +1,6 @@
+## 3.136.21
+
+- fix(settings): 设置弹层内容可滚动（settings-body flex + 头/筛选不压缩），避免模型/密钥表单底部被裁切
 # DataAI Desktop 更新日志
 
 ## 3.136.7 — Bugfix: 非全屏工具栏实测裁切（打包算法）
@@ -955,3 +958,4 @@ TypeScript / Electron 桌面端（`apps/desktop`）。本文件对应本机迭�
 - **安全**：连接密码 / API Key 本机密封存储
 
 Oracle / Hive 仅可保存连接，查询执行仍未接入。完整 ER 画布、Navicat 深度集成不在本 RC 范围。
+

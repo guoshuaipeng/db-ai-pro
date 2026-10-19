@@ -2532,7 +2532,7 @@ body.is-col-resizing .grid-col-resizer {
 .settings-overlay { z-index: 45; }
 .settings-shell {
   width: min(820px, calc(100vw - 40px));
-  height: min(560px, calc(100vh - 56px));
+  height: min(640px, calc(100vh - 48px));
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
   border-radius: 16px;
@@ -2577,6 +2577,7 @@ body.is-col-resizing .grid-col-resizer {
   flex-direction: column;
   min-width: 0;
   background: var(--panel);
+  min-height: 0;
 }
 .settings-main-head {
   display: flex;
@@ -2585,11 +2586,13 @@ body.is-col-resizing .grid-col-resizer {
   gap: 12px;
   padding: 14px 16px;
   border-bottom: 1px solid var(--hairline);
+  flex-shrink: 0;
 }
 .settings-main-head h3 { margin: 0; font-size: 15px; }
 
 .settings-filter-bar {
   padding: 0 14px 8px;
+  flex-shrink: 0;
 }
 .settings-filter {
   width: 100%;
@@ -2622,7 +2625,9 @@ body.is-col-resizing .grid-col-resizer {
 }
 
 .settings-body {
+  flex: 1 1 auto;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 16px;
   min-height: 0;
 }
