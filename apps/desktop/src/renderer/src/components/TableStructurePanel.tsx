@@ -43,7 +43,7 @@ export function TableStructurePanel() {
     setCopied(false)
     setColumnFilter('')
     void ws
-      .loadTableStructure(target.connectionId, target.tableName)
+      .loadTableStructure(target.connectionId, target.tableName, target.databaseName)
       .then((next) => {
         if (!cancelled) setStructure(next)
       })
@@ -56,7 +56,7 @@ export function TableStructurePanel() {
     return () => {
       cancelled = true
     }
-  }, [target?.connectionId, target?.tableName])
+  }, [target?.connectionId, target?.tableName, target?.databaseName])
 
   useEffect(() => {
     if (!target) return

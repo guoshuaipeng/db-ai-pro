@@ -399,13 +399,17 @@ export async function describeSession(target: SqlTarget): Promise<string> {
 }
 
 
-export async function inspectTableSession(target: SqlTarget, tableName: string): Promise<TableStructure> {
+export async function inspectTableSession(
+  target: SqlTarget,
+  tableName: string,
+  databaseName?: string | null,
+): Promise<TableStructure> {
   if (target.dialect === 'redis') throw new Error('Redis 没有表结构')
   const name = tableName.trim()
   if (!name) throw new Error('请指定表名')
   const session = await openSession(target)
   if (session.kind === 'sqlite') return inspectSqliteTable(session.db, target, name)
-  if (session.kind === 'mysql') return inspectMysqlTable(session.conn, target, name)
+  if (session.kind === 'mysql') return inspectMysqlTable(session.conn, target, name, databaseName)
   if (session.kind === 'postgres') return inspectPostgresTable(session.client, target, name)
   return inspectMssqlTable(session.pool, target, name)
 }

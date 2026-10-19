@@ -556,12 +556,16 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
 
   ipcMain.handle(
     'sql:tableStructure',
-    async (_event, payload: { connectionId: string; table: string }) => {
+    async (_event, payload: { connectionId: string; table: string; databaseName?: string }) => {
       const row = getConnection(payload.connectionId)
       if (!row) return { error: '连接不存在' }
       if (!dialectInfo(row.dialect).executable) return { error: '这个类型还不能查看表结构' }
       try {
-        const structure = await inspectTableSession(targetFromStored(row), payload.table)
+        const structure = await inspectTableSession(
+          targetFromStored(row),
+          payload.table,
+          payload.databaseName,
+        )
         return { structure }
       } catch (error) {
         return { error: explainDbError(error) }

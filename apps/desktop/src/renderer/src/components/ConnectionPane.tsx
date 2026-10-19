@@ -649,12 +649,12 @@ function TreeNode({
           }}
           onDoubleClick={() => {
             if (node.kind === 'table' && node.connectionId && tableKey) {
-              ws.openTableStructure(node.connectionId, tableKey)
+              ws.openTableQuery(node.connectionId, tableKey, node.databaseName)
             }
           }}
           title={
             node.kind === 'table'
-              ? '单击打开查询 · 双击查看结构 · Alt/Ctrl+单击插入 · 可拖到编辑器'
+              ? '单击/双击打开查询 · 右键查看表结构 · Alt/Ctrl+单击插入 · 可拖到编辑器'
               : insertable
                 ? 'Alt/Ctrl+单击插入名称 · 可拖到编辑器'
                 : undefined
@@ -885,20 +885,20 @@ function TreeNode({
               role="menuitem"
               onClick={() => {
                 onMenu(null)
-                ws.openTableStructure(node.connectionId!, tableKey)
+                ws.openTableQuery(node.connectionId!, tableKey, node.databaseName)
               }}
             >
-              查看结构
+              打开查询
             </button>
             <button
               type="button"
               role="menuitem"
               onClick={() => {
                 onMenu(null)
-                ws.openTableQuery(node.connectionId!, tableKey, node.databaseName)
+                ws.openTableStructure(node.connectionId!, tableKey, node.databaseName)
               }}
             >
-              打开查询
+              表结构
             </button>
             <button
               type="button"

@@ -122,7 +122,7 @@ export type DesktopApi = {
     beginTxn: (connectionId: string) => Promise<{ open: boolean; supported: boolean }>
     commitTxn: (connectionId: string) => Promise<{ open: boolean; supported: boolean }>
     rollbackTxn: (connectionId: string) => Promise<{ open: boolean; supported: boolean }>
-    tableStructure: (payload: { connectionId: string; table: string }) => Promise<TableStructure>
+    tableStructure: (payload: { connectionId: string; table: string; databaseName?: string }) => Promise<TableStructure>
     importPick: () => Promise<{ path: string } | { cancelled: true }>
     importRead: (filePath: string) => Promise<ImportSheetData>
     updateSqliteCell: (payload: {

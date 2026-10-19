@@ -5,6 +5,7 @@ import type Database from 'better-sqlite3'
 import type { ConnectionPool } from 'mssql'
 import { composeCreateTable, ddlLabelFor, type TableColumnInfo, type TableIndexInfo, type TableForeignKeyInfo, type TableStructure } from '@shared/tableStructure'
 import { quoteIdent, identStyle } from '@shared/sql'
+import { qualifyBrowseTable } from '@shared/tablePaging'
 import type { Dialect } from '@shared/types'
 import type { SqlTarget } from './target'
 
@@ -127,17 +128,25 @@ export async function inspectMysqlTable(
   conn: Connection,
   target: SqlTarget,
   tableName: string,
+  databaseName?: string | null,
 ): Promise<TableStructure> {
   const dialect: Dialect = target.dialect === 'mariadb' ? 'mariadb' : 'mysql'
+  // Multi-DB trees (e.g. clientdata.main) must not rely on session DATABASE().
+  const schema = databaseName?.trim() || null
+  const schemaPredicate = schema ? 'TABLE_SCHEMA = ?' : 'TABLE_SCHEMA = DATABASE()'
+  const bind = schema ? [schema, tableName] : [tableName]
   const [colRows] = await conn.query<RowDataPacket[]>(
     `SELECT COLUMN_NAME AS name, COLUMN_TYPE AS data_type, IS_NULLABLE AS is_nullable,
             COLUMN_DEFAULT AS column_default, COLUMN_KEY AS column_key, ORDINAL_POSITION AS ordinal
      FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+     WHERE ${schemaPredicate} AND TABLE_NAME = ?
      ORDER BY ORDINAL_POSITION`,
-    [tableName],
+    bind,
   )
-  if (!colRows.length) throw new Error(`找不到表 ${tableName}`)
+  if (!colRows.length) {
+    const label = schema ? `${schema}.${tableName}` : tableName
+    throw new Error(`找不到表 ${label}`)
+  }
 
   const columns: TableColumnInfo[] = colRows.map((row) => ({
     name: str(row.name),
@@ -151,9 +160,9 @@ export async function inspectMysqlTable(
   const [idxRows] = await conn.query<RowDataPacket[]>(
     `SELECT INDEX_NAME AS name, NON_UNIQUE AS non_unique, COLUMN_NAME AS column_name, SEQ_IN_INDEX AS seq
      FROM information_schema.STATISTICS
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+     WHERE ${schemaPredicate} AND TABLE_NAME = ?
      ORDER BY INDEX_NAME, SEQ_IN_INDEX`,
-    [tableName],
+    bind,
   )
   const indexMap = new Map<string, TableIndexInfo>()
   for (const row of idxRows) {
@@ -169,8 +178,9 @@ export async function inspectMysqlTable(
   }
 
   let ddl: string | null = null
+  const qualified = qualifyBrowseTable(dialect, tableName, schema)
   try {
-    const [createRows] = await conn.query<RowDataPacket[]>(`SHOW CREATE TABLE ${q(dialect, tableName)}`)
+    const [createRows] = await conn.query<RowDataPacket[]>(`SHOW CREATE TABLE ${qualified}`)
     const first = createRows[0] as Record<string, unknown> | undefined
     if (first) {
       ddl = str(first['Create Table'] ?? first['Create View'] ?? Object.values(first)[1] ?? '') || null
@@ -185,10 +195,10 @@ export async function inspectMysqlTable(
             REFERENCED_TABLE_NAME AS ref_table, REFERENCED_COLUMN_NAME AS ref_column,
             ORDINAL_POSITION AS seq
      FROM information_schema.KEY_COLUMN_USAGE
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+     WHERE ${schemaPredicate} AND TABLE_NAME = ?
        AND REFERENCED_TABLE_NAME IS NOT NULL
      ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION`,
-    [tableName],
+    bind,
   )
   const foreignKeys = mergeForeignKeys(
     fkRows.map((row) => ({

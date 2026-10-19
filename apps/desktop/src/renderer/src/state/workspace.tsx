@@ -423,8 +423,8 @@ type WorkspaceValue = {
   deleteConnection: (id: string) => Promise<void>
   restoreSample: () => Promise<void>
   pickFile: (mode: 'open' | 'save') => Promise<string | null>
-  structureTarget: { connectionId: string; tableName: string } | null
-  openTableStructure: (connectionId: string, tableName: string) => void
+  structureTarget: { connectionId: string; tableName: string; databaseName?: string } | null
+  openTableStructure: (connectionId: string, tableName: string, databaseName?: string) => void
   closeTableStructure: () => void
   openTableQuery: (connectionId: string, tableName: string, databaseName?: string) => void
   openDbVisibility: (connection: ConnectionPublic) => void
@@ -432,7 +432,11 @@ type WorkspaceValue = {
   setBrowsePage: (page: number) => void
   setBrowsePageSize: (pageSize: PageSize) => void
   refreshBrowse: () => void
-  loadTableStructure: (connectionId: string, tableName: string) => Promise<TableStructure>
+  loadTableStructure: (
+    connectionId: string,
+    tableName: string,
+    databaseName?: string,
+  ) => Promise<TableStructure>
   columnStatsTarget: ColumnStatsTarget | null
   openColumnStats: (target: ColumnStatsTarget) => void
   closeColumnStats: () => void
@@ -559,7 +563,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [notifyOnErrorOnly, setNotifyOnErrorOnlyState] = useState(false)
   const [notifyOnSlowQuery, setNotifyOnSlowQueryState] = useState(false)
   const [dialog, setDialog] = useState<DialogState>(null)
-  const [structureTarget, setStructureTarget] = useState<{ connectionId: string; tableName: string } | null>(null)
+  const [structureTarget, setStructureTarget] = useState<{
+    connectionId: string
+    tableName: string
+    databaseName?: string
+  } | null>(null)
   const [columnStatsTarget, setColumnStatsTarget] = useState<ColumnStatsTarget | null>(null)
   const [importTarget, setImportTarget] = useState<ImportTarget | null>(null)
   const [schemaDiffOpen, setSchemaDiffOpen] = useState(false)
@@ -1009,9 +1017,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }, [api, pushToast])
 
-  const openTableStructure = (connectionId: string, tableName: string) => {
+  const openTableStructure = (connectionId: string, tableName: string, databaseName?: string) => {
     setActiveConnectionId(connectionId)
-    setStructureTarget({ connectionId, tableName })
+    const db = databaseName?.trim() || undefined
+    setStructureTarget({ connectionId, tableName, ...(db ? { databaseName: db } : {}) })
     void recordTableRecent(connectionId, tableName)
   }
 
@@ -1127,8 +1136,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     openHistorySql(item.sql)
   }
 
-  const loadTableStructure = async (connectionId: string, tableName: string) =>
-    api.sql.tableStructure({ connectionId, table: tableName })
+  const loadTableStructure = async (
+    connectionId: string,
+    tableName: string,
+    databaseName?: string,
+  ) =>
+    api.sql.tableStructure({
+      connectionId,
+      table: tableName,
+      ...(databaseName?.trim() ? { databaseName: databaseName.trim() } : {}),
+    })
 
   const openColumnStats = (target: ColumnStatsTarget) => setColumnStatsTarget(target)
   const closeColumnStats = () => setColumnStatsTarget(null)
