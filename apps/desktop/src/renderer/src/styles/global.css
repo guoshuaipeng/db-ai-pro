@@ -1843,7 +1843,7 @@ body.is-col-resizing .grid-col-resizer {
   align-items: center;
   gap: 4px;
   flex-wrap: nowrap;
-  overflow: hidden;
+  overflow: visible;
   min-width: 0;
   position: relative;
 }
@@ -5449,17 +5449,23 @@ button.health-badge:disabled {
   visibility: hidden;
   pointer-events: none;
   display: flex;
+  align-items: center;
   gap: 6px;
   left: 0;
   top: 0;
-  height: 0;
-  overflow: hidden;
+  height: 36px;
+  width: max-content;
+  max-width: none;
+  overflow: visible;
+  white-space: nowrap;
+  z-index: -1;
+  opacity: 0;
 }
 .toolbar-overflow-secondary {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   flex-wrap: nowrap;
   overflow: hidden;
@@ -5482,6 +5488,8 @@ button.health-badge:disabled {
   z-index: 40;
   min-width: 220px;
   max-width: min(360px, 75vw);
+  max-height: min(70vh, 480px);
+  overflow: auto;
   padding: 6px;
   border-radius: 10px;
   border: 1px solid var(--line);
@@ -5490,6 +5498,18 @@ button.health-badge:disabled {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+.toolbar-overflow-menu.is-portal {
+  position: fixed;
+  z-index: 10000;
+}
+.toolbar-overflow-primary.is-empty {
+  margin-left: 0;
+  min-width: 0;
+  width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
 }
 .toolbar-overflow-menu-head {
   padding: 4px 4px 8px;
@@ -5529,12 +5549,11 @@ button.health-badge:disabled {
   gap: 8px;
   flex: 0 0 auto;
   min-height: 36px;
-  max-height: 48px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--line);
   background: var(--chrome);
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 .result-toolbar-row .result-tools {
   display: flex;
@@ -5544,7 +5563,7 @@ button.health-badge:disabled {
   flex: 1 1 auto;
   min-width: 0;
   flex-wrap: nowrap;
-  overflow: hidden;
+  overflow: visible;
   border-bottom: 0;
   padding: 0;
   min-height: 0;
@@ -5571,12 +5590,11 @@ button.health-badge:disabled {
   gap: 8px;
   flex: 0 0 auto;
   min-height: 36px;
-  max-height: 52px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--line);
   background: var(--chrome);
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 .editor-toolbar-row .editor-toolbar-actions {
   display: flex;

@@ -583,7 +583,7 @@ export function ResultToolbar({
       {copyNote && <span className="result-copy-note">{copyNote}</span>}
         </>
       }
-      primary={<span className="result-toolbar-end" aria-hidden="true" />}
+      primary={null}
     />
 
       <ExportColumnDialog

@@ -1,5 +1,12 @@
 # DataAI Desktop 更新日志
 
+## 3.136.4 — Bugfix: ToolbarOverflow 填满一行 + 「更多」可打开
+
+- 改为按可用宽度尽量铺满动作，仅把放不下的收入「更多 · N」（不再整组折叠留下大片空白）
+- 「更多」菜单改 portal 到 body + fixed 定位，避免被 overflow/max-height 裁切导致打不开
+- 测量条改为 max-content 真实测宽；结果工具栏 primary 为空时不再 margin-left:auto 占位
+
+
 ## 3.136.3 — Bugfix: 结果工具栏换行叠层 + 查询区高度被挤
 
 - 结果工具栏取消 flex-wrap，接入 ToolbarOverflow「更多 · N」；筛选框常显
