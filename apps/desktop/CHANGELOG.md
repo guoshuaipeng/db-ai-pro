@@ -1,5 +1,12 @@
 # DataAI Desktop 更新日志
 
+## 3.136.6 — Bugfix: 窄窗工具栏重测 + 可见「新建连接」
+
+- ToolbarOverflow：window/parent ResizeObserver + rAF 重测，非全屏不再乱版
+- 连接选择 nowrap，避免编辑器工具栏换行叠层
+- 侧栏标题与列表上方恢复带文案的「新建连接」入口（不仅是 + 图标）
+
+
 ## 3.136.5 — Bugfix: ToolbarOverflow 末按钮不再半截裁切
 
 - 打包用 floor(available) + 安全边距；放不下的整颗进「更多」

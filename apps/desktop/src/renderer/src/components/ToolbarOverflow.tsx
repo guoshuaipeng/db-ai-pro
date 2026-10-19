@@ -140,10 +140,25 @@ export function ToolbarOverflow({ primary, secondary, className }: Props) {
   useEffect(() => {
     const root = rootRef.current
     if (!root) return
-    const ro = new ResizeObserver(() => recompute())
+    let raf = 0
+    const schedule = () => {
+      if (raf) cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        recompute()
+      })
+    }
+    const ro = new ResizeObserver(schedule)
     ro.observe(root)
     if (primaryRef.current) ro.observe(primaryRef.current)
-    return () => ro.disconnect()
+    // Pane/window chrome often resizes ancestors first — watch parent too.
+    if (root.parentElement) ro.observe(root.parentElement)
+    window.addEventListener('resize', schedule)
+    return () => {
+      if (raf) cancelAnimationFrame(raf)
+      ro.disconnect()
+      window.removeEventListener('resize', schedule)
+    }
   }, [])
 
   useEffect(() => {

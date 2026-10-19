@@ -156,8 +156,15 @@ export function ConnectionPane() {
           >
             <IconRefresh />
           </button>
-          <button type="button" className="icon-btn" aria-label="新建连接" onClick={ws.openCreate}>
+          <button
+            type="button"
+            className="btn btn-primary tiny-btn btn-new-conn"
+            aria-label="新建连接"
+            title="新建数据库连接"
+            onClick={ws.openCreate}
+          >
             <IconPlus />
+            新建连接
           </button>
         </div>
       </div>
@@ -266,6 +273,18 @@ export function ConnectionPane() {
           }}
         >
           新建分组
+        </button>
+      </div>
+
+      <div className="conn-create-bar">
+        <button
+          type="button"
+          className="btn btn-ghost tiny-btn btn-new-conn"
+          title="新建数据库连接"
+          onClick={ws.openCreate}
+        >
+          <IconPlus />
+          新建连接
         </button>
       </div>
 

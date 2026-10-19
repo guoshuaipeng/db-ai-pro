@@ -2123,7 +2123,14 @@ body.is-col-resizing .grid-col-resizer {
 .side-head-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.side-head-actions .btn-new-conn {
+  flex: 0 0 auto;
 }
 .ai-head-actions {
   display: flex;
@@ -5588,6 +5595,7 @@ button.health-badge:disabled {
 .editor-toolbar-row {
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 8px;
   flex: 0 0 auto;
   min-height: 36px;
@@ -5649,11 +5657,12 @@ button.health-badge:disabled {
 .tab-conn-select {
   display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
   flex: 0 1 280px;
-  min-width: 140px;
-  max-width: 360px;
+  min-width: 120px;
+  max-width: 320px;
+  overflow: hidden;
 }
 .tab-conn-select-label {
   flex: 0 0 auto;
@@ -6054,4 +6063,23 @@ button.health-badge:disabled {
 
 .conn-color-picker + .field-hint {
   margin-top: 6px;
+}
+
+
+.conn-create-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 8px;
+  flex: 0 0 auto;
+}
+.conn-create-bar .btn-new-conn,
+.side-head-actions .btn-new-conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.conn-create-bar .btn-new-conn {
+  width: 100%;
+  justify-content: center;
 }
