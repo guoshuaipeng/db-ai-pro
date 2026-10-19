@@ -1,5 +1,12 @@
 # DataAI Desktop 更新日志
 
+## 3.136.3 — Bugfix: 结果工具栏换行叠层 + 查询区高度被挤
+
+- 结果工具栏取消 flex-wrap，接入 ToolbarOverflow「更多 · N」；筛选框常显
+- 编辑器/结果工具栏行 flex:0 + max-height，editor-body 保底高度，避免 Monaco 被挤没
+- 连接选择改为单行，状态文案不再撑高工具栏
+
+
 ## 3.136.2 — Bugfix: splash 卡死（对象树阻塞启动）
 
 - 启动先进入主界面，对象树在后台加载；单连接 schema 12s 超时回退错误节点

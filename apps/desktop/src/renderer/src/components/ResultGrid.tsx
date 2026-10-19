@@ -37,6 +37,7 @@ import {
   visibleResultColumns as headerNameColumns,
 } from '@shared/resultColumnHeaders'
 import { useWorkspace } from '../state/workspace'
+import { ToolbarOverflow } from './ToolbarOverflow'
 import { nextSortState, sortResultRows, type ResultSort } from '@shared/resultSort'
 import {
   rangeRowIndexes,
@@ -365,7 +366,7 @@ export function ResultToolbar({
   }
 
   return (
-    <div className="result-tools">
+    <>
       {onFilterQuery && (
         <label className="result-filter">
           <span className="result-filter-label">筛选</span>
@@ -401,6 +402,10 @@ export function ResultToolbar({
           )}
         </label>
       )}
+    <ToolbarOverflow
+      className="result-tools"
+      secondary={
+        <>
       <button
         type="button"
         className="btn btn-ghost tiny-btn"
@@ -576,6 +581,10 @@ export function ResultToolbar({
         复制 INSERT
       </button>
       {copyNote && <span className="result-copy-note">{copyNote}</span>}
+        </>
+      }
+      primary={<span className="result-toolbar-end" aria-hidden="true" />}
+    />
 
       <ExportColumnDialog
         open={exportDialog != null}
@@ -590,7 +599,7 @@ export function ResultToolbar({
           runExportWithColumns(exportDialog, picked, sourceRows)
         }}
       />
-    </div>
+    </>
   )
 }
 

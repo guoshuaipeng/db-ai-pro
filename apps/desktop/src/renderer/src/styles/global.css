@@ -1840,9 +1840,12 @@ body.is-col-resizing .grid-col-resizer {
 }
 .result-tools {
   display: flex;
+  align-items: center;
   gap: 4px;
   flex-wrap: nowrap;
-  overflow-x: auto;
+  overflow: hidden;
+  min-width: 0;
+  position: relative;
 }
 .tiny-btn {
   height: 28px;
@@ -1872,10 +1875,11 @@ body.is-col-resizing .grid-col-resizer {
 
 .editor-body {
   position: relative;
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 auto;
+  min-height: 120px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 .editor-body > .editor-wrap {
   flex: 1;
@@ -5523,17 +5527,35 @@ button.health-badge:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 0 0 auto;
   min-height: 36px;
+  max-height: 48px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--line);
   background: var(--chrome);
   min-width: 0;
+  overflow: hidden;
 }
 .result-toolbar-row .result-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
-  flex-wrap: wrap;
-  overflow-x: visible;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  border-bottom: 0;
+  padding: 0;
+  min-height: 0;
+  background: transparent;
+}
+.result-toolbar-row .result-view-toggle {
+  flex: 0 0 auto;
+}
+.result-toolbar-row .result-filter {
+  flex: 0 0 auto;
+  min-width: 0;
 }
 .result-toolbar-row .result-count {
   height: auto;
@@ -5549,10 +5571,12 @@ button.health-badge:disabled {
   gap: 8px;
   flex: 0 0 auto;
   min-height: 36px;
+  max-height: 52px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--line);
   background: var(--chrome);
   min-width: 0;
+  overflow: hidden;
 }
 .editor-toolbar-row .editor-toolbar-actions {
   display: flex;
@@ -5568,9 +5592,16 @@ button.health-badge:disabled {
 }
 .tab-conn-block {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+  flex: 0 1 auto;
+  max-width: 420px;
+}
+.tab-conn-block .tab-conn-status {
+  display: none;
 }
 .tab-conn-empty {
   max-width: 280px;
