@@ -459,9 +459,9 @@ type WorkspaceValue = {
   sidebarWidth: number
   aiWidth: number
   editorRatio: number
-  setSidebarWidth: (value: number) => void
-  setAiWidth: (value: number) => void
-  setEditorRatio: (value: number) => void
+  setSidebarWidth: (value: number | ((prev: number) => number)) => void
+  setAiWidth: (value: number | ((prev: number) => number)) => void
+  setEditorRatio: (value: number | ((prev: number) => number)) => void
   sidebarOpen: boolean
   aiOpen: boolean
   toggleSidebar: () => void
@@ -581,14 +581,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [sidebarWidth, setSidebarWidthState] = useState<number>(LAYOUT.sidebarDefault)
   const [aiWidth, setAiWidthState] = useState<number>(LAYOUT.aiDefault)
   const [editorRatio, setEditorRatioState] = useState<number>(LAYOUT.editorRatioDefault)
-  const setSidebarWidth = useCallback((value: number) => {
-    setSidebarWidthState(clampSidebarWidth(value))
+  const setSidebarWidth = useCallback((value: number | ((prev: number) => number)) => {
+    setSidebarWidthState((prev) => clampSidebarWidth(typeof value === 'function' ? value(prev) : value))
   }, [])
-  const setAiWidth = useCallback((value: number) => {
-    setAiWidthState(clampAiWidth(value))
+  const setAiWidth = useCallback((value: number | ((prev: number) => number)) => {
+    setAiWidthState((prev) => clampAiWidth(typeof value === 'function' ? value(prev) : value))
   }, [])
-  const setEditorRatio = useCallback((value: number) => {
-    setEditorRatioState(clampEditorRatio(value))
+  const setEditorRatio = useCallback((value: number | ((prev: number) => number)) => {
+    setEditorRatioState((prev) => clampEditorRatio(typeof value === 'function' ? value(prev) : value))
   }, [])
   const [globalReadOnly, setGlobalReadOnlyState] = useState(false)
   const [slowQueryMs, setSlowQueryMsState] = useState(DEFAULT_SLOW_QUERY_MS)

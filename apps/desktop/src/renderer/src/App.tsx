@@ -37,6 +37,11 @@ import {
   layoutResetToast,
   layoutSplitterAriaLabel,
 } from '@shared/layoutReset'
+import {
+  applyAiWidthDelta,
+  applyEditorRatioPointerDelta,
+  applyWidthDelta,
+} from '@shared/splitterDelta'
 import { formatElapsedMs, isSlowQuery } from '@shared/slowQuery'
 import { statusBarRerunAction } from '@shared/statusBarRerun'
 import {
@@ -94,6 +99,8 @@ export function App() {
       cancelled = true
     }
   }, [])
+
+  const stageRef = useRef<HTMLElement | null>(null)
 
   const applyZoom = useCallback(async (factor: number) => {
     try {
@@ -709,7 +716,7 @@ case 'query.openFromFile':
         {ws.sidebarOpen && (
           <Splitter
             label="调整连接栏宽度"
-            onDelta={(delta) => ws.setSidebarWidth(ws.sidebarWidth + delta)}
+            onDelta={(delta) => ws.setSidebarWidth((w) => applyWidthDelta(w, delta))}
             onReset={() => {
               ws.setSidebarWidth(layoutResetDefaults().sidebarWidth)
               ws.pushToast('success', layoutResetToast('sidebar'))
@@ -717,6 +724,7 @@ case 'query.openFromFile':
           />
         )}
         <main
+          ref={stageRef}
           className="stage"
           style={
             ws.activeConnection && isKvDialect(ws.activeConnection.dialect)
@@ -734,7 +742,10 @@ case 'query.openFromFile':
               <Splitter
                 label="调整编辑器高度"
                 orientation="horizontal"
-                onDelta={(delta) => ws.setEditorRatio(ws.editorRatio + delta / 280)}
+                onDelta={(delta) => {
+                  const track = Math.max(1, (stageRef.current?.clientHeight ?? 560) - 5)
+                  ws.setEditorRatio((r) => applyEditorRatioPointerDelta(r, delta, track))
+                }}
                 onReset={() => {
                   ws.setEditorRatio(layoutResetDefaults().editorRatio)
                   ws.pushToast('success', layoutResetToast('editor'))
@@ -747,7 +758,7 @@ case 'query.openFromFile':
         {ws.aiOpen && (
           <Splitter
             label="调整助手宽度"
-            onDelta={(delta) => ws.setAiWidth(ws.aiWidth - delta)}
+            onDelta={(delta) => ws.setAiWidth((w) => applyAiWidthDelta(w, -delta))}
             onReset={() => {
               ws.setAiWidth(layoutResetDefaults().aiWidth)
               ws.pushToast('success', layoutResetToast('ai'))
@@ -887,15 +898,9 @@ function Splitter({
   const last = useRef(0)
   const dragging = useRef(false)
   const [active, setActive] = useState(false)
-  const raf = useRef(0)
-  const pending = useRef(0)
-
-  const flush = () => {
-    raf.current = 0
-    const delta = pending.current
-    pending.current = 0
-    if (delta !== 0) onDelta(delta)
-  }
+  // Keep latest onDelta without re-binding pointer handlers every parent render.
+  const onDeltaRef = useRef(onDelta)
+  onDeltaRef.current = onDelta
 
   const down = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
@@ -911,23 +916,20 @@ function Splitter({
     const delta = point - last.current
     last.current = point
     if (delta === 0) return
-    pending.current += delta
-    if (!raf.current) raf.current = window.requestAnimationFrame(flush)
+    // Direct call (no rAF coalesce): parent setters use functional updates so
+    // every CSS-pixel of pointer motion applies 1:1 — no stale-width drop.
+    onDeltaRef.current(delta)
   }
   const up = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!dragging.current) return
     dragging.current = false
     setActive(false)
-    if (raf.current) {
-      window.cancelAnimationFrame(raf.current)
-      raf.current = 0
-    }
-    if (pending.current !== 0) flush()
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
     document.body.classList.remove('is-col-resizing', 'is-row-resizing')
   }
+
   return (
     <div
       className={
@@ -956,4 +958,5 @@ function Splitter({
     />
   )
 }
+
 
