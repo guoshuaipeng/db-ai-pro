@@ -38,7 +38,10 @@ function flattenSecondary(secondary: ReactNode): ReactNode[] {
 function measureChildWidths(measure: HTMLElement): number[] {
   return Array.from(measure.children).map((child) => {
     if (!(child instanceof HTMLElement)) return 0
-    return Math.ceil(child.getBoundingClientRect().width) || child.scrollWidth || 0
+    const rect = child.getBoundingClientRect().width
+    const scroll = child.scrollWidth
+    const offset = child.offsetWidth
+    return Math.ceil(Math.max(rect, scroll, offset, 0))
   })
 }
 
@@ -72,16 +75,17 @@ export function ToolbarOverflow({ primary, secondary, className }: Props) {
     if (!root || !measure) return
 
     const gap = 6
-    /** Subpixel / border fudge so the last chip is never half-clipped. */
-    const safety = 4
+    const safety = 8
     const primaryW = primaryRef.current
-      ? Math.ceil(primaryRef.current.getBoundingClientRect().width)
+      ? Math.max(
+          Math.ceil(primaryRef.current.getBoundingClientRect().width),
+          primaryRef.current.scrollWidth,
+        )
       : 0
-    const available = Math.max(
-      0,
-      Math.floor(root.clientWidth) - primaryW - (primaryW > 0 ? gap : 0) - safety,
-    )
-    const widths = measureChildWidths(measure).map((w) => Math.ceil(w) + 1)
+    // Use the toolbar root's content box; never trust a zero/stale width.
+    const rootW = Math.max(Math.floor(root.getBoundingClientRect().width), root.clientWidth)
+    const available = Math.max(0, rootW - primaryW - (primaryW > 0 ? gap : 0) - safety)
+    const widths = measureChildWidths(measure).map((w) => Math.max(Math.ceil(w), 1) + 2)
     const total = widths.length
     const kids = Array.from(measure.children)
 
@@ -91,12 +95,10 @@ export function ToolbarOverflow({ primary, secondary, className }: Props) {
       return n
     }
 
-    /** Width of 「更多 · N」 trigger including padding (conservative). */
     const moreWidthFor = (hiddenActions: number) => {
       if (hiddenActions <= 0) return 0
-      const label = `更多 · ${hiddenActions}`
-      // CJK ~12px, digits/spaces ~8px, btn pad/border ~28px
-      return Math.ceil(28 + label.length * 9)
+      const label = `更多 · ${Math.max(hiddenActions, 1)}`
+      return Math.ceil(36 + label.length * 10)
     }
 
     if (total === 0) {
@@ -106,30 +108,40 @@ export function ToolbarOverflow({ primary, secondary, className }: Props) {
       return
     }
 
-    const fullNeed = widths.reduce((sum, w) => sum + w, 0) + gap * Math.max(0, total - 1)
-    if (fullNeed <= available) {
+    const sumWidths = (count: number) => {
+      let used = 0
+      for (let i = 0; i < count; i += 1) {
+        used += widths[i]! + (i > 0 ? gap : 0)
+      }
+      return used
+    }
+
+    // Prefer showing all only when they truly fit with slack.
+    if (sumWidths(total) <= available) {
       setVisibleCount(total)
       setOverflowActionCount(0)
       setMenuOpen(false)
       return
     }
 
-    // Pack leading items only while (items + 「更多」 for the rest) still fit.
-    let used = 0
-    let fit = 0
-    for (let i = 0; i < total; i += 1) {
-      const nextUsed = used + widths[i]! + (fit > 0 ? gap : 0)
-      const hiddenIfTake = actionsFrom(i + 1)
-      const moreW = moreWidthFor(hiddenIfTake)
-      const totalNeed = hiddenIfTake > 0 ? nextUsed + gap + moreW : nextUsed
-      if (totalNeed > available) break
-      used = nextUsed
-      fit += 1
+    // Binary-search largest fit where items + 「更多」 fit in available.
+    let lo = 0
+    let hi = total - 1
+    let best = 0
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1
+      const hidden = actionsFrom(mid)
+      const need = sumWidths(mid) + gap + moreWidthFor(hidden)
+      if (need <= available) {
+        best = mid
+        lo = mid + 1
+      } else {
+        hi = mid - 1
+      }
     }
 
-    // If nothing fit, still show 「更多」 with everything (fit=0).
-    const hiddenActions = actionsFrom(fit)
-    setVisibleCount(fit)
+    const hiddenActions = actionsFrom(best)
+    setVisibleCount(best)
     setOverflowActionCount(hiddenActions)
   }
 

@@ -1,5 +1,11 @@
 # DataAI Desktop 更新日志
 
+## 3.136.7 — Bugfix: 非全屏工具栏实测裁切（打包算法）
+
+- ToolbarOverflow 改为二分打包 + 更保守测宽/「更多」预留；窄窗必出「更多」而非半截按钮
+- 连接下拉最大宽度收紧，把横向空间让给动作条
+
+
 ## 3.136.6 — Bugfix: 窄窗工具栏重测 + 可见「新建连接」
 
 - ToolbarOverflow：window/parent ResizeObserver + rAF 重测，非全屏不再乱版

@@ -5472,11 +5472,10 @@ button.health-badge:disabled {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   min-width: 0;
-  max-width: 100%;
   flex-wrap: nowrap;
-  overflow: visible;
+  overflow: hidden;
 }
 .toolbar-overflow-primary {
   display: flex;
@@ -5659,10 +5658,19 @@ button.health-badge:disabled {
   align-items: center;
   flex-wrap: nowrap;
   gap: 6px;
-  flex: 0 1 280px;
-  min-width: 120px;
-  max-width: 320px;
+  flex: 0 1 220px;
+  min-width: 100px;
+  max-width: 240px;
   overflow: hidden;
+}
+.editor-toolbar-row .tab-conn-block {
+  flex: 0 1 auto;
+  max-width: 260px;
+  min-width: 0;
+}
+.editor-toolbar-row .editor-toolbar-actions {
+  flex: 1 1 auto;
+  min-width: 120px;
 }
 .tab-conn-select-label {
   flex: 0 0 auto;
