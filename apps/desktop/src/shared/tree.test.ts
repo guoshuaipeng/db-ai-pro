@@ -6,6 +6,8 @@ import {
   formatMatchedTablesClipboard,
   narrowTreeByKind,
   treeMatchedTablesCopiedToast,
+  treeSchemaLoadingBody,
+  treeSchemaLoadingTitle,
   treeSearchKindEmptyBody,
 } from './tree'
 import type { SchemaNode } from './types'
@@ -99,3 +101,11 @@ describe('collectMatchedTables', () => {
     expect(treeSearchKindEmptyBody('table')).toContain('没有表')
   })
 })
+
+describe('treeSchemaLoading', () => {
+  it('exposes Chinese loading copy for cold-start tree', () => {
+    expect(treeSchemaLoadingTitle()).toContain('加载')
+    expect(treeSchemaLoadingBody()).toMatch(/库|表/)
+  })
+})
+

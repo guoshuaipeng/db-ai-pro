@@ -841,11 +841,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           pushToast('info', expandRestoredToast(countOpenExpands(restoredExpand)))
         }
 
+        // Mark schema loading BEFORE ready so the tree never flashes「没有匹配的对象」.
+        setSchemaRefreshing(true)
         // Dismiss splash before schema probes — slow/unreachable DB must not block main UI.
         loaded.current = true
         setReady(true)
         if (cancelled) return
-        setSchemaRefreshing(true)
         try {
           const nodes = await refreshSchema(rows, restoreConnectionId)
           if (cancelled) return

@@ -54,6 +54,8 @@ import {
   formatMatchedTablesClipboard,
   narrowTreeByKind,
   treeMatchedTablesCopiedToast,
+  treeSchemaLoadingBody,
+  treeSchemaLoadingTitle,
   treeSearchKindEmptyBody,
   type TreeSearchKind,
 } from '@shared/tree'
@@ -394,11 +396,29 @@ export function ConnectionPane() {
             </>
           }
         />
+      ) : displaySchema.length === 0 && (ws.schemaRefreshing || ws.schema.length === 0) && !ws.search.trim() ? (
+        <EmptyState
+          compact
+          kicker="对象树"
+          title={treeSchemaLoadingTitle()}
+          body={treeSchemaLoadingBody()}
+          icon={<IconDatabase />}
+        />
       ) : displaySchema.length === 0 ? (
         <EmptyState
           compact
-          title={ws.filteredSchema.length > 0 ? '当前类型下没有匹配' : '没有匹配的对象'}
-          body={treeSearchKindEmptyBody(ws.filteredSchema.length > 0 ? searchKind : 'all')}
+          title={
+            ws.search.trim()
+              ? ws.filteredSchema.length > 0
+                ? '当前类型下没有匹配'
+                : '没有匹配的对象'
+              : '对象树为空'
+          }
+          body={
+            ws.search.trim()
+              ? treeSearchKindEmptyBody(ws.filteredSchema.length > 0 ? searchKind : 'all')
+              : '刷新对象树，或检查连接是否可用。'
+          }
           actions={
             <>
               {ws.filteredSchema.length > 0 && searchKind !== 'all' ? (
@@ -406,16 +426,27 @@ export function ConnectionPane() {
                   查看全部类型
                 </button>
               ) : null}
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => {
-                  ws.setSearch('')
-                  setSearchKind('all')
-                }}
-              >
-                清除搜索
-              </button>
+              {ws.search.trim() ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    ws.setSearch('')
+                    setSearchKind('all')
+                  }}
+                >
+                  清除搜索
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={ws.schemaRefreshing}
+                  onClick={() => void ws.refreshSchemaTree()}
+                >
+                  刷新对象树
+                </button>
+              )}
             </>
           }
         />

@@ -166,3 +166,12 @@ export function treeSearchKindEmptyBody(kind: TreeSearchKind): string {
   if (kind === 'column') return '当前关键字下没有列。可切换到「全部」或「表」，或清除搜索。'
   return '试试更短的关键字，或清除搜索后从连接树继续浏览。'
 }
+
+export function treeSchemaLoadingTitle(): string {
+  return '正在加载对象树…'
+}
+
+export function treeSchemaLoadingBody(): string {
+  return '正在读取连接下的库与表，请稍候。'
+}
+
