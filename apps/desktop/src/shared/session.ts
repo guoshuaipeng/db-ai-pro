@@ -63,20 +63,20 @@ export const MULTI_SQL = [
   commented('各品类销量', SQL.category),
 ].join('\n')
 
-export type SeedTab = { title: string; sql: string }
-
-export const INITIAL_TABS: SeedTab[] = [
-  { title: '客户总览', sql: SQL.customers },
-  { title: '各地区订单金额', sql: SQL.regions },
-  { title: '近九十天的高价值订单', sql: SQL.highValue },
-  { title: '缺少邮箱的活跃客户', sql: SQL.missingEmail },
-  { title: '订单状态分布', sql: SQL.status },
-  { title: '各品类销量与均价', sql: SQL.category },
-  { title: '区域、状态与品类汇总', sql: MULTI_SQL },
-]
-
 export const SAMPLE_CONNECTION_ID = 'sample-retail'
 export const SAMPLE_CONNECTION_NAME = '示例业务库'
+
+export type SeedTab = { title: string; sql: string; connectionId?: string | null }
+
+export const INITIAL_TABS: SeedTab[] = [
+  { title: '客户总览', sql: SQL.customers, connectionId: SAMPLE_CONNECTION_ID },
+  { title: '各地区订单金额', sql: SQL.regions, connectionId: SAMPLE_CONNECTION_ID },
+  { title: '近九十天的高价值订单', sql: SQL.highValue, connectionId: SAMPLE_CONNECTION_ID },
+  { title: '缺少邮箱的活跃客户', sql: SQL.missingEmail, connectionId: SAMPLE_CONNECTION_ID },
+  { title: '订单状态分布', sql: SQL.status, connectionId: SAMPLE_CONNECTION_ID },
+  { title: '各品类销量与均价', sql: SQL.category, connectionId: SAMPLE_CONNECTION_ID },
+  { title: '区域、状态与品类汇总', sql: MULTI_SQL, connectionId: SAMPLE_CONNECTION_ID },
+]
 
 export function draftLocalAnswer(prompt: string): string {
   const text = prompt.trim()

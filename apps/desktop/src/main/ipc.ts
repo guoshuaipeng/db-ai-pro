@@ -57,7 +57,6 @@ import {
   removeConnectionGroup,
   savePrefs,
   getConnection,
-  hasConnectionStore,
   listConnections,
   listFavorites,
   listFavoriteFolders,
@@ -157,9 +156,22 @@ export function createSample(userData: string) {
   })
 }
 
-/** When the connection list is empty (missing store or zero rows), register the sample DB. */
+/**
+ * Always ensure the built-in sample retail SQLite connection exists.
+ * Seed SQL tabs bind to it; without this, cold open runs them on whatever
+ * activeConnection last pointed at (e.g. snowy-cloud) and fail.
+ */
 export function ensureFirstLaunchSample(userData: string): void {
-  if (hasConnectionStore() && listConnections().length > 0) return
+  const filePath = sampleFilePath(userData)
+  if (getConnection(SAMPLE_CONNECTION_ID)) {
+    if (!databaseExists(filePath)) {
+      const created = createSample(userData)
+      if ('error' in created) throw new Error(created.error)
+    }
+    return
+  }
+  // Older builds ignored createSample's fixed id and spawned UUID「示例业务库」rows.
+  // Prefer recreating the canonical sample-retail id (file is shared under userData/sample).
   const created = createSample(userData)
   if ('error' in created) throw new Error(created.error)
 }
@@ -345,7 +357,10 @@ export function registerIpc(getWindow: () => BrowserWindow | null, userData: str
     }
   })
 
-  ipcMain.handle('connections:list', () => listConnections())
+  ipcMain.handle('connections:list', () => {
+    ensureFirstLaunchSample(app.getPath('userData'))
+    return listConnections()
+  })
   ipcMain.handle('connections:listGroups', () => listConnectionGroups())
   ipcMain.handle(
     'connections:saveGroup',

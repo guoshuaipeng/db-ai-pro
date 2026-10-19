@@ -52,7 +52,7 @@ import {
   type PageSize,
   type TableBrowseState,
 } from '@shared/tablePaging'
-import { INITIAL_TABS } from '@shared/session'
+import { INITIAL_TABS, SAMPLE_CONNECTION_ID } from '@shared/session'
 import {
   dirtyBatchCloseDetail,
   dirtyCloseTabDetail,
@@ -111,6 +111,7 @@ import {
   normalizeSessionTabs,
   pickActiveEditorId,
   SESSION_TAB_CAP,
+  healSeedSampleTabs
 } from '@shared/sessionRestore'
 import {
   sessionTabsRestoredToast,
@@ -293,6 +294,7 @@ type WorkspaceValue = {
   activeEditor: EditorTabState | null
   setActiveEditor: (id: string) => void
   setActiveTabConnection: (connectionId: string | null) => void
+  setActiveTabDatabase: (databaseName: string | null) => void
   /** Epoch ms when current run started; null when idle. */
   runningSince: number | null
   tabDisconnected: (tab: EditorTabState) => boolean
@@ -475,7 +477,7 @@ function seedTabs(): EditorTabState[] {
       id: `query-${index + 1}`,
       title: tab.title,
       sql: tab.sql,
-      connectionId: null,
+      connectionId: tab.connectionId ?? SAMPLE_CONNECTION_ID,
     }),
   )
 }
@@ -804,12 +806,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           }
           if (prefs.restoreTabsOnLaunch !== false && workspace.editorTabs.length > 0) {
             const rawTabCount = Array.isArray(workspace.editorTabs) ? workspace.editorTabs.length : 0
-            const tabs = normalizeSessionTabs(workspace.editorTabs, SESSION_TAB_CAP).map(withCleanBaseline)
+            const tabs = healSeedSampleTabs(
+              normalizeSessionTabs(workspace.editorTabs, SESSION_TAB_CAP),
+            ).map(withCleanBaseline)
             setEditorTabs(tabs.length ? tabs : seedTabs())
             setActiveEditorId(pickActiveEditorId(tabs.length ? tabs : seedTabs(), workspace.activeEditorId))
             const activeTab = tabs.find((tab) => tab.id === pickActiveEditorId(tabs, workspace.activeEditorId))
+            // Prefer tab binding (incl. healed sample) so toolbar/run match the SQL.
             if (activeTab?.connectionId && connectionIds.has(activeTab.connectionId)) {
               restoreConnectionId = activeTab.connectionId
+            } else if (
+              activeTab?.connectionId === SAMPLE_CONNECTION_ID
+            ) {
+              // Sample may be registered just-in-time; still prefer it for seed tabs.
+              restoreConnectionId = SAMPLE_CONNECTION_ID
             } else if (workspace.activeConnectionId && connectionIds.has(workspace.activeConnectionId)) {
               restoreConnectionId = workspace.activeConnectionId
             } else {
@@ -1915,14 +1925,29 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (running) return
     const editorId = opts?.editorId ?? activeEditor?.id
     const editor = editorTabs.find((item) => item.id === editorId) ?? activeEditor
+    const explicitBind = Boolean(editor?.connectionId?.trim())
     const connectionId =
       opts?.connectionId ??
       resolveTabConnectionId(editor, activeConnectionId) ??
       activeConnection?.id
-    const connection = connections.find((item) => item.id === connectionId) ?? activeConnection
+    // Never fall back to another connection when the tab's bind is missing/disconnected —
+    // that caused sample SQL to run on snowy-cloud (and similar) after cold open.
+    const connection = connectionId
+      ? connections.find((item) => item.id === connectionId)
+      : undefined
     const quiet = opts?.quiet === true
-    if (!connection) {
-      pushToast('info', '先在左侧选择一个连接')
+    const databaseOverride =
+      (opts?.database?.trim() ||
+        editor?.databaseName?.trim() ||
+        editor?.browse?.databaseName?.trim() ||
+        '') || undefined
+    if (!connectionId || !connection) {
+      pushToast(
+        'info',
+        explicitBind
+          ? '当前标签绑定的连接不可用，请在工具栏重新选择数据库实例'
+          : '当前标签未绑定连接，请先在工具栏选择数据库实例',
+      )
       return
     }
     if (isKvDialect(connection.dialect)) {
@@ -1957,7 +1982,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         sql,
         requestId,
         timeoutMs,
-        database: opts?.database,
+        database: databaseOverride,
       })
       const next = resultsFrom(statements)
       const elapsedMs = statements.reduce((sum, item) => sum + (item.elapsedMs || 0), 0)
@@ -2072,7 +2097,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       connectionId: next.connectionId,
       editorId: tabId,
       quiet: opts?.quiet !== false,
-      database: dialect === 'postgresql' ? next.databaseName : undefined,
+      database: next.databaseName || undefined,
     })
   }
 
@@ -2731,6 +2756,24 @@ ${sql.trim()}
     void checkConnectionHealth(activeConnectionId, true)
   }, [ready, activeConnectionId])
 
+  const setActiveTabDatabase = (databaseName: string | null) => {
+    const tab = activeEditor
+    if (!tab) {
+      pushToast('info', '没有活动的查询标签')
+      return
+    }
+    const nextDb = databaseName?.trim() || null
+    setEditorTabs((tabs) =>
+      tabs.map((row) => {
+        if (row.id !== tab.id) return row
+        const next: EditorTabState = { ...row }
+        if (nextDb) next.databaseName = nextDb
+        else if ('databaseName' in next) delete (next as { databaseName?: string | null }).databaseName
+        return next
+      }),
+    )
+  }
+
   const setActiveTabConnection = (connectionId: string | null) => {
     const tab = activeEditor
     if (!tab) {
@@ -2743,7 +2786,13 @@ ${sql.trim()}
       return
     }
     setEditorTabs((tabs) =>
-      tabs.map((row) => (row.id === tab.id ? { ...row, connectionId: nextId } : row)),
+      tabs.map((row) => {
+        if (row.id !== tab.id) return row
+        const next: EditorTabState = { ...row, connectionId: nextId }
+        // Rebind clears prior DB override so we do not keep another instance's schema.
+        if ('databaseName' in next) delete (next as { databaseName?: string | null }).databaseName
+        return next
+      }),
     )
     if (nextId) {
       setActiveConnectionId(nextId)
@@ -2787,6 +2836,7 @@ ${sql.trim()}
     editorTabs,
     activeEditor,
     setActiveTabConnection,
+    setActiveTabDatabase,
     runningSince,
     setActiveEditor: (id: string) => {
       setActiveEditorId(id)

@@ -182,7 +182,7 @@ export function saveConnection(input: ConnectionInput): { connection: Connection
   }
 
   const next: StoredConnection = {
-    id: existing?.id ?? createId(),
+    id: existing?.id ?? (typeof input.id === 'string' && input.id.trim() ? input.id.trim() : createId()),
     name,
     dialect: input.dialect,
     filePath: input.filePath?.trim() || undefined,

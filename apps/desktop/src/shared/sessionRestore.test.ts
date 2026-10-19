@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  healSeedSampleTabs,
+  isSeedSampleTab,
   isTabDisconnected,
   normalizeSessionTabs,
   pickActiveEditorId,
   SESSION_TAB_CAP,
 } from './sessionRestore'
+import { INITIAL_TABS, SAMPLE_CONNECTION_ID, SQL } from './session'
 
 describe('sessionRestore', () => {
   it('normalizes and caps tabs without secrets', () => {
@@ -85,4 +88,47 @@ describe('sessionRestore', () => {
     expect('password' in tabs[0]).toBe(false)
   })
 
+})
+
+describe('healSeedSampleTabs', () => {
+  it('detects seed sample tabs by title+sql', () => {
+    expect(isSeedSampleTab({ title: '客户总览', sql: SQL.customers })).toBe(true)
+    expect(isSeedSampleTab({ title: '客户总览', sql: 'SELECT 1' })).toBe(false)
+  })
+
+  it('rebinds seed demos to sample-retail and clears databaseName', () => {
+    const tabs = healSeedSampleTabs([
+      {
+        id: 'query-1',
+        title: '客户总览',
+        sql: SQL.customers,
+        connectionId: 'wrong-mysql',
+        databaseName: 'snowy-cloud',
+      },
+      {
+        id: 'custom',
+        title: 'mine',
+        sql: 'SELECT 1',
+        connectionId: 'c1',
+        databaseName: 'db1',
+      },
+    ])
+    expect(tabs[0].connectionId).toBe(SAMPLE_CONNECTION_ID)
+    expect(tabs[0].databaseName).toBeUndefined()
+    expect(tabs[1].connectionId).toBe('c1')
+    expect(tabs[1].databaseName).toBe('db1')
+  })
+
+  it('INITIAL_TABS all bind to sample', () => {
+    expect(INITIAL_TABS.every((t) => t.connectionId === SAMPLE_CONNECTION_ID)).toBe(true)
+  })
+})
+
+describe('databaseName persist', () => {
+  it('keeps databaseName on normalize', () => {
+    const tabs = normalizeSessionTabs([
+      { id: 't1', title: 'Q', sql: 'SELECT 1', connectionId: 'c1', databaseName: 'retail' },
+    ])
+    expect(tabs[0].databaseName).toBe('retail')
+  })
 })

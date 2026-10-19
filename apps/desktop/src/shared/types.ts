@@ -159,6 +159,12 @@ export type EditorTabState = {
   filePath?: string | null
   /** Bound connection for this tab; null = use workspace active. No secrets. */
   connectionId?: string | null
+  /**
+   * Default database/schema for this tab (MySQL/PG/MSSQL).
+   * Persisted; used on execute so restore does not fall back to another session DB.
+   * null/omit = connection default (or sqlite file).
+   */
+  databaseName?: string | null
   /** Table browse paging meta; absent for free SQL tabs. */
   browse?: import('./tablePaging').TableBrowseState
   /**

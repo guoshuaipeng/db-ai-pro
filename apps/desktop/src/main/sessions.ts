@@ -318,8 +318,19 @@ async function runOnSession(
   }
   const session = await openSession(target)
   if (session.kind === 'sqlite') return executeScript(session.db, sqlText)
-  if (session.kind === 'mysql') return executeMysql(session.conn, sqlText)
+  if (session.kind === 'mysql') {
+    if (override) {
+      // Per-tab default DB: set before run so restore/bindings are honored (not last session USE).
+      const safe = override.replace(/`/g, '``')
+      await session.conn.query(`USE \`${safe}\``)
+    }
+    return executeMysql(session.conn, sqlText)
+  }
   if (session.kind === 'postgres') return executePostgres(session.client, sqlText)
+  if (override) {
+    const safe = override.replace(/]/g, ']]')
+    await session.pool.request().query(`USE [${safe}]`)
+  }
   return executeMssql(session.pool, sqlText, session.txn)
 }
 
