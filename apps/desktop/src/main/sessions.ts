@@ -400,11 +400,15 @@ export async function cancelQuery(requestId: string): Promise<{ ok: boolean }> {
   return { ok: true }
 }
 
-export async function describeSession(target: SqlTarget): Promise<string> {
+export async function describeSession(
+  target: SqlTarget,
+  databaseName?: string | null,
+): Promise<string> {
   if (target.dialect === 'redis') return ''
   const session = await openSession(target)
+  const db = databaseName?.trim() || undefined
   if (session.kind === 'sqlite') return describeSchema(session.db)
-  if (session.kind === 'mysql') return describeMysql(session.conn)
+  if (session.kind === 'mysql') return describeMysql(session.conn, db)
   if (session.kind === 'postgres') return describePostgres(session.client)
   return describeMssql(session.pool)
 }

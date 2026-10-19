@@ -50,6 +50,29 @@ export function searchRelevantTables(tables: TableSpec[], prompt: string, limit 
         reasons.push(`命中 ${needle}`)
         continue
       }
+      // Chinese business words → user/customer tables (prefer *_user over oauth_client)
+      if (/客户|用户|会员|buyer/.test(needle)) {
+        if (/^(clients?|customers?)$/i.test(table.name) || /(?:^|_)users?$/i.test(table.name)) {
+          score += 6
+          reasons.push(`表名近义 ${needle}`)
+          continue
+        }
+        if (/customer|member|buyer|user/i.test(table.name)) {
+          score += 4
+          reasons.push(`表名近义 ${needle}`)
+          continue
+        }
+        if (/client/i.test(table.name)) {
+          score += 2
+          reasons.push(`弱近义 ${needle}`)
+          continue
+        }
+      }
+      if (/订单|下单/.test(needle) && /order/i.test(table.name)) {
+        score += 4
+        reasons.push(`表名近义 ${needle}`)
+        continue
+      }
       for (const item of bag) {
         if (item.includes(needle) || needle.includes(item)) {
           score += 2

@@ -189,6 +189,7 @@ import {
   tableNamesForConnection,
   aiConnectionHint,
 } from '@shared/aiConnection'
+import { preferredTableFromSql } from '@shared/draftLocalPreview'
 import type { AiIntent } from '@shared/types'
 import type {
   AiSettingsPublic,
@@ -2351,18 +2352,28 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [connections, aiConnectionId],
   )
   const aiConnectionFromTab = Boolean(activeEditor?.connectionId?.trim())
+  const aiDatabaseName = useMemo(
+    () => resolveAiDatabaseName(activeEditor),
+    [activeEditor],
+  )
+  const aiPreferredTable = useMemo(() => {
+    const fromBrowse = activeEditor?.browse?.tableName?.trim()
+    if (fromBrowse) return fromBrowse
+    return preferredTableFromSql(activeEditor?.sql) 
+  }, [activeEditor])
   const aiConnectionHintText = useMemo(
     () =>
       aiConnectionHint(aiConnection, {
         fromTabBind: aiConnectionFromTab,
         missing: !aiConnectionId,
+        databaseName: aiDatabaseName,
       }),
-    [aiConnection, aiConnectionFromTab, aiConnectionId],
+    [aiConnection, aiConnectionFromTab, aiConnectionId, aiDatabaseName],
   )
 
   const tableNames = useMemo(
-    () => tableNamesForConnection(schema, aiConnectionId),
-    [schema, aiConnectionId],
+    () => tableNamesForConnection(schema, aiConnectionId, aiDatabaseName),
+    [schema, aiConnectionId, aiDatabaseName],
   )
 
   const sendAi = async (text?: string) => {
@@ -2404,6 +2415,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         referenceTable: referenceTable || undefined,
         targetTable: targetTable || undefined,
         history,
+        databaseName: aiDatabaseName ?? null,
+        preferredTable: aiPreferredTable || targetTable || referenceTable || null,
       })
     } catch (error) {
       setAiStreaming(false)
@@ -2504,7 +2517,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       },
     ])
     try {
-      await api.ai.repair({ requestId, connectionId, sql, error })
+      await api.ai.repair({
+        requestId,
+        connectionId,
+        sql,
+        error,
+        databaseName: resolveAiDatabaseName(activeEditor) ?? null,
+      })
     } catch (reason) {
       setAiStreaming(false)
       pushToast('error', reason instanceof Error ? reason.message : '助手没有完成修复')

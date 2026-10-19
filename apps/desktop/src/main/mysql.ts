@@ -102,8 +102,20 @@ export async function listMysqlSchema(
   })
 }
 
-export async function describeMysql(conn: mysql.Connection): Promise<string> {
-  const [rows] = await conn.query<RowDataPacket[]>(COLUMN_SQL)
+export async function describeMysql(
+  conn: mysql.Connection,
+  databaseName?: string | null,
+): Promise<string> {
+  const db = databaseName?.trim()
+  const [rows] = db
+    ? await conn.query<RowDataPacket[]>(
+        `SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name, COLUMN_TYPE AS data_type
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = ?
+         ORDER BY TABLE_NAME, ORDINAL_POSITION`,
+        [db],
+      )
+    : await conn.query<RowDataPacket[]>(COLUMN_SQL)
   return formatSchemaText(
     groupColumns(
       rows.map((row) => ({

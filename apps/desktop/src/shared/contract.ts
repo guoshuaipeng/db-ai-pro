@@ -167,12 +167,15 @@ export type DesktopApi = {
       referenceTable?: string
       targetTable?: string
       history?: string
+      databaseName?: string | null
+      preferredTable?: string | null
     }) => Promise<void>
     repair: (payload: {
       requestId: string
       connectionId: string | null
       sql: string
       error: string
+      databaseName?: string | null
     }) => Promise<void>
     cancel: (requestId: string) => Promise<void>
     onEvent: (listener: (event: AiEvent) => void) => () => void

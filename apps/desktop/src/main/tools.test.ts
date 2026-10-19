@@ -14,6 +14,13 @@ describe('table catalog tools', () => {
     expect(hits[0]?.name).toBe('customers')
   })
 
+  it('ranks 客户 toward client_user when that is the catalog', () => {
+    const cloud = tablesFromDescribe(`client_user (id BIGINT, name VARCHAR, avatar VARCHAR)
+auth_oauth_client (id BIGINT, name VARCHAR)`)
+    const hits = searchRelevantTables(cloud, '客户表有多少数据')
+    expect(hits[0]?.name).toBe('client_user')
+  })
+
   it('returns schema for selected tables', () => {
     const text = schemaForTables(tables, ['orders'])
     expect(text).toContain('orders')

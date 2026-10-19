@@ -197,11 +197,11 @@ function savedNote(connectionId: string, name: string, dialect: SchemaNode['dial
   }
 }
 
-async function loadTables(connectionId: string | null) {
+async function loadTables(connectionId: string | null, databaseName?: string | null) {
   const row = connectionId ? getConnection(connectionId) : undefined
   if (!row || !dialectInfo(row.dialect).executable) return []
   try {
-    const text = await describeSession(targetFromStored(row))
+    const text = await describeSession(targetFromStored(row), databaseName)
     return tablesFromDescribe(text)
   } catch {
     return []
@@ -812,11 +812,13 @@ ipcMain.handle('sql:cancel', async (_event, requestId: string) => {
         referenceTable?: string
         targetTable?: string
         history?: string
+        databaseName?: string | null
+        preferredTable?: string | null
       },
     ) => {
       await runAi(payload, async (send, signal) => {
         const row = payload.connectionId ? getConnection(payload.connectionId) : undefined
-        const tables = await loadTables(payload.connectionId)
+        const tables = await loadTables(payload.connectionId, payload.databaseName)
         const settings = settingsSecrets()
         const dialect = row?.dialect ?? 'sqlite'
         const intent = payload.intent ?? 'query'
@@ -857,6 +859,8 @@ ipcMain.handle('sql:cancel', async (_event, requestId: string) => {
           prompt: payload.prompt,
           tables,
           dialect,
+          databaseName: payload.databaseName,
+          preferredTable: payload.preferredTable ?? payload.targetTable ?? payload.referenceTable,
           baseUrl: settings.baseUrl,
           model: settings.model,
           apiKey: settings.apiKey,
@@ -871,11 +875,17 @@ ipcMain.handle('sql:cancel', async (_event, requestId: string) => {
     'ai:repair',
     async (
       _event,
-      payload: { requestId: string; connectionId: string | null; sql: string; error: string },
+      payload: {
+        requestId: string
+        connectionId: string | null
+        sql: string
+        error: string
+        databaseName?: string | null
+      },
     ) => {
       await runAi(payload, async (send, signal) => {
         const row = payload.connectionId ? getConnection(payload.connectionId) : undefined
-        const tables = await loadTables(payload.connectionId)
+        const tables = await loadTables(payload.connectionId, payload.databaseName)
         const settings = settingsSecrets()
         await streamRepair({
           requestId: payload.requestId,

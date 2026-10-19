@@ -1,4 +1,4 @@
-import { draftLocalAnswer } from '@shared/session'
+import { draftLocalPreviewAnswer } from '@shared/draftLocalPreview'
 import type { TableSpec } from '@shared/schema'
 import { schemaForTables, searchRelevantTables } from '@shared/tableCatalog'
 import type { AiEvent } from '@shared/types'
@@ -71,6 +71,8 @@ export async function streamAnswer(options: {
   prompt: string
   tables: TableSpec[]
   dialect: string
+  databaseName?: string | null
+  preferredTable?: string | null
   baseUrl: string
   model: string
   apiKey: string
@@ -132,17 +134,27 @@ async function runLocalPreview(options: {
   requestId: string
   prompt: string
   tables: TableSpec[]
+  dialect?: string
+  databaseName?: string | null
+  preferredTable?: string | null
   signal: AbortSignal
   send: (event: AiEvent) => void
 }): Promise<void> {
-  sendProgress(options.requestId, 'preview', options.send, 'search_relevant_tables', '按问题检索相关表')
+  const scope = options.databaseName?.trim()
+  sendProgress(
+    options.requestId,
+    'preview',
+    options.send,
+    'search_relevant_tables',
+    scope ? `在库「${scope}」内检索相关表` : '按问题检索相关表',
+  )
   const hits = searchRelevantTables(options.tables, options.prompt)
   sendProgress(
     options.requestId,
     'preview',
     options.send,
     '相关表',
-    hits.map((hit) => hit.name).join(', ') || '（使用默认候选）',
+    hits.map((hit) => hit.name).join(', ') || (options.tables[0]?.name ?? '（无表）'),
   )
   sendProgress(options.requestId, 'preview', options.send, 'get_table_schema', '读取字段结构')
   const schema = schemaForTables(
@@ -150,7 +162,13 @@ async function runLocalPreview(options: {
     hits.map((hit) => hit.name),
   )
   sendProgress(options.requestId, 'preview', options.send, '表结构就绪', schema.split('\n').slice(0, 3).join(' · '))
-  const answer = draftLocalAnswer(options.prompt)
+  const answer = draftLocalPreviewAnswer({
+    prompt: options.prompt,
+    tables: options.tables,
+    dialect: options.dialect,
+    databaseName: options.databaseName,
+    preferredTable: options.preferredTable,
+  })
   await streamPreviewText(options.requestId, answer, options.signal, options.send)
   options.send({ requestId: options.requestId, type: 'done', mode: 'preview' })
 }

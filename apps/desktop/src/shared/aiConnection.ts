@@ -23,6 +23,7 @@ export function resolveAiDatabaseName(
 export function tableNamesForConnection(
   schema: readonly SchemaNode[],
   connectionId: string | null | undefined,
+  databaseName?: string | null,
 ): string[] {
   const id = connectionId?.trim()
   if (!id) return []
@@ -43,17 +44,31 @@ export function tableNamesForConnection(
       if (node.children?.length) walk(node.children, here)
     }
   }
-  if (root) walk([root], true)
-  else walk(schema, false)
+  const db = databaseName?.trim()
+  if (root) {
+    if (db) {
+      const dbNode = (root.children ?? []).find(
+        (n) => n.kind === 'database' && (n.name === db || n.databaseName === db),
+      )
+      if (dbNode) walk([dbNode], true)
+      else walk([root], true) // fall back to whole connection if db node missing
+    } else {
+      walk([root], true)
+    }
+  } else {
+    walk(schema, false)
+  }
   return [...new Set(names)]
 }
 
 export function aiConnectionHint(
   connection: ConnectionPublic | null | undefined,
-  opts?: { fromTabBind?: boolean; missing?: boolean },
+  opts?: { fromTabBind?: boolean; missing?: boolean; databaseName?: string | null },
 ): string {
   if (opts?.missing || !connection) return '未绑定连接 · 请先在查询标签选择连接'
   const dialect = dialectInfo(connection.dialect).label
   const source = opts?.fromTabBind ? '当前标签' : '侧栏活动'
-  return `${source} · ${dialect} · ${connection.name}`
+  const db = opts?.databaseName?.trim()
+  const base = `${source} · ${dialect} · ${connection.name}`
+  return db ? `${base} / ${db}` : base
 }

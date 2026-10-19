@@ -76,5 +76,11 @@ describe('aiConnection', () => {
   it('formats hint', () => {
     expect(aiConnectionHint(conn('c1', '示例业务库'), { fromTabBind: true })).toContain('当前标签')
     expect(aiConnectionHint(null, { missing: true })).toContain('未绑定')
+    expect(
+      aiConnectionHint(conn('c1', '测试数据库'), {
+        fromTabBind: true,
+        databaseName: 'snowy-cloud',
+      }),
+    ).toContain('snowy-cloud')
   })
 })
