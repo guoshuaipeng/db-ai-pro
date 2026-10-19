@@ -7,6 +7,8 @@ export type DataaiEventMap = {
   'dataai:focus-tree-search': undefined
   /** Scroll/select a connection row in the object tree. */
   'dataai:reveal-connection': { connectionId: string }
+  /** Scroll a schema-tree node into view after restore / navigation. */
+  'dataai:reveal-tree-node': { nodeId: string }
   'dataai:focus-editor': undefined
   'dataai:focus-result': undefined
   'dataai:focus-ai-composer': undefined

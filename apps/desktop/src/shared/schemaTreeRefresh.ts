@@ -2,20 +2,30 @@
 
 import type { SchemaNode } from './types'
 
-/** Cap persisted expand map size (connection + a few open folders). */
+/** Cap persisted expand map size (open folders only). */
 export const EXPANDED_KEY_CAP = 2_000
 
-/** Normalize a persisted expand map; drop non-booleans. */
+/**
+ * Normalize a persisted expand map.
+ * Only **true** entries are kept — false keys used to fill the 2000 cap and drop real opens.
+ */
 export function normalizeExpanded(raw: unknown): Record<string, boolean> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
   const next: Record<string, boolean> = {}
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (typeof key !== 'string' || !key.trim()) continue
-    if (typeof value !== 'boolean') continue
-    next[key] = value
+    if (value !== true) continue
+    next[key] = true
     if (Object.keys(next).length >= EXPANDED_KEY_CAP) break
   }
   return next
+}
+
+/** Drop non-true keys (in-memory compact before save). */
+export function compactExpanded(
+  expanded: Record<string, boolean> | null | undefined,
+): Record<string, boolean> {
+  return normalizeExpanded(expanded ?? {})
 }
 
 /** Count keys marked open (true) in a persisted expand map. */
@@ -28,10 +38,9 @@ export function countOpenExpands(expanded: Record<string, boolean> | null | unde
   return n
 }
 
-
 /**
  * Whether a tree node should render expanded.
- * Search forces expand. Explicit map wins. Unset → only connection roots open.
+ * Search forces expand. Only explicit `true` opens a node — no implicit "all connections open".
  */
 export function isTreeNodeExpanded(
   node: Pick<SchemaNode, 'id' | 'kind'>,
@@ -39,26 +48,72 @@ export function isTreeNodeExpanded(
   searching: boolean,
 ): boolean {
   if (searching) return true
-  const flag = expanded[node.id]
-  if (flag !== undefined) return flag
-  return node.kind === 'connection'
+  return expanded[node.id] === true
 }
 
-/** Seed expand flags for new nodes; keep existing keys (including collapsed=false). */
+/**
+ * After schema refresh: keep open flags that still exist; never invent false keys.
+ */
 export function seedExpanded(
   nodes: SchemaNode[],
   current: Record<string, boolean> = {},
 ): Record<string, boolean> {
-  const next = { ...current }
-  const walk = (node: SchemaNode) => {
-    if (next[node.id] === undefined) {
-      // Default: only connection roots open; databases/tables stay collapsed until user expands.
-      next[node.id] = node.kind === 'connection'
+  const ids = collectNodeIds(nodes)
+  const next: Record<string, boolean> = {}
+  for (const [key, value] of Object.entries(current)) {
+    if (value === true && ids.has(key)) {
+      next[key] = true
+      if (Object.keys(next).length >= EXPANDED_KEY_CAP) break
     }
-    node.children?.forEach(walk)
   }
-  nodes.forEach(walk)
   return next
+}
+
+/**
+ * Cold start / empty memory: open only the last active connection so its DB list shows;
+ * databases and tables stay collapsed.
+ */
+export function defaultExpandForActiveConnection(
+  schema: SchemaNode[],
+  activeConnectionId: string | null | undefined,
+): Record<string, boolean> {
+  const id = activeConnectionId?.trim()
+  if (!id) return {}
+  const root =
+    schema.find((node) => node.id === id) ??
+    schema.find((node) => node.connectionId === id && node.kind === 'connection')
+  if (root) return { [root.id]: true }
+  return { [id]: true }
+}
+
+/** Path from forest root to node (inclusive), or null. */
+export function findNodePath(
+  nodes: SchemaNode[],
+  nodeId: string,
+  trail: SchemaNode[] = [],
+): SchemaNode[] | null {
+  for (const node of nodes) {
+    const next = [...trail, node]
+    if (node.id === nodeId) return next
+    const child = findNodePath(node.children ?? [], nodeId, next)
+    if (child) return child
+  }
+  return null
+}
+
+/** Ensure ancestors of a node are expanded so it can be scrolled into view. */
+export function expandAncestorsOf(
+  schema: SchemaNode[],
+  nodeId: string,
+  current: Record<string, boolean> = {},
+): Record<string, boolean> {
+  const path = findNodePath(schema, nodeId)
+  if (!path || path.length === 0) return compactExpanded(current)
+  const next = { ...compactExpanded(current) }
+  for (let i = 0; i < path.length - 1; i++) {
+    next[path[i].id] = true
+  }
+  return compactExpanded(next)
 }
 
 /** Replace one connection root in the schema forest. */
@@ -87,15 +142,13 @@ export function collectNodeIds(nodes: SchemaNode[]): Set<string> {
 
 /**
  * Collapse all folders: connection roots stay open; databases / tables / etc. close.
- * Rebuilds the map from the current schema so stale keys are dropped.
+ * Only true keys are stored (connection ids).
  */
 export function collapseSchemaTreeExpanded(schema: SchemaNode[]): Record<string, boolean> {
   const next: Record<string, boolean> = {}
-  const walk = (node: SchemaNode) => {
-    next[node.id] = node.kind === 'connection'
-    node.children?.forEach(walk)
+  for (const node of schema) {
+    if (node.kind === 'connection') next[node.id] = true
   }
-  schema.forEach(walk)
   return next
 }
 
@@ -112,7 +165,7 @@ export function expandSchemaTreeOneLevel(
   current: Record<string, boolean>,
   searching: boolean,
 ): { next: Record<string, boolean>; expandedChildCount: number } {
-  const next = { ...current }
+  const next = { ...compactExpanded(current) }
   let expandedChildCount = 0
   const walk = (node: SchemaNode) => {
     if (isTreeNodeExpanded(node, current, searching) && node.children?.length) {
@@ -126,11 +179,10 @@ export function expandSchemaTreeOneLevel(
     node.children?.forEach(walk)
   }
   schema.forEach(walk)
-  return { next, expandedChildCount }
+  return { next: compactExpanded(next), expandedChildCount }
 }
 
 export function expandSchemaTreeOneLevelToast(expandedChildCount: number): string {
   if (expandedChildCount <= 0) return '没有更多可展开的节点'
   return `已展开下一级（${expandedChildCount.toLocaleString('zh-CN')} 个节点）`
 }
-

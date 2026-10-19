@@ -14,6 +14,9 @@ import { connectionErrorNode } from '@shared/schema'
 import {
   collapseSchemaTreeExpanded,
   collapseSchemaTreeToast,
+  compactExpanded,
+  defaultExpandForActiveConnection,
+  expandAncestorsOf,
   expandSchemaTreeOneLevel,
   expandSchemaTreeOneLevelToast,
   countOpenExpands,
@@ -193,7 +196,7 @@ import type {
   WorkspaceState,
 } from '@shared/types'
 import { dbVisibilitySavedToast } from '@shared/dbVisibilityUi'
-import { expandRestoredToast } from '@shared/treeExpandPersistUi'
+import { expandRestoredToast, selectionRestoredToast } from '@shared/treeExpandPersistUi'
 import {
   sampleDbRestoreFailToast,
   sampleDbRestoreSuccessToast,
@@ -691,6 +694,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (id && rows.some((row) => row.id === id)) return id
         return rows[0]?.id ?? null
       })
+      return nodes
     },
     [api],
   )
@@ -825,21 +829,56 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           }
           setActiveConnectionId(restoreConnectionId)
         }
-        if (workspace?.expanded) {
-          const restored = normalizeExpanded(workspace.expanded)
-          setExpanded(restored)
-          const openCount = countOpenExpands(restored)
-          if (openCount > 0) {
-            pushToast('info', expandRestoredToast(openCount))
-          }
+        const pendingSelectedId =
+          typeof workspace?.selectedId === 'string' && workspace.selectedId.trim()
+            ? workspace.selectedId.trim()
+            : null
+        if (pendingSelectedId) setSelectedId(pendingSelectedId)
+
+        const restoredExpand = normalizeExpanded(workspace?.expanded)
+        if (countOpenExpands(restoredExpand) > 0) {
+          setExpanded(restoredExpand)
+          pushToast('info', expandRestoredToast(countOpenExpands(restoredExpand)))
         }
+
         // Dismiss splash before schema probes — slow/unreachable DB must not block main UI.
         loaded.current = true
         setReady(true)
         if (cancelled) return
         setSchemaRefreshing(true)
         try {
-          await refreshSchema(rows, restoreConnectionId)
+          const nodes = await refreshSchema(rows, restoreConnectionId)
+          if (cancelled) return
+          setExpanded((current) => {
+            let next = seedExpanded(nodes, current)
+            if (countOpenExpands(next) === 0) {
+              next = defaultExpandForActiveConnection(nodes, restoreConnectionId)
+            }
+            if (pendingSelectedId) {
+              next = expandAncestorsOf(nodes, pendingSelectedId, next)
+            }
+            return compactExpanded(next)
+          })
+          if (pendingSelectedId) {
+            const exists = (() => {
+              const walk = (list: typeof nodes): boolean => {
+                for (const n of list) {
+                  if (n.id === pendingSelectedId) return true
+                  if (n.children && walk(n.children)) return true
+                }
+                return false
+              }
+              return walk(nodes)
+            })()
+            if (exists) {
+              window.setTimeout(() => {
+                emitDataai('dataai:reveal-tree-node', { nodeId: pendingSelectedId })
+                pushToast('info', selectionRestoredToast())
+              }, 80)
+            } else {
+              setSelectedId(null)
+            }
+          }
         } catch (schemaError) {
           if (!cancelled) {
             pushToast(
@@ -875,7 +914,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       editorRatio,
       sidebarOpen,
       aiOpen,
-      expanded: normalizeExpanded(expanded),
+      expanded: compactExpanded(expanded),
+      selectedId,
     }
     const handle = window.setTimeout(() => {
       void api.workspace.save(state)
@@ -893,6 +933,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     sidebarOpen,
     aiOpen,
     expanded,
+    selectedId,
   ])
 
   useEffect(() => {
@@ -2683,7 +2724,13 @@ ${sql.trim()}
     setSearch,
     revealConnectionInTree,
     expanded,
-    toggleExpanded: (id) => setExpanded((current) => ({ ...current, [id]: !current[id] })),
+    toggleExpanded: (id) =>
+      setExpanded((current) => {
+        const next = { ...compactExpanded(current) }
+        if (next[id] === true) delete next[id]
+        else next[id] = true
+        return next
+      }),
     collapseObjectTree,
     expandObjectTreeOneLevel,
     selectedId,

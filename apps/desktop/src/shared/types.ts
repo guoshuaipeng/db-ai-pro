@@ -191,8 +191,10 @@ export type WorkspaceState = {
   editorRatio: number
   sidebarOpen: boolean
   aiOpen: boolean
-  /** Object-tree expand flags; omitted on older workspaces. */
+  /** Object-tree expand flags (true-only); omitted on older workspaces. */
   expanded?: Record<string, boolean>
+  /** Last selected object-tree node id; omitted on older workspaces. */
+  selectedId?: string | null
 }
 
 export type FavoriteFolder = {

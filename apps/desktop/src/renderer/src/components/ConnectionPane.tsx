@@ -131,6 +131,19 @@ export function ConnectionPane() {
     [],
   )
 
+  useEffect(
+    () =>
+      onDataai('dataai:reveal-tree-node', (detail) => {
+        const id = detail?.nodeId
+        if (!id || !root.current) return
+        window.requestAnimationFrame(() => {
+          const el = root.current?.querySelector(`[data-tree-node-id="${CSS.escape(id)}"]`)
+          el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        })
+      }),
+    [],
+  )
+
   return (
     <aside className="sidebar" ref={root} aria-label="连接">
       <div className="side-head">
@@ -594,6 +607,7 @@ function TreeNode({
     <div className="tree-branch">
       <div
         className={rowClass}
+        data-tree-node-id={node.id}
         style={{ paddingLeft: 8 + depth * 14 }}
         role="treeitem"
         aria-expanded={hasChildren ? expanded : undefined}
